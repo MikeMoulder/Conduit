@@ -53,11 +53,25 @@ interface RegisteredAsset {
   decimals: number;
   /** Who issued the mint on this cluster. */
   issuer: string;
+  /** Broad class, used for grouping and for risk treatment. */
+  assetClass: "equity" | "crypto";
   feeds: {
-    /** Pyth feed for the underlying listed equity. */
-    equity: string;
-    /** Pyth feed for the tokenized representation, the xStock series. */
-    tokenized: string;
+    /**
+     * The feed that prices what is actually held.
+     *
+     * For a tokenized equity this is the token's own feed, not the listed
+     * share's, because the token is the thing in the portfolio and it does not
+     * always trade at parity.
+     */
+    primary: string;
+    /**
+     * The underlying listed instrument, where one exists.
+     *
+     * Only tokenized equities have this. Its purpose is the spread against
+     * `primary`, which is a tradable signal and a liquidity warning. Crypto has
+     * no underlying listing, so the field is absent rather than duplicated.
+     */
+    reference?: string;
     /** A second tokenized representation where one exists, the Ondo series. */
     alternate?: string;
   };
@@ -76,74 +90,114 @@ interface Registry {
  * Every feed id below was read from the Pyth Hermes metadata endpoint rather
  * than transcribed from documentation, because a wrong feed id silently prices
  * the wrong instrument instead of failing loudly.
+ *
+ * Crypto entries sit alongside the equities deliberately. A portfolio that can
+ * only hold one asset class cannot diversify, and Pyth's brief explicitly invites
+ * combining equities with other asset classes. They also serve a practical
+ * purpose: crypto feeds are entitled on every tier, so the price pipeline stays
+ * demonstrably live even while equity entitlements are pending.
  */
 const UNIVERSE: Omit<RegisteredAsset, "mint" | "issuer">[] = [
   {
     symbol: "AAPL",
     name: "Apple",
+    assetClass: "equity",
     decimals: 8,
     feeds: {
-      equity: "49f6b65cb1de6b10eaf75e7c03ca029c306d0357e91b5311b175084a5ad55688",
-      tokenized: "978e6cc68a119ce066aa830017318563a9ed04ec3a0a6439010fc11296a58675",
+      primary: "978e6cc68a119ce066aa830017318563a9ed04ec3a0a6439010fc11296a58675",
+      reference: "49f6b65cb1de6b10eaf75e7c03ca029c306d0357e91b5311b175084a5ad55688",
       alternate: "e6734de88a83d9d2fb33072adab319004700aefd069653aba30ba9e3cac056f2",
     },
   },
   {
     symbol: "NVDA",
     name: "NVIDIA",
+    assetClass: "equity",
     decimals: 8,
     feeds: {
-      equity: "b1073854ed24cbc755dc527418f52b7d271f6cc967bbf8d8129112b18860a593",
-      tokenized: "4244d07890e4610f46bbde67de8f43a4bf8b569eebe904f136b469f148503b7f",
+      primary: "4244d07890e4610f46bbde67de8f43a4bf8b569eebe904f136b469f148503b7f",
+      reference: "b1073854ed24cbc755dc527418f52b7d271f6cc967bbf8d8129112b18860a593",
       alternate: "207ddea2a443d30b7e13a7c88a9e3f106765deb97049afc65a18cede50fffc82",
     },
   },
   {
     symbol: "MSFT",
     name: "Microsoft",
+    assetClass: "equity",
     decimals: 8,
     feeds: {
-      equity: "d0ca23c1cc005e004ccf1db5bf76aeb6a49218f43dac3d4b275e92de12ded4d1",
-      tokenized: "bb723a70af731ab56b9a650eb7e8ac22b7bc07ea77f8670bd1fa9a37bf6df3f5",
+      primary: "bb723a70af731ab56b9a650eb7e8ac22b7bc07ea77f8670bd1fa9a37bf6df3f5",
+      reference: "d0ca23c1cc005e004ccf1db5bf76aeb6a49218f43dac3d4b275e92de12ded4d1",
       alternate: "29b228e9fd72bbd306bcca3b10c165d8dba5d535ef8d5aab6c6e4bc18912d150",
     },
   },
   {
     symbol: "TSLA",
     name: "Tesla",
+    assetClass: "equity",
     decimals: 8,
     feeds: {
-      equity: "16dad506d7db8da01c87581c87ca897a012a153557d4d578c3b9c9e1bc0632f1",
-      tokenized: "47a156470288850a440df3a6ce85a55917b813a19bb5b31128a33a986566a362",
+      primary: "47a156470288850a440df3a6ce85a55917b813a19bb5b31128a33a986566a362",
+      reference: "16dad506d7db8da01c87581c87ca897a012a153557d4d578c3b9c9e1bc0632f1",
       alternate: "c09ef687ed07091c047da444f1499f2da52cdc1c085104643ec565a9eb1af514",
     },
   },
   {
     symbol: "GOOGL",
     name: "Alphabet",
+    assetClass: "equity",
     decimals: 8,
     feeds: {
-      equity: "5a48c03e9b9cb337801073ed9d166817473697efff0d138874e0f6a33d6d5aa6",
-      tokenized: "b911b0329028cd0283e4259c33809d62942bd2716a58084e5f31d64c00b5424e",
+      primary: "b911b0329028cd0283e4259c33809d62942bd2716a58084e5f31d64c00b5424e",
+      reference: "5a48c03e9b9cb337801073ed9d166817473697efff0d138874e0f6a33d6d5aa6",
       alternate: "ad79b3487bef87ff8f8ab31c0b779ad08d931fdfa5436f7e92a234bb82bff7e4",
     },
   },
   {
     symbol: "AMZN",
     name: "Amazon",
+    assetClass: "equity",
     decimals: 8,
     feeds: {
-      equity: "b5d0e0fa58a1f8b81498ae670ce93c872d14434b72c364885d4fa1b257cbb07a",
-      tokenized: "7148fbe6e493ff2580305c92a8d7f8628c9943b11b9b253aebc24863fec290e8",
+      primary: "7148fbe6e493ff2580305c92a8d7f8628c9943b11b9b253aebc24863fec290e8",
+      reference: "b5d0e0fa58a1f8b81498ae670ce93c872d14434b72c364885d4fa1b257cbb07a",
     },
   },
   {
     symbol: "SPY",
     name: "S&P 500 ETF",
+    assetClass: "equity",
     decimals: 8,
     feeds: {
-      equity: "19e09bb805456ada3979a7d1cbb4b6d63babc3a0f8e8a9509f68afa5c4c11cd5",
-      tokenized: "2817b78438c769357182c04346fddaad1178c82f4048828fe0997c3c64624e14",
+      primary: "2817b78438c769357182c04346fddaad1178c82f4048828fe0997c3c64624e14",
+      reference: "19e09bb805456ada3979a7d1cbb4b6d63babc3a0f8e8a9509f68afa5c4c11cd5",
+    },
+  },
+  {
+    symbol: "BTC",
+    name: "Bitcoin",
+    assetClass: "crypto",
+    decimals: 8,
+    feeds: {
+      primary: "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+    },
+  },
+  {
+    symbol: "ETH",
+    name: "Ether",
+    assetClass: "crypto",
+    decimals: 8,
+    feeds: {
+      primary: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+    },
+  },
+  {
+    symbol: "SOL",
+    name: "Solana",
+    assetClass: "crypto",
+    decimals: 8,
+    feeds: {
+      primary: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
     },
   },
 ];
@@ -224,7 +278,11 @@ async function main(): Promise<void> {
 
     if (!force && prior && (await mintExists(connection, prior.mint))) {
       console.log(`${spec.symbol.padEnd(6)} reusing ${prior.mint}`);
-      assets.push(prior);
+      // Only the mint address is carried forward. Everything else comes from
+      // the spec above, so corrections to feed ids, decimals or classification
+      // take effect on the next run instead of being pinned to whatever shape
+      // the registry happened to have when the mint was first issued.
+      assets.push({ ...spec, mint: prior.mint, issuer: prior.issuer });
       continue;
     }
 
