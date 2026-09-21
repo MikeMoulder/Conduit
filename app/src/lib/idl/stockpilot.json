@@ -1,0 +1,727 @@
+{
+  "address": "6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu",
+  "metadata": {
+    "name": "stockpilot",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "On chain investment mandate enforcement for tokenized equity portfolios"
+  },
+  "instructions": [
+    {
+      "name": "initialize_mandate",
+      "docs": [
+        "Creates a mandate: the constitution a portfolio will operate under.",
+        "",
+        "Constraints are validated here rather than on first use, so an incoherent",
+        "mandate fails immediately at the point the owner can still fix it."
+      ],
+      "discriminator": [
+        7,
+        251,
+        124,
+        114,
+        46,
+        104,
+        193,
+        22
+      ],
+      "accounts": [
+        {
+          "name": "mandate",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  110,
+                  100,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "arg",
+                "path": "mandate_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "mandate_id",
+          "type": "u64"
+        },
+        {
+          "name": "constraints",
+          "type": {
+            "defined": {
+              "name": "MandateConstraints"
+            }
+          }
+        },
+        {
+          "name": "allowed_assets",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "AllowedAsset"
+              }
+            }
+          }
+        },
+        {
+          "name": "agent",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "initialize_portfolio",
+      "docs": [
+        "Opens the portfolio governed by a mandate.",
+        "",
+        "It starts fully in cash. That is the only allocation guaranteed to satisfy",
+        "any well formed mandate, so initialization can never produce a portfolio",
+        "that is already in breach."
+      ],
+      "discriminator": [
+        122,
+        177,
+        206,
+        169,
+        129,
+        85,
+        26,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "mandate"
+        },
+        {
+          "name": "portfolio",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  114,
+                  116,
+                  102,
+                  111,
+                  108,
+                  105,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mandate"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "mandate"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "propose_rebalance",
+      "docs": [
+        "The agent asks to move the portfolio to a new allocation.",
+        "",
+        "This is the only instruction the agent can call, and it is where the",
+        "mandate is enforced. Nothing the agent computed off chain is taken on",
+        "trust: the weights are re-checked against the mandate as stored on chain,",
+        "and any breach aborts the transaction."
+      ],
+      "discriminator": [
+        11,
+        89,
+        222,
+        191,
+        238,
+        93,
+        94,
+        177
+      ],
+      "accounts": [
+        {
+          "name": "mandate",
+          "docs": [
+            "`has_one = agent` is the delegation boundary. Any signer other than the",
+            "agent named in the mandate is refused before the proposal is even read."
+          ],
+          "writable": true
+        },
+        {
+          "name": "portfolio",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  114,
+                  116,
+                  102,
+                  111,
+                  108,
+                  105,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mandate"
+              }
+            ]
+          }
+        },
+        {
+          "name": "agent",
+          "signer": true,
+          "relations": [
+            "mandate"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "proposed",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "ProposedPosition"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "set_mandate_status",
+      "docs": [
+        "Owner suspends or resumes the agent, or closes the mandate permanently.",
+        "",
+        "Restricted to the owner. This is the control that makes delegation safe to",
+        "grant in the first place: authority handed to an agent can be withdrawn",
+        "without the agent's cooperation."
+      ],
+      "discriminator": [
+        119,
+        9,
+        167,
+        49,
+        222,
+        249,
+        195,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "mandate",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "mandate"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "status",
+          "type": {
+            "defined": {
+              "name": "MandateStatus"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Mandate",
+      "discriminator": [
+        113,
+        216,
+        98,
+        159,
+        185,
+        63,
+        55,
+        18
+      ]
+    },
+    {
+      "name": "Portfolio",
+      "discriminator": [
+        94,
+        158,
+        71,
+        245,
+        122,
+        102,
+        110,
+        225
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "RebalanceExecuted",
+      "discriminator": [
+        194,
+        41,
+        129,
+        249,
+        215,
+        226,
+        122,
+        248
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "MandateNotActive",
+      "msg": "Mandate is not active, so it cannot accept proposals"
+    },
+    {
+      "code": 6001,
+      "name": "UnauthorizedAgent",
+      "msg": "Signer is not the agent delegated by this mandate"
+    },
+    {
+      "code": 6002,
+      "name": "UnauthorizedOwner",
+      "msg": "Signer is not the owner of this mandate"
+    },
+    {
+      "code": 6003,
+      "name": "TooManyAssets",
+      "msg": "Proposal references more assets than the mandate permits"
+    },
+    {
+      "code": 6004,
+      "name": "AssetNotAllowed",
+      "msg": "Proposal references an asset outside the mandate's permitted universe"
+    },
+    {
+      "code": 6005,
+      "name": "DuplicateAsset",
+      "msg": "Proposal references the same asset more than once"
+    },
+    {
+      "code": 6006,
+      "name": "PositionExceedsMaxSize",
+      "msg": "A single position exceeds the mandate's maximum position size"
+    },
+    {
+      "code": 6007,
+      "name": "InsufficientCashReserve",
+      "msg": "Proposal leaves less cash than the mandate's minimum reserve"
+    },
+    {
+      "code": 6008,
+      "name": "AllocationMustSumToFull",
+      "msg": "Allocations and cash must sum to exactly 10000 basis points"
+    },
+    {
+      "code": 6009,
+      "name": "TurnoverExceeded",
+      "msg": "Proposal turnover exceeds the mandate's per rebalance limit"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidBasisPoints",
+      "msg": "A basis point value exceeds 10000"
+    },
+    {
+      "code": 6011,
+      "name": "ContradictoryConstraints",
+      "msg": "Mandate constraints are internally contradictory and can never be satisfied"
+    },
+    {
+      "code": 6012,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic overflow while evaluating the proposal"
+    },
+    {
+      "code": 6013,
+      "name": "EmptyAssetUniverse",
+      "msg": "The mandate's permitted asset universe is empty"
+    }
+  ],
+  "types": [
+    {
+      "name": "AllowedAsset",
+      "docs": [
+        "One asset the mandate permits the agent to hold.",
+        "",
+        "Identity is the SPL mint, because that is what actually moves on chain. The",
+        "Pyth feed id is carried alongside so valuation cannot be pointed at a",
+        "different instrument than the one being held: the binding between \"what I own\"",
+        "and \"what price I mark it at\" is fixed when the mandate is created, not chosen",
+        "later by whoever submits a proposal."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Mandate",
+      "docs": [
+        "The constitution.",
+        "",
+        "This account is the reason the project exists. The agent holds no authority of",
+        "its own: it may only submit proposals, and every proposal is re-checked",
+        "against this account by the program before anything moves. The agent cannot",
+        "edit these limits, cannot withdraw, and cannot replace itself. Those are not",
+        "promises made by a model, they are instructions it has no way to reach."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mandate_id",
+            "docs": [
+              "Caller supplied discriminator, part of this account's PDA seeds.",
+              "",
+              "Stored as well as being a seed so a client holding the account can",
+              "re-derive its own address without having to remember the id separately.",
+              "It also lets one owner run several mandates at once, for example a",
+              "conservative one and an aggressive one."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "owner",
+            "docs": [
+              "Sole authority permitted to amend, pause or close this mandate."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "agent",
+            "docs": [
+              "Delegated proposer. May propose rebalances and nothing else."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "constraints",
+            "docs": [
+              "Limits every proposal is measured against."
+            ],
+            "type": {
+              "defined": {
+                "name": "MandateConstraints"
+              }
+            }
+          },
+          {
+            "name": "allowed_assets",
+            "docs": [
+              "Universe of assets the agent may hold."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "AllowedAsset"
+                }
+              }
+            }
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "MandateStatus"
+              }
+            }
+          },
+          {
+            "name": "version",
+            "docs": [
+              "Layout version, so a future migration can tell accounts apart."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "rebalance_count",
+            "type": "u64"
+          },
+          {
+            "name": "last_rebalance_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MandateConstraints",
+      "docs": [
+        "The numeric limits a proposal is checked against.",
+        "",
+        "Separated from the account struct so the checking logic can be unit tested as",
+        "a pure function, with no validator, no accounts and no runtime."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "max_position_bps",
+            "docs": [
+              "Largest share any single position may occupy."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "min_cash_bps",
+            "docs": [
+              "Smallest share that must remain in cash."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_turnover_bps",
+            "docs": [
+              "Largest share of the portfolio that may change hands in one rebalance."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_assets",
+            "docs": [
+              "Largest number of simultaneous positions."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MandateStatus",
+      "docs": [
+        "Lifecycle of a mandate."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Active"
+          },
+          {
+            "name": "Paused"
+          },
+          {
+            "name": "Closed"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Portfolio",
+      "docs": [
+        "The live allocation operating under a mandate."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mandate",
+            "docs": [
+              "Mandate governing this portfolio. Immutable once set."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "positions",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "Position"
+                }
+              }
+            }
+          },
+          {
+            "name": "cash_bps",
+            "docs": [
+              "Share currently held in cash. Positions plus cash always total 10000 bps."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "docs": [
+        "A single holding, expressed as a target share of the portfolio.",
+        "",
+        "Target weight rather than token amount is stored here on purpose. Weights are",
+        "what the mandate constrains and what survives a price move; token amounts are",
+        "a settlement detail that belongs with the token accounts themselves."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "target_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProposedPosition",
+      "docs": [
+        "A target weight the agent is asking for."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "target_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RebalanceExecuted",
+      "docs": [
+        "Emitted on every accepted rebalance.",
+        "",
+        "The client reads these to build the agent activity feed, so the history shown",
+        "to the user is reconstructed from chain state rather than from an application",
+        "database that could disagree with it."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mandate",
+            "type": "pubkey"
+          },
+          {
+            "name": "portfolio",
+            "type": "pubkey"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "turnover_bps",
+            "type": "u16"
+          },
+          {
+            "name": "cash_bps",
+            "type": "u16"
+          },
+          {
+            "name": "position_count",
+            "type": "u8"
+          },
+          {
+            "name": "sequence",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    }
+  ]
+}
