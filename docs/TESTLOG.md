@@ -85,19 +85,71 @@ Follow up: none. The failure is closed.
 
 ## Run 003
 
+Date: 2026-09-21
+Phase: 1, Foundation
+Type: Build host survey
+
+SSH key authentication to 173.212.238.167 was authorized by the user and
+verified working. The box was then surveyed before installing anything.
+
+| Check | Result |
+| --- | --- |
+| SSH key authentication | PASS, connected as root@vmi3288470 |
+| Operating system | PASS, Ubuntu 24.04.4 LTS, kernel 6.8.0-137, x86_64 |
+| Disk capacity | PASS, 65GB free of 145GB |
+| Swap configured | PASS, 6GB swapfile present |
+| Compiler toolchain present | PASS, gcc 13.3.0, make 4.3, pkg-config 1.8.1 |
+| Build headers present | PASS, libssl-dev, libudev-dev, build-essential |
+| protobuf-compiler | FAIL, not installed |
+| Rust and cargo | FAIL, not installed |
+| Solana CLI | FAIL, not installed |
+| Anchor CLI | FAIL, not installed |
+| Node and npm | FAIL, not installed |
+| CPU headroom | FAIL, load average 4.28 on 4 cores, already saturated |
+| RAM headroom | FAIL, 1.6GB available of 7.8GB, 1.5GB of swap already in use |
+| Host is dedicated to this project | FAIL, host is running production workloads |
+
+Totals: 14 checks, 6 passed, 8 failed.
+
+Critical finding:
+
+The intended build host is a live production server, not a spare machine. It is
+currently serving:
+
+- Caddy on ports 80 and 443, public web traffic
+- A Docker container named `orion-app`, up 13 days, reported healthy
+- `okx-asp.service` and `okx-asp-bot.service`
+- Multiple `next-server` processes, the largest node process holding 3.4GB
+- PM2 under `pm2-root.service`
+- A VS Code remote server session
+
+Uptime is 42 days.
+
+Assessment:
+
+A first Anchor build compiles several hundred Rust crates and is heavy on both
+CPU and RAM. This host has no CPU headroom, since a load average of 4.28 on 4
+cores means the run queue is already backed up, and it has roughly 1.6GB of RAM
+available against a working set that can exceed that.
+
+Running the build here is expected to produce two bad outcomes at once: a very
+slow build, and degraded response times for the live services on port 443 while
+it runs.
+
+Recommendation: do not build on this host. See `HANDOFF.md` for the alternatives
+put to the user.
+
+Follow up: blocked pending a host decision from the user.
+
+---
+
+## Run 004
+
 Status: NOT YET RUN
 
-Blocked on: SSH access to the build VPS at 173.212.238.167. The local public key
-is not present in the server's authorized_keys, so key authentication is
-rejected. Password authentication was deliberately not attempted.
-
-Planned once unblocked:
-1. Verify SSH connectivity and record the VPS operating system and resources.
-2. Install the Rust toolchain, Solana CLI, Anchor and Node on the VPS.
-3. Re run the environment verification from Run 001 on the VPS and confirm the
-   four Rust related failures clear.
-4. Compile a stub Anchor program to prove the build path works end to end before
-   any real program logic is written.
+Planned: install the toolchain on whichever host is chosen, re run the
+environment verification, and compile a stub Anchor program to prove the build
+path end to end.
 
 ---
 
@@ -105,12 +157,12 @@ Planned once unblocked:
 
 | Metric | Value |
 | --- | --- |
-| Test runs recorded | 2 |
-| Individual checks executed | 15 |
-| Checks passed | 10 |
-| Checks failed | 5 |
-| Failures still open | 4 (all Rust toolchain, see Run 001) |
+| Test runs recorded | 3 |
+| Individual checks executed | 29 |
+| Checks passed | 16 |
+| Checks failed | 13 |
 | Failures closed | 1 (Next.js typegen, see Run 002) |
+| Failures open | 12 (missing toolchain on both hosts, plus host capacity) |
 | Unit tests written | 0 |
 | Integration tests written | 0 |
 | On chain program tests written | 0 |
