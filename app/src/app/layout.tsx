@@ -40,6 +40,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                   the mandate is the code
                 </span>
               </Link>
+              <nav className="ml-auto mr-6 hidden gap-5 text-sm text-zinc-400 sm:flex">
+                <Link
+                  href="/mandate"
+                  className="transition-colors hover:text-zinc-100"
+                >
+                  Author a mandate
+                </Link>
+              </nav>
               <ConnectWallet />
             </div>
           </header>
