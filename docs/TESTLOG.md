@@ -145,11 +145,69 @@ Follow up: blocked pending a host decision from the user.
 
 ## Run 004
 
+Date: 2026-09-21
+Phase: 1, Foundation
+Type: Build toolchain validation on the VPS
+
+Host decision: build on 173.212.238.167 despite it carrying production
+workloads. The risk was raised and the user confirmed. Every build is therefore
+run under `nice -n 19` and `ionice -c 3`, with cargo capped to a single job via
+`~/.cargo/config.toml`.
+
+| Check | Result |
+| --- | --- |
+| rustup install | PASS, rustc and cargo 1.98.1 |
+| protobuf-compiler install | PASS, libprotoc 3.21.12 |
+| Cargo parallelism cap applied | PASS, `jobs = 1` written |
+| Existing Node detected before installing | PASS, nvm v20.20.2 and v22.23.2 found |
+| Login PATH re-survey | PASS, revealed a full pre-existing Solana toolchain |
+| Anchor project scaffold | PASS, `anchor init` succeeded |
+| Anchor build | PASS, 340 crates, 4m29s, no errors |
+| Deployable artifact produced | PASS, `smoketest.so` at 178K |
+| IDL generation | PASS, valid JSON with instruction discriminators |
+| Solana CLI configuration | PASS, devnet via a dedicated RPC endpoint |
+| Wallet keypair present | PASS, funded with 4.96 SOL on devnet |
+| Devnet reachability | PASS, cluster version 4.3.0-rc.0 |
+| Node available for Anchor tests | PASS, v20.20.2 default, v22.23.2 available |
+| Production stability during build | PASS, load 2.33 to 5.51 then settled at 4.38, memory improved from 1.6GB to 2.3GB free |
+
+Totals: 14 checks, 14 passed, 0 failed.
+
+Key findings:
+
+1. The first survey was wrong, and the reason matters. It ran in a
+   non-interactive shell whose PATH omits the tooling directories. Solana CLI
+   3.1.15, cargo-build-sbf, anchor-cli 0.31.0, avm 1.0.2, the
+   `1.89.0-sbpf-solana-v1.52` rustup toolchain and cached platform-tools v1.52
+   and v2.3.3 were all already installed. Only the Rust toolchain was genuinely
+   missing. Always re-survey through a login shell before concluding a tool is
+   absent.
+
+2. Node was deliberately not installed. The host already runs production
+   services on nvm v20.20.2 under PM2. Installing another Node could have
+   shadowed it and taken those services down.
+
+3. The devnet wallet is already funded with 4.96 SOL. The previously logged risk
+   of devnet airdrop rate limits is closed with no mitigation needed.
+
+4. Anchor debug builds cost roughly 1GB of disk per target directory. The VPS
+   has 66GB free, so this is comfortable there. It would have been tight on the
+   local machine's 21GB.
+
+5. Throttling worked. The production host stayed responsive throughout, and
+   available memory was higher after the build than before it.
+
+Follow up: none. Phase 1 is complete and the build path is proven.
+
+---
+
+## Run 005
+
 Status: NOT YET RUN
 
-Planned: install the toolchain on whichever host is chosen, re run the
-environment verification, and compile a stub Anchor program to prove the build
-path end to end.
+Planned: first real program test. Once the mandate and portfolio account layouts
+exist, assert that a rebalance which breaches the mandate is rejected on chain
+with a specific constraint error, and that a compliant one succeeds.
 
 ---
 
@@ -157,12 +215,12 @@ path end to end.
 
 | Metric | Value |
 | --- | --- |
-| Test runs recorded | 3 |
-| Individual checks executed | 29 |
-| Checks passed | 16 |
+| Test runs recorded | 4 |
+| Individual checks executed | 43 |
+| Checks passed | 30 |
 | Checks failed | 13 |
-| Failures closed | 1 (Next.js typegen, see Run 002) |
-| Failures open | 12 (missing toolchain on both hosts, plus host capacity) |
+| Failures closed | 13 |
+| Failures open | 0 |
 | Unit tests written | 0 |
 | Integration tests written | 0 |
 | On chain program tests written | 0 |
