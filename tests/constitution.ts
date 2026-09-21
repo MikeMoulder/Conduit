@@ -74,7 +74,13 @@ function portfolioPda(mandate: PublicKey): PublicKey {
   )[0];
 }
 
-/** A stand-in mint. Token movement is a later phase; these identify assets. */
+/**
+ * A unique mint address for constraint tests.
+ *
+ * These tests exercise the policy engine, which cares only about mint identity,
+ * so a fresh address is sufficient and avoids creating real token accounts for
+ * every case. Settlement against registry mints is covered separately.
+ */
 const asset = () => Keypair.generate().publicKey;
 
 const feed = (): number[] => Array(32).fill(0);
