@@ -18,7 +18,10 @@ const schema = z.object({
   PYTH_HERMES_URL: z.url().default("https://hermes.pyth.network"),
   SOLANA_RPC_URL: z.url(),
   SOLANA_CLUSTER: z.enum(["devnet", "mainnet-beta", "localnet"]).default("devnet"),
-  ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required"),
+  GEMINI_API_KEY: z
+    .string()
+    .min(1, "GEMINI_API_KEY is required. Create one at https://aistudio.google.com/apikey"),
+  GEMINI_MODEL: z.string().default("gemini-2.5-pro"),
 });
 
 export type Env = z.infer<typeof schema>;
