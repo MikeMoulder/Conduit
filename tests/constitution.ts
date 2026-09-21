@@ -20,6 +20,11 @@ import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { assert } from "chai";
 
 import type { Stockpilot } from "../target/types/stockpilot";
+import {
+  PROGRAM_ID,
+  mandatePda as chainMandatePda,
+  portfolioPda as chainPortfolioPda,
+} from "../app/src/lib/chain";
 
 const provider = anchor.AnchorProvider.env();
 anchor.setProvider(provider);
@@ -56,23 +61,19 @@ const pct = (p: number) => p * 100;
 let nextId = Date.now();
 const freshId = () => new BN(nextId++);
 
+/**
+ * Address derivation comes from the application client, not a copy.
+ *
+ * A second implementation of these seeds would be one more place to drift, and a
+ * drifted PDA does not fail loudly: it quietly addresses an account that does not
+ * exist. Importing the real one means these tests also prove the client the
+ * browser uses derives the same addresses the program expects.
+ */
 function mandatePda(mandateId: BN): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("mandate"),
-      owner.publicKey.toBuffer(),
-      mandateId.toArrayLike(Buffer, "le", 8),
-    ],
-    program.programId,
-  )[0];
+  return chainMandatePda(owner.publicKey, mandateId);
 }
 
-function portfolioPda(mandate: PublicKey): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("portfolio"), mandate.toBuffer()],
-    program.programId,
-  )[0];
-}
+const portfolioPda = chainPortfolioPda;
 
 /**
  * A unique mint address for constraint tests.
@@ -175,6 +176,29 @@ async function openAccount(
 
   return { mandate, portfolio, agent };
 }
+
+describe("client and program agreement", () => {
+  it("bundles an IDL that points at the deployed program", () => {
+    // The browser builds transactions from the IDL copied into the app. If that
+    // copy goes stale against a redeploy, every instruction would be addressed to
+    // the wrong program and fail for reasons that look nothing like the cause.
+    assert.strictEqual(
+      PROGRAM_ID.toBase58(),
+      program.programId.toBase58(),
+      "app IDL and test IDL disagree about the program address",
+    );
+  });
+
+  it("derives portfolio addresses the program accepts", async () => {
+    // Proven indirectly by every other test, asserted directly here so a
+    // derivation bug names itself instead of surfacing as a missing account.
+    const { mandate, portfolio } = await openAccount(MODERATE, [asset()]);
+    assert.strictEqual(chainPortfolioPda(mandate).toBase58(), portfolio.toBase58());
+
+    const account = await program.account.portfolio.fetch(portfolio);
+    assert.strictEqual(account.mandate.toBase58(), mandate.toBase58());
+  });
+});
 
 describe("mandate creation", () => {
   it("stores the constitution exactly as the owner wrote it", async () => {
