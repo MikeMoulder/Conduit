@@ -1,0 +1,16 @@
+[workspace]
+members = ["programs/*"]
+resolver = "2"
+
+[profile.release]
+# overflow-checks is deliberately enabled in release builds. This program does
+# financial arithmetic on user funds, where a silent wraparound is far worse than
+# a failed transaction. The cost is a few compute units per operation.
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1
