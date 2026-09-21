@@ -24,12 +24,22 @@ export interface AssetFeeds {
   alternate?: string;
 }
 
-export type AssetClass = "equity" | "crypto";
+export type AssetClass = "equity" | "crypto" | "preipo";
+
+/**
+ * Which provider prices an asset.
+ *
+ * Pyth covers listed equities and crypto. PreStocks prices its own pre IPO
+ * tokens and is the only source for them, because a private company has no
+ * public market for an oracle to observe.
+ */
+export type PriceSource = "pyth" | "prestocks";
 
 export interface RegisteredAsset {
   symbol: string;
   name: string;
   assetClass: AssetClass;
+  priceSource: PriceSource;
   /** SPL mint on this cluster. */
   mint: string;
   decimals: number;
@@ -43,7 +53,16 @@ export interface RegisteredAsset {
    * opinion about provenance. Moving to mainnet is a registry change.
    */
   issuer: string;
-  feeds: AssetFeeds;
+  /** Pyth feeds. Absent for assets priced by another provider. */
+  feeds?: AssetFeeds;
+  /**
+   * The issuer's mint on mainnet, where one exists.
+   *
+   * Recorded so switching to mainnet is a registry change rather than research.
+   * The PreStocks mints use Token-2022, a different program from classic SPL
+   * Token, which any mainnet interaction must account for.
+   */
+  mainnetMint?: string;
 }
 
 export interface AssetRegistry {
@@ -75,12 +94,22 @@ export function getAssetByMint(mint: string): RegisteredAsset | undefined {
   return byMint.get(mint);
 }
 
-/** Every feed id an asset references, in a stable order. */
+/**
+ * Every Pyth feed id an asset references, in a stable order.
+ *
+ * Empty for assets priced elsewhere, so a caller can collect feed ids across the
+ * whole registry without first filtering by provider.
+ */
 export function feedsOf(asset: RegisteredAsset): string[] {
+  if (!asset.feeds) return [];
   const ids = [asset.feeds.primary];
   if (asset.feeds.reference) ids.push(asset.feeds.reference);
   if (asset.feeds.alternate) ids.push(asset.feeds.alternate);
   return ids;
+}
+
+export function listAssetsBySource(source: PriceSource): RegisteredAsset[] {
+  return assetRegistry.assets.filter((a) => a.priceSource === source);
 }
 
 /**

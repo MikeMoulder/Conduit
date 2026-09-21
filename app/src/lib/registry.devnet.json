@@ -1,12 +1,13 @@
 {
   "cluster": "devnet",
-  "generatedAt": "2026-09-21T17:42:58.333Z",
+  "generatedAt": "2026-09-21T17:53:24.783Z",
   "mintAuthority": "3CtgQtLeQ3zGWmvkgVDAtGMn97nARXjksatf2u6tyMTP",
   "assets": [
     {
       "symbol": "AAPL",
       "name": "Apple",
       "assetClass": "equity",
+      "priceSource": "pyth",
       "decimals": 8,
       "feeds": {
         "primary": "978e6cc68a119ce066aa830017318563a9ed04ec3a0a6439010fc11296a58675",
@@ -20,6 +21,7 @@
       "symbol": "NVDA",
       "name": "NVIDIA",
       "assetClass": "equity",
+      "priceSource": "pyth",
       "decimals": 8,
       "feeds": {
         "primary": "4244d07890e4610f46bbde67de8f43a4bf8b569eebe904f136b469f148503b7f",
@@ -33,6 +35,7 @@
       "symbol": "MSFT",
       "name": "Microsoft",
       "assetClass": "equity",
+      "priceSource": "pyth",
       "decimals": 8,
       "feeds": {
         "primary": "bb723a70af731ab56b9a650eb7e8ac22b7bc07ea77f8670bd1fa9a37bf6df3f5",
@@ -46,6 +49,7 @@
       "symbol": "TSLA",
       "name": "Tesla",
       "assetClass": "equity",
+      "priceSource": "pyth",
       "decimals": 8,
       "feeds": {
         "primary": "47a156470288850a440df3a6ce85a55917b813a19bb5b31128a33a986566a362",
@@ -59,6 +63,7 @@
       "symbol": "GOOGL",
       "name": "Alphabet",
       "assetClass": "equity",
+      "priceSource": "pyth",
       "decimals": 8,
       "feeds": {
         "primary": "b911b0329028cd0283e4259c33809d62942bd2716a58084e5f31d64c00b5424e",
@@ -72,6 +77,7 @@
       "symbol": "AMZN",
       "name": "Amazon",
       "assetClass": "equity",
+      "priceSource": "pyth",
       "decimals": 8,
       "feeds": {
         "primary": "7148fbe6e493ff2580305c92a8d7f8628c9943b11b9b253aebc24863fec290e8",
@@ -84,6 +90,7 @@
       "symbol": "SPY",
       "name": "S&P 500 ETF",
       "assetClass": "equity",
+      "priceSource": "pyth",
       "decimals": 8,
       "feeds": {
         "primary": "2817b78438c769357182c04346fddaad1178c82f4048828fe0997c3c64624e14",
@@ -96,6 +103,7 @@
       "symbol": "BTC",
       "name": "Bitcoin",
       "assetClass": "crypto",
+      "priceSource": "pyth",
       "decimals": 8,
       "feeds": {
         "primary": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
@@ -107,6 +115,7 @@
       "symbol": "ETH",
       "name": "Ether",
       "assetClass": "crypto",
+      "priceSource": "pyth",
       "decimals": 8,
       "feeds": {
         "primary": "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace"
@@ -118,11 +127,92 @@
       "symbol": "SOL",
       "name": "Solana",
       "assetClass": "crypto",
+      "priceSource": "pyth",
       "decimals": 8,
       "feeds": {
         "primary": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
       },
       "mint": "7nYbxQdjwwacNvwod8SDZ7n17kZ3WeLCZYH8hyTGN998",
+      "issuer": "stockpilot-devnet"
+    },
+    {
+      "symbol": "ANDURIL",
+      "name": "Anduril",
+      "assetClass": "preipo",
+      "priceSource": "prestocks",
+      "decimals": 9,
+      "mainnetMint": "PresTj4Yc2bAR197Er7wz4UUKSfqt6FryBEdAriBoQB",
+      "mint": "G2pa2J4gTrbDBAsnhqew9dUaAnqrUr5ctS48BbrkXA2A",
+      "issuer": "stockpilot-devnet"
+    },
+    {
+      "symbol": "ANTHROPIC",
+      "name": "Anthropic",
+      "assetClass": "preipo",
+      "priceSource": "prestocks",
+      "decimals": 9,
+      "mainnetMint": "Pren1FvFX6J3E4kXhJuCiAD5aDmGEb7qJRncwA8Lkhw",
+      "mint": "FSy3J9wjSL4VbwDdF1U1GUzmYagHY4rvSQY1D5d1hr97",
+      "issuer": "stockpilot-devnet"
+    },
+    {
+      "symbol": "FIGUREAI",
+      "name": "Figure AI",
+      "assetClass": "preipo",
+      "priceSource": "prestocks",
+      "decimals": 9,
+      "mainnetMint": "PreZad18qfPtbxNpMtMuAuX2zVpvkEU8DnJx56faCWd",
+      "mint": "GjaBe4DMat57JBXJwx1tP53AkR7TTzJCBz7R4X3QJWVp",
+      "issuer": "stockpilot-devnet"
+    },
+    {
+      "symbol": "KALSHI",
+      "name": "Kalshi",
+      "assetClass": "preipo",
+      "priceSource": "prestocks",
+      "decimals": 9,
+      "mainnetMint": "PreLWGkkeqG1s4HEfFZSy9moCrJ7btsHuUtfcCeoRua",
+      "mint": "8Ldz77EVH64o6Y1xYRskDLxNUvY3Z1pbw3RDk1E6Acgz",
+      "issuer": "stockpilot-devnet"
+    },
+    {
+      "symbol": "NEURALINK",
+      "name": "Neuralink",
+      "assetClass": "preipo",
+      "priceSource": "prestocks",
+      "decimals": 9,
+      "mainnetMint": "PrekqLJvJ3qVdXmBGDiexvwUTF4rLFDa6HWS4HJbw9S",
+      "mint": "8K9DYkrtJxy96KDaLr2qx461anQZ3iUyQ3csybyNGuFh",
+      "issuer": "stockpilot-devnet"
+    },
+    {
+      "symbol": "OPENAI",
+      "name": "OpenAI",
+      "assetClass": "preipo",
+      "priceSource": "prestocks",
+      "decimals": 9,
+      "mainnetMint": "PreweJYECqtQwBtpxHL171nL2K6umo692gTm7Q3rpgF",
+      "mint": "HUipJetryssZrkP6hJPZV7i9CiYDhSPePvd9FFYL4Z3W",
+      "issuer": "stockpilot-devnet"
+    },
+    {
+      "symbol": "POLYMARKET",
+      "name": "Polymarket",
+      "assetClass": "preipo",
+      "priceSource": "prestocks",
+      "decimals": 9,
+      "mainnetMint": "Pre8AREmFPtoJFT8mQSXQLh56cwJmM7CFDRuoGBZiUP",
+      "mint": "9dwbkn8JjpwFQz8g8XN6evieJcEyhnAjMceXdUTBCb3q",
+      "issuer": "stockpilot-devnet"
+    },
+    {
+      "symbol": "SPACEX",
+      "name": "SpaceX",
+      "assetClass": "preipo",
+      "priceSource": "prestocks",
+      "decimals": 9,
+      "mainnetMint": "PreANxuXjsy2pvisWWMNB6YaJNzr7681wJJr2rHsfTh",
+      "mint": "CV3BauS2PhTtGJvRLszPXyySY3oSADYPN3bg7dPkjbNj",
       "issuer": "stockpilot-devnet"
     }
   ]

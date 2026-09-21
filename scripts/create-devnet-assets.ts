@@ -54,8 +54,24 @@ interface RegisteredAsset {
   /** Who issued the mint on this cluster. */
   issuer: string;
   /** Broad class, used for grouping and for risk treatment. */
-  assetClass: "equity" | "crypto";
-  feeds: {
+  assetClass: "equity" | "crypto" | "preipo";
+  /**
+   * Which provider prices this asset.
+   *
+   * Pyth covers listed equities and crypto. PreStocks prices its own pre IPO
+   * tokens and is the only source for them, since a private company has no
+   * public market for an oracle to observe.
+   */
+  priceSource: "pyth" | "prestocks";
+  /**
+   * The issuer's mint on mainnet, where one exists.
+   *
+   * Recorded so the mainnet path is a registry swap rather than research. The
+   * PreStocks mints are Token-2022, a different program from classic SPL Token.
+   */
+  mainnetMint?: string;
+  /** Pyth feeds. Absent for assets priced by another provider. */
+  feeds?: {
     /**
      * The feed that prices what is actually held.
      *
@@ -102,6 +118,7 @@ const UNIVERSE: Omit<RegisteredAsset, "mint" | "issuer">[] = [
     symbol: "AAPL",
     name: "Apple",
     assetClass: "equity",
+    priceSource: "pyth",
     decimals: 8,
     feeds: {
       primary: "978e6cc68a119ce066aa830017318563a9ed04ec3a0a6439010fc11296a58675",
@@ -113,6 +130,7 @@ const UNIVERSE: Omit<RegisteredAsset, "mint" | "issuer">[] = [
     symbol: "NVDA",
     name: "NVIDIA",
     assetClass: "equity",
+    priceSource: "pyth",
     decimals: 8,
     feeds: {
       primary: "4244d07890e4610f46bbde67de8f43a4bf8b569eebe904f136b469f148503b7f",
@@ -124,6 +142,7 @@ const UNIVERSE: Omit<RegisteredAsset, "mint" | "issuer">[] = [
     symbol: "MSFT",
     name: "Microsoft",
     assetClass: "equity",
+    priceSource: "pyth",
     decimals: 8,
     feeds: {
       primary: "bb723a70af731ab56b9a650eb7e8ac22b7bc07ea77f8670bd1fa9a37bf6df3f5",
@@ -135,6 +154,7 @@ const UNIVERSE: Omit<RegisteredAsset, "mint" | "issuer">[] = [
     symbol: "TSLA",
     name: "Tesla",
     assetClass: "equity",
+    priceSource: "pyth",
     decimals: 8,
     feeds: {
       primary: "47a156470288850a440df3a6ce85a55917b813a19bb5b31128a33a986566a362",
@@ -146,6 +166,7 @@ const UNIVERSE: Omit<RegisteredAsset, "mint" | "issuer">[] = [
     symbol: "GOOGL",
     name: "Alphabet",
     assetClass: "equity",
+    priceSource: "pyth",
     decimals: 8,
     feeds: {
       primary: "b911b0329028cd0283e4259c33809d62942bd2716a58084e5f31d64c00b5424e",
@@ -157,6 +178,7 @@ const UNIVERSE: Omit<RegisteredAsset, "mint" | "issuer">[] = [
     symbol: "AMZN",
     name: "Amazon",
     assetClass: "equity",
+    priceSource: "pyth",
     decimals: 8,
     feeds: {
       primary: "7148fbe6e493ff2580305c92a8d7f8628c9943b11b9b253aebc24863fec290e8",
@@ -167,6 +189,7 @@ const UNIVERSE: Omit<RegisteredAsset, "mint" | "issuer">[] = [
     symbol: "SPY",
     name: "S&P 500 ETF",
     assetClass: "equity",
+    priceSource: "pyth",
     decimals: 8,
     feeds: {
       primary: "2817b78438c769357182c04346fddaad1178c82f4048828fe0997c3c64624e14",
@@ -177,6 +200,7 @@ const UNIVERSE: Omit<RegisteredAsset, "mint" | "issuer">[] = [
     symbol: "BTC",
     name: "Bitcoin",
     assetClass: "crypto",
+    priceSource: "pyth",
     decimals: 8,
     feeds: {
       primary: "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
@@ -186,6 +210,7 @@ const UNIVERSE: Omit<RegisteredAsset, "mint" | "issuer">[] = [
     symbol: "ETH",
     name: "Ether",
     assetClass: "crypto",
+    priceSource: "pyth",
     decimals: 8,
     feeds: {
       primary: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
@@ -195,10 +220,80 @@ const UNIVERSE: Omit<RegisteredAsset, "mint" | "issuer">[] = [
     symbol: "SOL",
     name: "Solana",
     assetClass: "crypto",
+    priceSource: "pyth",
     decimals: 8,
     feeds: {
       primary: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
     },
+  },
+
+  // Pre IPO sleeve, issued by PreStocks. Priced from their API rather than
+  // Pyth: a private company has no public market for an oracle to observe.
+  // Decimals match the issuer's mainnet mints so amounts are directly
+  // comparable when the registry is pointed at mainnet.
+  {
+    symbol: "ANDURIL",
+    name: "Anduril",
+    assetClass: "preipo",
+    priceSource: "prestocks",
+    decimals: 9,
+    mainnetMint: "PresTj4Yc2bAR197Er7wz4UUKSfqt6FryBEdAriBoQB",
+  },
+  {
+    symbol: "ANTHROPIC",
+    name: "Anthropic",
+    assetClass: "preipo",
+    priceSource: "prestocks",
+    decimals: 9,
+    mainnetMint: "Pren1FvFX6J3E4kXhJuCiAD5aDmGEb7qJRncwA8Lkhw",
+  },
+  {
+    symbol: "FIGUREAI",
+    name: "Figure AI",
+    assetClass: "preipo",
+    priceSource: "prestocks",
+    decimals: 9,
+    mainnetMint: "PreZad18qfPtbxNpMtMuAuX2zVpvkEU8DnJx56faCWd",
+  },
+  {
+    symbol: "KALSHI",
+    name: "Kalshi",
+    assetClass: "preipo",
+    priceSource: "prestocks",
+    decimals: 9,
+    mainnetMint: "PreLWGkkeqG1s4HEfFZSy9moCrJ7btsHuUtfcCeoRua",
+  },
+  {
+    symbol: "NEURALINK",
+    name: "Neuralink",
+    assetClass: "preipo",
+    priceSource: "prestocks",
+    decimals: 9,
+    mainnetMint: "PrekqLJvJ3qVdXmBGDiexvwUTF4rLFDa6HWS4HJbw9S",
+  },
+  {
+    symbol: "OPENAI",
+    name: "OpenAI",
+    assetClass: "preipo",
+    priceSource: "prestocks",
+    decimals: 9,
+    mainnetMint: "PreweJYECqtQwBtpxHL171nL2K6umo692gTm7Q3rpgF",
+  },
+  {
+    symbol: "POLYMARKET",
+    name: "Polymarket",
+    assetClass: "preipo",
+    priceSource: "prestocks",
+    decimals: 9,
+    mainnetMint: "Pre8AREmFPtoJFT8mQSXQLh56cwJmM7CFDRuoGBZiUP",
+  },
+  {
+    symbol: "SPACEX",
+    name: "SpaceX",
+    assetClass: "preipo",
+    priceSource: "prestocks",
+    decimals: 9,
+    mainnetMint: "PreANxuXjsy2pvisWWMNB6YaJNzr7681wJJr2rHsfTh",
   },
 ];
 
