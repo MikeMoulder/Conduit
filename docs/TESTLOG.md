@@ -49,11 +49,55 @@ Follow up: install Rust via rustup, then re run this environment check as Run
 
 ## Run 002
 
+Date: 2026-09-21
+Phase: 1, Foundation
+Type: Frontend scaffold verification
+
+Scaffold created with `create-next-app` producing Next.js 16.3.5, React 19.2.8
+and Tailwind v4.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Dependency install | `npm install` | PASS, 438 packages, 0 vulnerabilities |
+| Bare type check | `npx tsc --noEmit` | FAIL, `Cannot find name 'LayoutProps'` |
+| Lint | `npm run lint` | PASS, 0 errors, 0 warnings |
+| Production build | `npm run build` | PASS, 4 static routes generated |
+| Fixed type check | `npm run typecheck` | PASS, exit code 0 |
+
+Totals: 5 checks, 4 passed, 1 failed.
+
+Notes:
+- The bare type check failure was not a defect in our code. In Next.js 16 the
+  `LayoutProps` helper is generated, not hand written. It only exists after
+  `next dev`, `next build` or `next typegen` has run. A clean checkout will
+  therefore always fail a bare `tsc --noEmit`.
+- Confirmed against the framework's own documentation shipped in
+  `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`
+  line 337.
+- Resolved by defining the `typecheck` script as `next typegen && tsc --noEmit`
+  rather than by weakening TypeScript settings or editing generated types.
+- A `verify` script now chains typecheck, lint and build into one command so the
+  full gate can be run before every commit that touches the frontend.
+
+Follow up: none. The failure is closed.
+
+---
+
+## Run 003
+
 Status: NOT YET RUN
 
-Planned: re run environment verification after the Rust toolchain is installed,
-then compile a stub Anchor program to prove the build path works end to end
-before any real program logic is written.
+Blocked on: SSH access to the build VPS at 173.212.238.167. The local public key
+is not present in the server's authorized_keys, so key authentication is
+rejected. Password authentication was deliberately not attempted.
+
+Planned once unblocked:
+1. Verify SSH connectivity and record the VPS operating system and resources.
+2. Install the Rust toolchain, Solana CLI, Anchor and Node on the VPS.
+3. Re run the environment verification from Run 001 on the VPS and confirm the
+   four Rust related failures clear.
+4. Compile a stub Anchor program to prove the build path works end to end before
+   any real program logic is written.
 
 ---
 
@@ -61,10 +105,12 @@ before any real program logic is written.
 
 | Metric | Value |
 | --- | --- |
-| Test runs recorded | 1 |
-| Individual checks executed | 10 |
-| Checks passed | 6 |
-| Checks failed | 4 |
+| Test runs recorded | 2 |
+| Individual checks executed | 15 |
+| Checks passed | 10 |
+| Checks failed | 5 |
+| Failures still open | 4 (all Rust toolchain, see Run 001) |
+| Failures closed | 1 (Next.js typegen, see Run 002) |
 | Unit tests written | 0 |
 | Integration tests written | 0 |
 | On chain program tests written | 0 |
