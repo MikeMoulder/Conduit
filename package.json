@@ -5,8 +5,9 @@
   "type": "commonjs",
   "description": "On chain investment mandate enforcement for tokenized equity portfolios",
   "scripts": {
-    "build:tests": "tsc -p tsconfig.json",
-    "test": "npm run build:tests && mocha"
+    "build:ts": "tsc -p tsconfig.json",
+    "test": "npm run build:ts && mocha",
+    "assets:devnet": "npm run build:ts && node .test-build/scripts/create-devnet-assets.js"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1"
