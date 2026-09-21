@@ -21,7 +21,7 @@ const schema = z.object({
   GEMINI_API_KEY: z
     .string()
     .min(1, "GEMINI_API_KEY is required. Create one at https://aistudio.google.com/apikey"),
-  GEMINI_MODEL: z.string().default("gemini-2.5-pro"),
+  GEMINI_MODEL: z.string().default("gemini-3.1-flash-lite"),
 });
 
 export type Env = z.infer<typeof schema>;
