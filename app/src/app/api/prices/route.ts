@@ -6,17 +6,27 @@ import {
   type RegisteredAsset,
 } from "@/lib/assets";
 import { computeSpread, fetchQuotes, type FeedResult } from "@/lib/pyth";
+import {
+  fetchPreStocks,
+  preStockSpread,
+  type PreStock,
+  type PreStocksResult,
+} from "@/lib/prestocks";
 
 /**
- * Live prices for the registry, read from Pyth.
+ * Live prices for the registry.
  *
- * This route exists so the Pyth key never reaches a browser. Pyth's own
- * documentation requires frontends to proxy rather than embed, and `lib/pyth`
- * is marked server only so the constraint is enforced at build time rather than
- * by convention.
+ * Two providers sit behind this one route. Pyth prices listed equities and
+ * crypto. PreStocks prices its own pre IPO tokens, which no oracle covers
+ * because a private company has no public market to observe. Callers are given
+ * one uniform shape and do not need to know which provider answered.
+ *
+ * The route also exists so no market data credential reaches a browser. Both
+ * provider modules are marked server only, so a client component reaching for
+ * one fails the build rather than leaking a key.
  *
  * Query parameters:
- *   symbols  optional comma separated filter, for example `?symbols=AAPL,NVDA`
+ *   symbols  optional comma separated filter, for example `?symbols=AAPL,SPACEX`
  */
 
 // Quotes are live market data. Serving a cached response would mean showing a
@@ -25,7 +35,8 @@ export const dynamic = "force-dynamic";
 
 interface LegPayload {
   available: boolean;
-  feedId: string;
+  /** Identifier at the provider: a Pyth feed id, or a PreStocks symbol. */
+  ref: string;
   price?: number;
   confidence?: number;
   ageSeconds?: number;
@@ -33,15 +44,15 @@ interface LegPayload {
   unavailableReason?: string;
 }
 
-function toLeg(feedId: string, result: FeedResult | undefined): LegPayload {
+function pythLeg(feedId: string, result: FeedResult | undefined): LegPayload {
   if (!result) {
-    return { available: false, feedId, unavailableReason: "not requested" };
+    return { available: false, ref: feedId, unavailableReason: "not requested" };
   }
 
   if (result.status === "ok") {
     return {
       available: true,
-      feedId,
+      ref: feedId,
       price: result.quote.price,
       confidence: result.quote.confidence,
       ageSeconds: result.quote.ageSeconds,
@@ -51,7 +62,7 @@ function toLeg(feedId: string, result: FeedResult | undefined): LegPayload {
   if (result.status === "unentitled") {
     return {
       available: false,
-      feedId,
+      ref: feedId,
       // Stated plainly rather than collapsed into a generic failure. An
       // entitlement gap is a billing question, not an outage, and the two
       // deserve different reactions from whoever is looking at this.
@@ -60,10 +71,106 @@ function toLeg(feedId: string, result: FeedResult | undefined): LegPayload {
   }
 
   if (result.status === "missing") {
-    return { available: false, feedId, unavailableReason: "no price published" };
+    return { available: false, ref: feedId, unavailableReason: "no price published" };
   }
 
-  return { available: false, feedId, unavailableReason: result.detail };
+  return { available: false, ref: feedId, unavailableReason: result.detail };
+}
+
+function priced(ref: string, price: number, ageSeconds: number): LegPayload {
+  return { available: true, ref, price, ageSeconds };
+}
+
+function unavailable(ref: string, reason: string): LegPayload {
+  return { available: false, ref, unavailableReason: reason };
+}
+
+/** Shape returned for one asset, whichever provider priced it. */
+function describeAsset(
+  asset: RegisteredAsset,
+  quotes: Map<string, FeedResult>,
+  preStocks: PreStocksResult,
+) {
+  const base = {
+    symbol: asset.symbol,
+    name: asset.name,
+    assetClass: asset.assetClass,
+    priceSource: asset.priceSource,
+    mint: asset.mint,
+    mainnetMint: asset.mainnetMint ?? null,
+    decimals: asset.decimals,
+    issuer: asset.issuer,
+  };
+
+  if (asset.priceSource === "prestocks") {
+    if (preStocks.status !== "ok") {
+      return {
+        ...base,
+        primary: unavailable(asset.symbol, preStocks.reason),
+        reference: unavailable(asset.symbol, preStocks.reason),
+        alternate: null,
+        spread: null,
+      };
+    }
+
+    const record: PreStock | undefined = preStocks.assets.get(asset.symbol);
+    if (!record) {
+      return {
+        ...base,
+        primary: unavailable(asset.symbol, "not present in the PreStocks response"),
+        reference: unavailable(asset.symbol, "not present in the PreStocks response"),
+        alternate: null,
+        spread: null,
+      };
+    }
+
+    const age = Math.max(0, Math.floor((Date.now() - preStocks.fetchedAt) / 1000));
+
+    return {
+      ...base,
+      // The token is what the portfolio holds, so it is the primary leg. The SPV
+      // mark is what it derives from, so it is the reference. Same shape as a
+      // tokenized equity against its listing.
+      primary: priced(asset.symbol, record.tokenPrice, age),
+      reference: priced(asset.symbol, record.markPrice, age),
+      alternate: null,
+      spread: preStockSpread(record),
+      valuation: {
+        implied: record.impliedValuation,
+        mark: record.markValuation,
+        supply: record.supply,
+      },
+    };
+  }
+
+  if (!asset.feeds) {
+    const reason = "registry entry has no Pyth feeds";
+    return {
+      ...base,
+      primary: unavailable(asset.symbol, reason),
+      reference: null,
+      alternate: null,
+      spread: null,
+    };
+  }
+
+  const primary = quotes.get(asset.feeds.primary);
+  const reference = asset.feeds.reference
+    ? quotes.get(asset.feeds.reference)
+    : undefined;
+
+  return {
+    ...base,
+    primary: pythLeg(asset.feeds.primary, primary),
+    reference: asset.feeds.reference
+      ? pythLeg(asset.feeds.reference, reference)
+      : null,
+    alternate: asset.feeds.alternate
+      ? pythLeg(asset.feeds.alternate, quotes.get(asset.feeds.alternate))
+      : null,
+    // Null for crypto, which has no underlying listing to diverge from.
+    spread: computeSpread(reference, primary),
+  };
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -105,55 +212,37 @@ export async function GET(request: Request): Promise<Response> {
     for (const id of feedsOf(asset)) feedIds.add(id);
   }
 
-  let quotes: Map<string, FeedResult>;
-  try {
-    quotes = await fetchQuotes([...feedIds]);
-  } catch (error) {
-    // Reaching here means configuration failed, not that a feed was refused,
-    // since fetchQuotes reports per feed problems rather than throwing.
-    return Response.json(
-      { error: "price service unavailable", detail: String(error) },
-      { status: 503 },
-    );
-  }
+  const needsPreStocks = assets.some((a) => a.priceSource === "prestocks");
 
-  const payload = assets.map((asset) => {
-    const primary = quotes.get(asset.feeds.primary);
-    const reference = asset.feeds.reference
-      ? quotes.get(asset.feeds.reference)
-      : undefined;
+  // Providers are independent, so one slow or unreachable provider should not
+  // serialise behind the other. Neither call rejects: both report failure in
+  // their return value.
+  const [quotes, preStocks] = await Promise.all([
+    feedIds.size > 0
+      ? fetchQuotes([...feedIds])
+      : Promise.resolve(new Map<string, FeedResult>()),
+    needsPreStocks
+      ? fetchPreStocks()
+      : Promise.resolve({
+          status: "unavailable",
+          reason: "not requested",
+        } as PreStocksResult),
+  ]);
 
-    return {
-      symbol: asset.symbol,
-      name: asset.name,
-      assetClass: asset.assetClass,
-      mint: asset.mint,
-      decimals: asset.decimals,
-      issuer: asset.issuer,
-      primary: toLeg(asset.feeds.primary, primary),
-      reference: asset.feeds.reference
-        ? toLeg(asset.feeds.reference, reference)
-        : null,
-      alternate: asset.feeds.alternate
-        ? toLeg(asset.feeds.alternate, quotes.get(asset.feeds.alternate))
-        : null,
-      // Null for crypto, which has no underlying listing to diverge from.
-      spread: computeSpread(reference, primary),
-    };
-  });
-
-  const statuses = [...quotes.values()];
+  const payload = assets.map((asset) => describeAsset(asset, quotes, preStocks));
+  const live = payload.filter((a) => a.primary.available).length;
 
   return Response.json({
     cluster: assetRegistry.cluster,
     fetchedAt: new Date().toISOString(),
     assets: payload,
     availability: {
-      total: statuses.length,
-      live: statuses.filter((s) => s.status === "ok").length,
-      unentitled: statuses.filter((s) => s.status === "unentitled").length,
-      missing: statuses.filter((s) => s.status === "missing").length,
-      failed: statuses.filter((s) => s.status === "error").length,
+      assets: payload.length,
+      priced: live,
+      unpriced: payload.length - live,
+      pythFeedsRequested: feedIds.size,
+      pythFeedsLive: [...quotes.values()].filter((q) => q.status === "ok").length,
+      preStocks: preStocks.status,
     },
   });
 }
