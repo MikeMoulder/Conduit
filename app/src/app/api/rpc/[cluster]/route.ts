@@ -14,6 +14,20 @@ import { getEnv } from "@/lib/env";
  * devnet, so the blast radius of abuse is rate limit rather than money, but the
  * same route would be pointed at mainnet unchanged and it should already be
  * shaped for that.
+ *
+ * Why the cluster is in the path
+ * -----------------------------
+ * A wallet has to be told which chain it is signing for. The wallet adapter
+ * works that out by searching the RPC endpoint string for the word devnet, and
+ * anything it does not recognise it treats as mainnet. A proxy path of
+ * /api/rpc would therefore have asked every wallet to sign mainnet
+ * transactions against a devnet program, which fails at best.
+ *
+ * Naming the cluster in the path fixes that, and turns an accidental string
+ * match into something checkable: the browser states which chain it believes it
+ * is on, and this route refuses if that is not the chain it forwards to. A
+ * mismatch is a misconfiguration worth failing loudly rather than a request
+ * worth serving.
  */
 
 export const dynamic = "force-dynamic";
@@ -62,7 +76,23 @@ function refuse(message: string, status: number): Response {
   return Response.json({ error: message }, { status });
 }
 
-export async function POST(request: Request): Promise<Response> {
+export async function POST(
+  request: Request,
+  context: RouteContext<"/api/rpc/[cluster]">,
+): Promise<Response> {
+  const { cluster } = await context.params;
+  const configured = getEnv().SOLANA_CLUSTER;
+
+  if (cluster !== configured) {
+    return Response.json(
+      {
+        error: "cluster mismatch",
+        detail: `This deployment is configured for ${configured}, but the request asked for ${cluster}.`,
+      },
+      { status: 409 },
+    );
+  }
+
   const raw = await request.text();
 
   if (raw.length > MAX_BODY_BYTES) {

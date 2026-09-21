@@ -12,6 +12,12 @@
  *
  * The browser talks to this instead of talking to the provider directly, so the
  * key stays on the server and the dedicated endpoint rate limits still apply.
+ *
+ * The cluster is appended as a path segment, which is not decoration. A wallet
+ * decides which chain it is signing for by searching this string for the word
+ * devnet, treating anything unrecognised as mainnet, so a path without it would
+ * have wallets signing mainnet transactions against a devnet program. The route
+ * also checks the segment against its own configuration and refuses a mismatch.
  */
 export const RPC_PROXY_PATH = "/api/rpc";
 
@@ -38,5 +44,5 @@ export const CLUSTER: Cluster =
 export function rpcEndpoint(): string {
   const origin =
     typeof window === "undefined" ? "http://localhost" : window.location.origin;
-  return `${origin}${RPC_PROXY_PATH}`;
+  return `${origin}${RPC_PROXY_PATH}/${CLUSTER}`;
 }
