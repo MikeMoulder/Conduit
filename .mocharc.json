@@ -1,0 +1,5 @@
+{
+  "spec": ".test-build/tests/**/*.js",
+  "timeout": 1000000,
+  "slow": 5000
+}

@@ -60,3 +60,6 @@ coverage/
 *.md
 !README.md
 !**/README.md
+
+# Compiled integration tests
+.test-build/
