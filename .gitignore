@@ -54,3 +54,9 @@ Thumbs.db
 # Misc
 .cache/
 coverage/
+
+# Markdown is local working documentation only.
+# READMEs are the exception since they are the repository's public face.
+*.md
+!README.md
+!**/README.md
