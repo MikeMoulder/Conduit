@@ -35,7 +35,7 @@ pub mod stockpilot {
     /// mandate fails immediately at the point the owner can still fix it.
     pub fn initialize_mandate(
         ctx: Context<InitializeMandate>,
-        _mandate_id: u64,
+        mandate_id: u64,
         constraints: MandateConstraints,
         allowed_assets: Vec<AllowedAsset>,
         agent: Pubkey,
@@ -62,6 +62,7 @@ pub mod stockpilot {
         constraints.validate()?;
 
         let mandate = &mut ctx.accounts.mandate;
+        mandate.mandate_id = mandate_id;
         mandate.owner = ctx.accounts.owner.key();
         mandate.agent = agent;
         mandate.constraints = constraints;

@@ -96,6 +96,13 @@ impl MandateConstraints {
 #[account]
 #[derive(InitSpace)]
 pub struct Mandate {
+    /// Caller supplied discriminator, part of this account's PDA seeds.
+    ///
+    /// Stored as well as being a seed so a client holding the account can
+    /// re-derive its own address without having to remember the id separately.
+    /// It also lets one owner run several mandates at once, for example a
+    /// conservative one and an aggressive one.
+    pub mandate_id: u64,
     /// Sole authority permitted to amend, pause or close this mandate.
     pub owner: Pubkey,
     /// Delegated proposer. May propose rebalances and nothing else.
