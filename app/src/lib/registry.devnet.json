@@ -15,7 +15,7 @@
         "alternate": "e6734de88a83d9d2fb33072adab319004700aefd069653aba30ba9e3cac056f2"
       },
       "mint": "haugTrskYNkNwjMLsStNxxWPouZRgpNS6VGJXxeut32",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "NVDA",
@@ -29,7 +29,7 @@
         "alternate": "207ddea2a443d30b7e13a7c88a9e3f106765deb97049afc65a18cede50fffc82"
       },
       "mint": "EwRtqnrKMojfxq18VAVh9bVooDNPmcS6YR4zByhfScKy",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "MSFT",
@@ -43,7 +43,7 @@
         "alternate": "29b228e9fd72bbd306bcca3b10c165d8dba5d535ef8d5aab6c6e4bc18912d150"
       },
       "mint": "EznVA5oK5YBdduSqn35PtTMjgNqoGvyW51Hoe9M9gu5L",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "TSLA",
@@ -57,7 +57,7 @@
         "alternate": "c09ef687ed07091c047da444f1499f2da52cdc1c085104643ec565a9eb1af514"
       },
       "mint": "Hr9kUtqkYqfFe6YcLUqNKcAdMWy9vVagwydBSwT4DKfW",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "GOOGL",
@@ -71,7 +71,7 @@
         "alternate": "ad79b3487bef87ff8f8ab31c0b779ad08d931fdfa5436f7e92a234bb82bff7e4"
       },
       "mint": "At36ZtEQwYAJayjX4Jz6t1AEvZnmg1rSm3xfcZxvfyWQ",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "AMZN",
@@ -84,7 +84,7 @@
         "reference": "b5d0e0fa58a1f8b81498ae670ce93c872d14434b72c364885d4fa1b257cbb07a"
       },
       "mint": "Drj3fKgCdsJ3wSEV8MHyUFh3wRdNafSVuWQ2meY3ec24",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "SPY",
@@ -97,7 +97,7 @@
         "reference": "19e09bb805456ada3979a7d1cbb4b6d63babc3a0f8e8a9509f68afa5c4c11cd5"
       },
       "mint": "CMV3qNCEa5xuVS4v9wV4U3p9wbtCrAsS6XD5Uwao92KK",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "BTC",
@@ -109,7 +109,7 @@
         "primary": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
       },
       "mint": "9u3ByGuiEpGypu9DCQjEnNzxoCUK9K7MsRzcN4v7e7mj",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "ETH",
@@ -121,7 +121,7 @@
         "primary": "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace"
       },
       "mint": "DHoYCyFS9tKmozuU8WAAKmkdeM7ePWS5xuARBFFFpbWJ",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "SOL",
@@ -133,7 +133,7 @@
         "primary": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
       },
       "mint": "7nYbxQdjwwacNvwod8SDZ7n17kZ3WeLCZYH8hyTGN998",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "ANDURIL",
@@ -143,7 +143,7 @@
       "decimals": 9,
       "mainnetMint": "PresTj4Yc2bAR197Er7wz4UUKSfqt6FryBEdAriBoQB",
       "mint": "G2pa2J4gTrbDBAsnhqew9dUaAnqrUr5ctS48BbrkXA2A",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "ANTHROPIC",
@@ -153,7 +153,7 @@
       "decimals": 9,
       "mainnetMint": "Pren1FvFX6J3E4kXhJuCiAD5aDmGEb7qJRncwA8Lkhw",
       "mint": "FSy3J9wjSL4VbwDdF1U1GUzmYagHY4rvSQY1D5d1hr97",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "FIGUREAI",
@@ -163,7 +163,7 @@
       "decimals": 9,
       "mainnetMint": "PreZad18qfPtbxNpMtMuAuX2zVpvkEU8DnJx56faCWd",
       "mint": "GjaBe4DMat57JBXJwx1tP53AkR7TTzJCBz7R4X3QJWVp",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "KALSHI",
@@ -173,7 +173,7 @@
       "decimals": 9,
       "mainnetMint": "PreLWGkkeqG1s4HEfFZSy9moCrJ7btsHuUtfcCeoRua",
       "mint": "8Ldz77EVH64o6Y1xYRskDLxNUvY3Z1pbw3RDk1E6Acgz",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "NEURALINK",
@@ -183,7 +183,7 @@
       "decimals": 9,
       "mainnetMint": "PrekqLJvJ3qVdXmBGDiexvwUTF4rLFDa6HWS4HJbw9S",
       "mint": "8K9DYkrtJxy96KDaLr2qx461anQZ3iUyQ3csybyNGuFh",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "OPENAI",
@@ -193,7 +193,7 @@
       "decimals": 9,
       "mainnetMint": "PreweJYECqtQwBtpxHL171nL2K6umo692gTm7Q3rpgF",
       "mint": "HUipJetryssZrkP6hJPZV7i9CiYDhSPePvd9FFYL4Z3W",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "POLYMARKET",
@@ -203,7 +203,7 @@
       "decimals": 9,
       "mainnetMint": "Pre8AREmFPtoJFT8mQSXQLh56cwJmM7CFDRuoGBZiUP",
       "mint": "9dwbkn8JjpwFQz8g8XN6evieJcEyhnAjMceXdUTBCb3q",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     },
     {
       "symbol": "SPACEX",
@@ -213,7 +213,7 @@
       "decimals": 9,
       "mainnetMint": "PreANxuXjsy2pvisWWMNB6YaJNzr7681wJJr2rHsfTh",
       "mint": "CV3BauS2PhTtGJvRLszPXyySY3oSADYPN3bg7dPkjbNj",
-      "issuer": "stockpilot-devnet"
+      "issuer": "conduit-devnet"
     }
   ]
 }

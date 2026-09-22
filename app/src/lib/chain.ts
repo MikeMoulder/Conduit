@@ -5,7 +5,7 @@ import { getAssetBySymbol } from "./assets";
 import idl from "./idl/stockpilot.json";
 
 /**
- * Addresses, encodings and error names for the STOCKPILOT program.
+ * Addresses, encodings and error names for the CONDUIT program.
  *
  * Deliberately not server only. The browser needs to derive the same addresses
  * the server does in order to build a transaction the owner can sign, and a

@@ -47,7 +47,7 @@ export interface RegisteredAsset {
    * Who issued the mint on this cluster.
    *
    * On mainnet this is the real issuer, Backed for the xStock series or Ondo for
-   * theirs. On devnet those issuers publish nothing, so STOCKPILOT issues the
+   * theirs. On devnet those issuers publish nothing, so CONDUIT issues the
    * entry itself. Nothing above this layer branches on the field: the program
    * stores a mint address and prices it from the feeds recorded here, and has no
    * opinion about provenance. Moving to mainnet is a registry change.

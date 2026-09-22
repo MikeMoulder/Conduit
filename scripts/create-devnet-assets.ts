@@ -1,5 +1,5 @@
 /**
- * Issues the devnet SPL mints for the STOCKPILOT asset registry.
+ * Issues the devnet SPL mints for the CONDUIT asset registry.
  *
  * Why this exists
  * ---------------
@@ -394,7 +394,7 @@ async function main(): Promise<void> {
     assets.push({
       ...spec,
       mint: mint.toBase58(),
-      issuer: "stockpilot-devnet",
+      issuer: "conduit-devnet",
     });
   }
 

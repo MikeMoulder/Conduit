@@ -1,5 +1,5 @@
 /**
- * Integration tests for the STOCKPILOT constitution, run against the deployed
+ * Integration tests for the CONDUIT constitution, run against the deployed
  * program on devnet.
  *
  * The unit tests in `programs/stockpilot/src/policy.rs` already prove the policy

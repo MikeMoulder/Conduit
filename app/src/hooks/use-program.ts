@@ -8,7 +8,7 @@ import idl from "@/lib/idl/stockpilot.json";
 import type { Stockpilot } from "@/lib/idl/stockpilot";
 
 /**
- * The STOCKPILOT program, bound to the connected wallet.
+ * The CONDUIT program, bound to the connected wallet.
  *
  * Null until a wallet is connected, because every instruction this interface
  * builds is signed by the owner. There is nothing useful to hand back before
