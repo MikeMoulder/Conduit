@@ -112,8 +112,8 @@ function Welcome({ connected }: { connected: boolean }) {
         </div>
 
         <p className="max-w-2xl text-[15px] leading-relaxed text-zinc-300">
-          Ask me about the market, what you hold, or the mandate your portfolio
-          runs under. I will fetch what I need and show you every tool I used to
+          Ask me about the market, your portfolio, or the mandate it runs
+          under. I will fetch what I need and show you every tool I used to
           get there. I will not give you a number I could not look up.
         </p>
 

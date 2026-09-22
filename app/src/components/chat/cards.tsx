@@ -6,6 +6,7 @@ import { CLUSTER } from "@/lib/cluster";
 import { bpsToPercent, explorerUrl } from "@/lib/chain";
 import { getAssetByMint, getAssetBySymbol } from "@/lib/assets";
 import type { Card } from "@/lib/copilot/events";
+import type { AssetHolding, PortfolioHoldings } from "@/lib/holdings";
 
 /**
  * Structured answers, drawn rather than described.
@@ -33,6 +34,8 @@ export function CardView({ card }: { card: Card }) {
       return <VerdictCard card={card} />;
     case "submission":
       return <SubmissionCard card={card} />;
+    case "settlement":
+      return <SettlementCard card={card} />;
   }
 }
 
@@ -268,13 +271,41 @@ function Limit({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Whole tokens, short enough to sit in a row. */
+function formatAmount(amount: number): string {
+  if (amount === 0) return "0";
+  if (amount < 0.0001) return amount.toExponential(2);
+  if (amount < 1) return amount.toFixed(6).replace(/0+$/, "");
+  if (amount < 1000) return amount.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  return amount.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+/**
+ * What the portfolio targets, and what it actually holds.
+ *
+ * These were the same row for most of this project, under the heading "Held
+ * now", and that was wrong. `Portfolio.positions` is a set of weights the
+ * program has accepted and will enforce. Until a settlement runs, the portfolio
+ * owns nothing at all, and a card claiming otherwise is the interface telling a
+ * story the chain does not back.
+ *
+ * So the target is the number and the holding sits underneath it, present only
+ * once it is real. The footer says which of the three states this portfolio is
+ * in, because "no holdings" and "holdings cannot exist here" are different
+ * facts and collapsing them would repeat the original mistake in a smaller way.
+ */
 function PortfolioCard({ card }: { card: Extract<Card, { kind: "portfolio" }> }) {
-  const { portfolio, mandate } = card;
+  const { portfolio, mandate, holdings } = card;
   const cap = mandate?.constraints.maxPositionBps ?? null;
+
+  const heldBy = new Map<string, AssetHolding>(
+    (holdings?.assets ?? []).map((a) => [a.mint, a]),
+  );
+  const settled = Boolean(holdings?.settleable && holdings.funded);
 
   return (
     <Shell
-      title="Held now"
+      title="Targets"
       aside={
         <span className="font-mono text-[11px] text-zinc-500">
           {bpsToPercent(10_000 - portfolio.cashBps)} invested
@@ -308,8 +339,15 @@ function PortfolioCard({ card }: { card: Extract<Card, { kind: "portfolio" }> })
                     />
                   </span>
                 ) : null}
-                <span className="w-12 text-right font-mono text-sm text-zinc-200">
-                  {bpsToPercent(p.targetBps)}
+                <span className="w-24 text-right">
+                  <span className="block font-mono text-sm text-zinc-200">
+                    {bpsToPercent(p.targetBps)}
+                  </span>
+                  {settled && heldBy.has(p.mint) ? (
+                    <span className="block font-mono text-[10px] text-zinc-600">
+                      holds {formatAmount(heldBy.get(p.mint)!.uiAmount)}
+                    </span>
+                  ) : null}
                 </span>
               </span>
             </Row>
@@ -318,10 +356,24 @@ function PortfolioCard({ card }: { card: Extract<Card, { kind: "portfolio" }> })
       )}
       <div className="flex items-baseline justify-between bg-zinc-900/40 px-4 py-2">
         <span className="text-sm text-zinc-400">cash</span>
-        <span className="font-mono text-sm text-zinc-400">
-          {bpsToPercent(portfolio.cashBps)}
+        <span className="text-right">
+          <span className="block font-mono text-sm text-zinc-400">
+            {bpsToPercent(portfolio.cashBps)}
+          </span>
+          {settled && holdings?.cash ? (
+            <span className="block font-mono text-[10px] text-zinc-600">
+              holds {formatAmount(holdings.cash.uiAmount)}
+            </span>
+          ) : null}
         </span>
       </div>
+      <p className="border-t border-zinc-900 px-4 py-2 text-[11px] leading-relaxed text-zinc-600">
+        {!holdings?.settleable
+          ? "Weights the program enforces, not tokens the portfolio owns. This mandate cannot be settled on chain, because settlement needs a price the program can verify and there is none for these assets on devnet."
+          : settled
+            ? "Settled. The amounts underneath are real token balances, moved against the desk at the oracle price."
+            : "Weights the program enforces. Nothing has settled yet, so the portfolio owns no tokens."}
+      </p>
     </Shell>
   );
 }
@@ -639,4 +691,131 @@ function SubmissionCard({ card }: { card: Extract<Card, { kind: "submission" }> 
       ) : null}
     </div>
   );
+}
+
+/**
+ * What actually moved.
+ *
+ * Shown as a change rather than a state, because the point of settlement is the
+ * difference. A balance on its own could have been there all along; a balance
+ * beside what it used to be is evidence that a transfer happened, and the
+ * signature underneath is how anyone else can check it.
+ */
+function SettlementCard({ card }: { card: Extract<Card, { kind: "settlement" }> }) {
+  const { settlement } = card;
+
+  const changes = diffHoldings(settlement.before, settlement.after);
+
+  return (
+    <div
+      className={`overflow-hidden rounded-xl border ${
+        settlement.settled
+          ? "border-emerald-500/30 bg-emerald-500/5"
+          : "border-red-500/30 bg-red-500/5"
+      }`}
+    >
+      <div className="px-4 py-3">
+        {settlement.settled ? (
+          <p className="text-sm text-emerald-300">
+            Settled at slot {settlement.slot}. The portfolio now holds these
+            tokens.
+          </p>
+        ) : (
+          <>
+            <p className="text-sm font-medium text-red-300">
+              {settlement.programError?.name ?? "Settlement refused"}
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-red-200/70">
+              {settlement.programError?.message ?? settlement.detail}
+            </p>
+            {settlement.programError ? (
+              <p className="mt-1 text-[10px] text-red-200/50">
+                error {settlement.programError.code}, returned by the program.
+                Nothing moved, because the whole settlement is one transaction.
+              </p>
+            ) : null}
+          </>
+        )}
+      </div>
+
+      {settlement.settled && changes.length > 0 ? (
+        <div className="border-t border-white/5">
+          {changes.map((change, i) => (
+            <div
+              key={change.mint}
+              className={`flex items-center justify-between gap-3 px-4 py-2 ${
+                i === changes.length - 1 ? "" : "border-b border-white/5"
+              }`}
+            >
+              <AssetBadge symbol={change.symbol} />
+              <span className="flex items-baseline gap-2 font-mono text-sm">
+                <span className="text-[11px] text-zinc-600">
+                  {formatAmount(change.before)} to
+                </span>
+                <span className="text-zinc-100">
+                  {formatAmount(change.after)}
+                </span>
+                <span
+                  className={`w-4 text-center text-[11px] ${
+                    change.after > change.before
+                      ? "text-emerald-400"
+                      : "text-amber-400"
+                  }`}
+                >
+                  {change.after > change.before ? "+" : "-"}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {settlement.signature ? (
+        <div className="border-t border-white/5 px-4 py-2">
+          <a
+            href={explorerUrl(settlement.signature, "tx", CLUSTER)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`font-mono text-[11px] underline underline-offset-4 ${
+              settlement.settled ? "text-emerald-400" : "text-red-300"
+            }`}
+          >
+            {settlement.signature.slice(0, 10)}..
+            {settlement.signature.slice(-10)}
+          </a>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface HoldingChange {
+  mint: string;
+  symbol: string;
+  before: number;
+  after: number;
+}
+
+/** Balances that actually changed, cash included. */
+function diffHoldings(
+  before: PortfolioHoldings | null,
+  after: PortfolioHoldings | null,
+): HoldingChange[] {
+  if (!before || !after) return [];
+
+  const was = new Map<string, number>(
+    [before.cash, ...before.assets]
+      .filter((h): h is AssetHolding => Boolean(h))
+      .map((h) => [h.mint, h.uiAmount]),
+  );
+
+  return [after.cash, ...after.assets]
+    .filter((h): h is AssetHolding => Boolean(h))
+    .map((h) => ({
+      mint: h.mint,
+      symbol: h.symbol,
+      before: was.get(h.mint) ?? 0,
+      after: h.uiAmount,
+    }))
+    .filter((c) => c.before !== c.after);
 }

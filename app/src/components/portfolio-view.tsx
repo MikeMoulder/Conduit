@@ -140,7 +140,7 @@ export function PortfolioView() {
       ) : (
         <>
           <MandateSummary mandate={fresh.mandate} />
-          <Holdings portfolio={fresh.portfolio} />
+          <Targets portfolio={fresh.portfolio} />
           {fresh.portfolio ? (
             <ProposalReview
               mandate={fresh.mandate}
@@ -226,12 +226,19 @@ function MandateSummary({ mandate }: { mandate: MandateView }) {
   );
 }
 
-function Holdings({ portfolio }: { portfolio: PortfolioView | null }) {
+/**
+ * The weights the program enforces.
+ *
+ * Named for what it shows. These are targets, not custody: the portfolio owns
+ * nothing until a settlement moves tokens, and the earlier heading here said
+ * otherwise.
+ */
+function Targets({ portfolio }: { portfolio: PortfolioView | null }) {
   if (!portfolio) return null;
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium text-zinc-200">Held now</h2>
+      <h2 className="text-sm font-medium text-zinc-200">Targets</h2>
       {portfolio.positions.length === 0 ? (
         <p className="rounded-lg border border-zinc-800 px-4 py-3 text-sm text-zinc-500">
           Fully in cash. No well formed mandate can forbid that, which is why a
