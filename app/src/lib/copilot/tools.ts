@@ -573,6 +573,10 @@ const runAnalysis: CopilotTool = {
         analysis: {
           positions: rows.map((r) => {
             const source = run.proposal.positions.find((p) => p.symbol === r.symbol);
+            // The snapshot the manager actually reasoned over, carried through
+            // rather than thrown away, so the card can show what each weight
+            // was chosen against.
+            const market = tradable.find((m) => m.symbol === r.symbol);
             return {
               symbol: r.symbol,
               mint: r.mint,
@@ -580,6 +584,9 @@ const runAnalysis: CopilotTool = {
               currentBps: r.currentBps,
               thesis: source?.thesis ?? "",
               thesisBreakers: source?.thesisBreakers ?? [],
+              price: market?.price ?? null,
+              referencePrice: market?.referencePrice ?? null,
+              spreadBps: market?.spreadBps ?? null,
             };
           }),
           reasoning: run.proposal.reasoning,

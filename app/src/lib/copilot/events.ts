@@ -78,6 +78,16 @@ export interface AnalysisCard {
     currentBps: number;
     thesis: string;
     thesisBreakers: string[];
+    /**
+     * The market the thesis was formed against.
+     *
+     * Carried because a weight on its own is an assertion. The price it was
+     * chosen at, and the gap to the instrument it tracks, are what make the
+     * reasoning checkable rather than something to be taken on faith.
+     */
+    price: number | null;
+    referencePrice: number | null;
+    spreadBps: number | null;
   }[];
   reasoning: string;
   confidence: number;

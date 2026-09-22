@@ -9,7 +9,7 @@ import { confirmSignature } from "@/lib/confirm";
 import { createMandateInstructions, setStatusInstruction } from "@/lib/mandate-tx";
 import { useConduitProgram } from "@/hooks/use-conduit-program";
 import type { Card, PendingAction } from "@/lib/copilot/events";
-import { CardView } from "./cards";
+import { AssetBadge, CardView } from "./cards";
 
 /**
  * The approval step.
@@ -192,9 +192,9 @@ export function ActionCard({
           {action.positions.map((p) => (
             <div
               key={p.mint}
-              className="flex items-baseline justify-between gap-3 py-0.5"
+              className="flex items-center justify-between gap-3 py-1"
             >
-              <span className="text-sm text-zinc-300">{p.symbol}</span>
+              <AssetBadge symbol={p.symbol} />
               <span className="flex items-baseline gap-2 font-mono text-sm">
                 {p.currentBps !== p.targetBps ? (
                   <span className="text-[11px] text-zinc-600">

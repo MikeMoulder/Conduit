@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { CLUSTER } from "@/lib/cluster";
 import { bpsToPercent, explorerUrl } from "@/lib/chain";
-import { getAssetByMint } from "@/lib/assets";
+import { getAssetByMint, getAssetBySymbol } from "@/lib/assets";
 import type { Card } from "@/lib/copilot/events";
 
 /**
@@ -76,20 +76,84 @@ function Row({
   );
 }
 
+/**
+ * Symbol, name and logo, as one thing.
+ *
+ * Every card that names an asset uses this, so a row in a price table and a row
+ * in an allocation look like the same object rather than two lists that happen
+ * to share a ticker. The logo falls back to a lettered tile: an asset with no
+ * artwork should look deliberate rather than broken.
+ */
+export function AssetBadge({
+  symbol,
+  name,
+  size = 22,
+}: {
+  symbol: string;
+  name?: string;
+  size?: number;
+}) {
+  const asset = getAssetBySymbol(symbol);
+  const label = name ?? asset?.name;
+
+  return (
+    <span className="flex min-w-0 items-center gap-2.5">
+      {asset?.logo ? (
+        // Plain img rather than next/image: these are 64px files already sized
+        // for the job, and routing eighteen of them through the optimiser buys
+        // nothing.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={asset.logo}
+          alt=""
+          width={size}
+          height={size}
+          className="shrink-0 rounded-full bg-zinc-900 object-contain"
+          style={{ width: size, height: size }}
+        />
+      ) : (
+        <span
+          className="flex shrink-0 items-center justify-center rounded-full bg-zinc-800 text-[10px] font-medium text-zinc-400"
+          style={{ width: size, height: size }}
+        >
+          {symbol.slice(0, 2)}
+        </span>
+      )}
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="text-sm text-zinc-100">{symbol}</span>
+        {label ? (
+          <span className="truncate text-xs text-zinc-500">{label}</span>
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
 function money(value: number): string {
   return value >= 1000
     ? value.toLocaleString(undefined, { maximumFractionDigits: 0 })
     : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-/** Positive is a premium, negative a discount. Both are worth seeing signed. */
+/**
+ * How far the token sits from the thing it tracks.
+ *
+ * Shown as a percentage rather than basis points, for the same reason the
+ * limits are: a reader should not have to divide by a hundred to find out that
+ * something is a fifth cheaper than what it represents. Signed and coloured,
+ * because the direction is the point. Green is a discount, amber a premium.
+ */
 function Spread({ bps }: { bps: number | null }) {
   if (bps === null) return <span className="text-zinc-700">no underlying</span>;
-  const tone = bps > 0 ? "text-amber-400" : bps < 0 ? "text-emerald-400" : "text-zinc-500";
+
+  const tone =
+    bps > 0 ? "text-amber-400" : bps < 0 ? "text-emerald-400" : "text-zinc-500";
+  const word = bps > 0 ? "premium" : bps < 0 ? "discount" : "in line";
+
   return (
-    <span className={tone}>
-      {bps > 0 ? "+" : ""}
-      {bps} bps
+    <span className={tone} title={`${Math.abs(bps)} basis point ${word}`}>
+      {bps > 0 ? "+" : bps < 0 ? "-" : ""}
+      {bpsToPercent(Math.abs(bps))}
     </span>
   );
 }
@@ -115,10 +179,7 @@ function UniverseCard({ card }: { card: Extract<Card, { kind: "universe" }> }) {
     >
       {shown.map((asset, i) => (
         <Row key={asset.symbol} last={i === shown.length - 1}>
-          <span className="flex items-baseline gap-2">
-            <span className="text-sm text-zinc-200">{asset.symbol}</span>
-            <span className="text-xs text-zinc-500">{asset.name}</span>
-          </span>
+          <AssetBadge symbol={asset.symbol} name={asset.name} size={20} />
           <span className="font-mono text-[11px] text-zinc-600">
             {asset.feed
               ? `pyth ${asset.feed.slice(0, 6)}`
@@ -135,12 +196,7 @@ function PricesCard({ card }: { card: Extract<Card, { kind: "prices" }> }) {
     <Shell title="Prices">
       {card.rows.map((row, i) => (
         <Row key={row.symbol} last={i === card.rows.length - 1}>
-          <span className="flex items-baseline gap-2">
-            <span className="text-sm text-zinc-200">{row.symbol}</span>
-            <span className="hidden text-xs text-zinc-500 sm:inline">
-              {row.name}
-            </span>
-          </span>
+          <AssetBadge symbol={row.symbol} name={row.name} />
           {row.price === null ? (
             <span className="text-xs text-amber-400/80">{row.unavailable}</span>
           ) : (
@@ -236,14 +292,10 @@ function PortfolioCard({ card }: { card: Extract<Card, { kind: "portfolio" }> })
           const share = cap ? Math.min(100, (p.targetBps / cap) * 100) : 0;
           return (
             <Row key={p.mint}>
-              <span className="flex items-baseline gap-2">
-                <span className="text-sm text-zinc-200">
-                  {asset?.symbol ?? `${p.mint.slice(0, 8)}..`}
-                </span>
-                <span className="hidden text-xs text-zinc-500 sm:inline">
-                  {asset?.name}
-                </span>
-              </span>
+              <AssetBadge
+                symbol={asset?.symbol ?? `${p.mint.slice(0, 6)}..`}
+                name={asset?.name}
+              />
               <span className="flex items-center gap-3">
                 {cap ? (
                   <span
@@ -337,7 +389,7 @@ function VerdictCard({ card }: { card: Extract<Card, { kind: "verdict" }> }) {
     >
       {positions.map((p) => (
         <Row key={p.mint}>
-          <span className="text-sm text-zinc-200">{p.symbol}</span>
+          <AssetBadge symbol={p.symbol} size={20} />
           <span className="flex items-baseline gap-2 font-mono text-sm">
             {p.currentBps !== p.targetBps ? (
               <span className="text-[11px] text-zinc-600">
@@ -366,13 +418,26 @@ function VerdictCard({ card }: { card: Extract<Card, { kind: "verdict" }> }) {
   );
 }
 
+/** The advisory ceiling the risk stage put on a name, if it set one. */
+function ceilingFor(
+  analysis: Extract<Card, { kind: "analysis" }>["analysis"],
+  symbol: string,
+): number | null {
+  return (
+    analysis.riskCeilings.find((r) => r.symbol === symbol)?.maxRecommendedBps ??
+    null
+  );
+}
+
 function AnalysisCard({ card }: { card: Extract<Card, { kind: "analysis" }> }) {
   const [open, setOpen] = useState(false);
   const { analysis } = card;
 
   return (
     <Shell
-      title="Proposed allocation"
+      title={`Proposed allocation, ${analysis.positions.length} position${
+        analysis.positions.length === 1 ? "" : "s"
+      }`}
       aside={
         <span className="flex items-baseline gap-3">
           <span className="font-mono text-[11px] text-zinc-600">
@@ -388,33 +453,67 @@ function AnalysisCard({ card }: { card: Extract<Card, { kind: "analysis" }> }) {
         </span>
       }
     >
-      {analysis.positions.map((p) => (
-        <div key={p.mint} className="border-b border-zinc-900/70 px-4 py-2.5">
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-sm text-zinc-200">{p.symbol}</span>
-            <span className="flex items-baseline gap-2 font-mono text-sm">
-              {p.currentBps > 0 ? (
-                <span className="text-[11px] text-zinc-600">
-                  {bpsToPercent(p.currentBps)} to
+      {analysis.positions.map((p) => {
+        const delta = p.targetBps - p.currentBps;
+        return (
+          <div key={p.mint} className="border-b border-zinc-900/70 px-4 py-3 last:border-b-0">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
+              <AssetBadge symbol={p.symbol} />
+
+              <span className="flex items-baseline gap-3 font-mono text-sm">
+                {p.price !== null ? (
+                  <span className="text-zinc-300">{money(p.price)}</span>
+                ) : null}
+                {p.spreadBps !== null ? (
+                  <span className="text-[11px]">
+                    <Spread bps={p.spreadBps} />
+                  </span>
+                ) : null}
+                <span className="w-14 text-right text-base text-zinc-50">
+                  {bpsToPercent(p.targetBps)}
                 </span>
+              </span>
+            </div>
+
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-zinc-600">
+              {/* What is actually changing, which a target weight alone hides. */}
+              {p.currentBps > 0 ? (
+                <span>
+                  {bpsToPercent(p.currentBps)} to {bpsToPercent(p.targetBps)}
+                  <span className={delta > 0 ? " text-emerald-500" : delta < 0 ? " text-amber-500" : ""}>
+                    {delta === 0 ? " unchanged" : ` ${delta > 0 ? "+" : ""}${bpsToPercent(Math.abs(delta))}`}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-emerald-500">new position</span>
+              )}
+              {p.referencePrice !== null ? (
+                <span>underlying {money(p.referencePrice)}</span>
               ) : null}
-              <span className="text-zinc-100">{bpsToPercent(p.targetBps)}</span>
-            </span>
+              {ceilingFor(analysis, p.symbol) !== null ? (
+                <span>risk ceiling {bpsToPercent(ceilingFor(analysis, p.symbol)!)}</span>
+              ) : null}
+            </div>
+
+            <p className="mt-2 text-xs leading-relaxed text-zinc-400">{p.thesis}</p>
+
+            {open ? (
+              <ul className="mt-2 flex flex-col gap-1 border-l border-zinc-800 pl-3">
+                {p.thesisBreakers.map((b, i) => (
+                  <li key={i} className="text-[11px] leading-relaxed text-zinc-500">
+                    {b}
+                  </li>
+                ))}
+              </ul>
+            ) : p.thesisBreakers.length > 0 ? (
+              <p className="mt-1.5 text-[10px] text-zinc-600">
+                {p.thesisBreakers.length} condition
+                {p.thesisBreakers.length === 1 ? "" : "s"} would change this
+              </p>
+            ) : null}
           </div>
-          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-            {p.thesis}
-          </p>
-          {open ? (
-            <ul className="mt-1.5 flex flex-col gap-0.5">
-              {p.thesisBreakers.map((b, i) => (
-                <li key={i} className="text-[10px] text-zinc-600">
-                  would change this: {b}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      ))}
+        );
+      })}
 
       <div className="grid grid-cols-3 gap-px bg-zinc-900">
         <Limit label="allocated" value={bpsToPercent(analysis.evaluation.allocatedBps)} />
