@@ -394,6 +394,17 @@ pub fn read_price(
     let exponent = read_i32(data, base + 48)?;
     let publish_time = read_i64(data, base + 52)?;
 
+    usable(price, exponent, publish_time, now)
+}
+
+/// The checks every price must pass, whoever published it.
+///
+/// Shared on purpose. A price from this program's own publisher is trusted
+/// differently from a Pyth price, and that difference belongs at the point
+/// where the account owner is checked. Once a number is in hand the questions
+/// are identical, and letting the two paths drift apart would mean one of them
+/// eventually accepts something the other would not.
+fn usable(price: i64, exponent: i32, publish_time: i64, now: i64) -> Result<Price> {
     require!(price > 0, ConduitError::PriceUnusable);
     require!(exponent <= 0, ConduitError::PriceUnusable);
     require!(
@@ -411,6 +422,43 @@ pub fn read_price(
         value: price as u64,
         exponent,
     })
+}
+
+/// Reads a price this program published itself.
+///
+/// The account has already been deserialised by the caller, which is why this
+/// takes fields rather than bytes: an account owned by this program carries a
+/// discriminator Anchor checks, so there is no layout to parse defensively and
+/// no variable width enum to get wrong. That is the one advantage of publishing
+/// a price ourselves, and it is a small one next to what it costs in trust.
+///
+/// Everything else is identical to the Pyth path, including refusing a mandate
+/// that bound an asset to no feed at all. The feed id check is what stops a
+/// caller passing the published price of one instrument while settling another.
+pub fn read_published_price(
+    stored_feed_id: &[u8; 32],
+    price: u64,
+    exponent: i32,
+    publish_time: i64,
+    expected_feed_id: &[u8; 32],
+    now: i64,
+) -> Result<Price> {
+    require!(
+        expected_feed_id != &[0u8; 32],
+        ConduitError::MandateNotSettleable
+    );
+    require!(
+        stored_feed_id == expected_feed_id,
+        ConduitError::PriceFeedMismatch
+    );
+
+    // Widening to i64 so the shared checks see the same shape they see from
+    // Pyth, whose price field is signed. A published price cannot be negative
+    // by construction, but it can exceed i64 if something upstream is wrong,
+    // and that should be refused rather than wrapped.
+    let signed = i64::try_from(price).map_err(|_| ConduitError::PriceUnusable)?;
+
+    usable(signed, exponent, publish_time, now)
 }
 
 #[cfg(test)]
@@ -715,5 +763,152 @@ mod tests {
             .sum();
 
         assert!(spent <= nav, "spent {spent} against a nav of {nav}");
+    }
+
+    /* ---- prices this program published itself ---- */
+
+    /// A feed id in the publisher's own namespace, not Pyth's.
+    ///
+    /// Distinct on purpose. Reusing a Pyth feed id for a price we assert
+    /// ourselves would make a settlement look Pyth priced when it is not, and
+    /// the whole reason this path is separate is that it carries a different
+    /// claim.
+    const PUBLISHED_FEED: [u8; 32] = [0x7c; 32];
+
+    /// A moment, in the middle of nothing, to measure staleness against.
+    const PUBLISHED_AT: i64 = 1_790_000_000;
+
+    fn published(price: u64, exponent: i32) -> Result<Price> {
+        read_published_price(
+            &PUBLISHED_FEED,
+            price,
+            exponent,
+            PUBLISHED_AT,
+            &PUBLISHED_FEED,
+            PUBLISHED_AT,
+        )
+    }
+
+    #[test]
+    fn reads_a_price_this_program_published() {
+        // 339.55 at eight decimals, roughly what AAPL trades at.
+        let price = published(33_955_000_000, -8).unwrap();
+        assert_eq!(price.value, 33_955_000_000);
+        assert_eq!(price.exponent, -8);
+    }
+
+    #[test]
+    fn published_and_pyth_prices_value_identically() {
+        // The point of sharing a Price type. Whatever a settlement does with a
+        // Pyth price it must do with a published one, because the arithmetic
+        // downstream cannot see which it was handed and should not care.
+        let from_pyth = read_price(&SOL_USD_ACCOUNT, &SOL_FEED_ID, SOL_PUBLISH_TIME).unwrap();
+        let same = read_published_price(
+            &PUBLISHED_FEED,
+            from_pyth.value,
+            from_pyth.exponent,
+            PUBLISHED_AT,
+            &PUBLISHED_FEED,
+            PUBLISHED_AT,
+        )
+        .unwrap();
+
+        assert_eq!(
+            value_of(1_000_000_000, 9, from_pyth, CASH_DECIMALS).unwrap(),
+            value_of(1_000_000_000, 9, same, CASH_DECIMALS).unwrap()
+        );
+    }
+
+    #[test]
+    fn refuses_a_published_price_for_a_different_feed() {
+        // The check that stops one instrument being settled at another's
+        // price. Without it the publisher's accounts would be interchangeable.
+        let other = [0x5a; 32];
+        assert!(read_published_price(
+            &other,
+            33_955_000_000,
+            -8,
+            PUBLISHED_AT,
+            &PUBLISHED_FEED,
+            PUBLISHED_AT,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn refuses_an_asset_the_mandate_bound_to_no_published_feed() {
+        // A zero feed id means the mandate never named a price source. Settling
+        // it would mean valuing an asset on nothing at all.
+        assert!(read_published_price(
+            &[0u8; 32],
+            33_955_000_000,
+            -8,
+            PUBLISHED_AT,
+            &[0u8; 32],
+            PUBLISHED_AT,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn refuses_a_stale_published_price() {
+        let late = PUBLISHED_AT + MAX_PRICE_AGE_SECONDS + 1;
+        assert!(read_published_price(
+            &PUBLISHED_FEED,
+            33_955_000_000,
+            -8,
+            PUBLISHED_AT,
+            &PUBLISHED_FEED,
+            late,
+        )
+        .is_err());
+
+        let just_inside = PUBLISHED_AT + MAX_PRICE_AGE_SECONDS;
+        assert!(read_published_price(
+            &PUBLISHED_FEED,
+            33_955_000_000,
+            -8,
+            PUBLISHED_AT,
+            &PUBLISHED_FEED,
+            just_inside,
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn refuses_a_published_price_stamped_in_the_future() {
+        let early = PUBLISHED_AT - MAX_PRICE_AGE_SECONDS - 1;
+        assert!(read_published_price(
+            &PUBLISHED_FEED,
+            33_955_000_000,
+            -8,
+            PUBLISHED_AT,
+            &PUBLISHED_FEED,
+            early,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn refuses_a_published_price_of_zero() {
+        assert!(published(0, -8).is_err());
+    }
+
+    #[test]
+    fn refuses_a_published_positive_exponent() {
+        // Same rule as Pyth. A positive exponent would multiply rather than
+        // divide, turning a price into something thousands of times too large.
+        assert!(published(33_955_000_000, 1).is_err());
+    }
+
+    #[test]
+    fn refuses_a_published_price_too_large_to_be_signed() {
+        // Widening to i64 is where this would wrap. A publisher sending
+        // nonsense should be refused rather than have it silently become a
+        // negative price that then fails a different check for the wrong
+        // reason.
+        assert!(published(u64::MAX, -8).is_err());
+        assert!(published((i64::MAX as u64) + 1, -8).is_err());
+        assert!(published(i64::MAX as u64, -8).is_ok());
     }
 }

@@ -17,7 +17,12 @@ no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-anchor-lang = "0.31.2"
+# init-if-needed is required by publish_price, which writes to a per feed
+# account that may or may not exist yet. The reinitialisation risk the feature
+# warns about does not apply here: the account address is fixed by the feed id,
+# only the publishing authority can sign, and a write must carry a strictly
+# newer timestamp than the one already stored.
+anchor-lang = { version = "0.31.2", features = ["init-if-needed"] }
 # Only the classic token program. The default feature set also pulls in
 # Token-2022 and the associated token program, neither of which this program
 # calls, and both of which cost real binary size on a chain where the deployed

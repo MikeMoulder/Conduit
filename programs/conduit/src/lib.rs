@@ -20,12 +20,19 @@ pub mod policy;
 pub mod settlement;
 pub mod state;
 
-use constants::{BPS_DENOMINATOR, DESK_SEED, MANDATE_SEED, MAX_ASSETS, PORTFOLIO_SEED};
+use constants::{
+    BPS_DENOMINATOR, DESK_SEED, MANDATE_SEED, MAX_ASSETS, PORTFOLIO_SEED, PRICE_SEED,
+    PUBLISHER_SEED,
+};
 use errors::ConduitError;
 use policy::{evaluate_proposal, ProposedPosition};
-use settlement::{leg_for, net_asset_value, read_price, Holding, PYTH_RECEIVER};
+use settlement::{
+    leg_for, net_asset_value, read_price, read_published_price, Holding,
+    MAX_PRICE_AGE_SECONDS, PYTH_RECEIVER,
+};
 use state::{
     AllowedAsset, Desk, Mandate, MandateConstraints, MandateStatus, Portfolio, Position,
+    PublishedPrice, Publisher,
 };
 
 declare_id!("6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu");
@@ -190,6 +197,83 @@ pub mod conduit {
         Ok(())
     }
 
+
+    /// Names the one key allowed to publish prices.
+    ///
+    /// Called once, by whoever deploys. Deliberately a different key from the
+    /// agent and from any mandate owner, because the entire value of this
+    /// account is that it is not the agent: an agent able to write its own
+    /// marks could satisfy any mandate while doing anything at all.
+    pub fn initialize_publisher(ctx: Context<InitializePublisher>) -> Result<()> {
+        let publisher = &mut ctx.accounts.publisher;
+        publisher.authority = ctx.accounts.authority.key();
+        publisher.bump = ctx.bumps.publisher;
+        Ok(())
+    }
+
+    /// Writes a price for an asset no oracle will price.
+    ///
+    /// Used for the tokenized equities, which Pyth gates behind a commercial
+    /// grant, and for the pre IPO names, which have no market price anywhere
+    /// because there is no market to observe. For those the issuer's mark is
+    /// the price of record, and this is where that mark is recorded on chain.
+    ///
+    /// The checks here are the ones that can be made without trusting the
+    /// caller's judgement. A price must be positive, its exponent must be
+    /// negative or zero, its timestamp must be close to the cluster's own
+    /// clock, and it must be newer than whatever is already stored. None of
+    /// that makes the number true. It makes the account behave like a feed
+    /// rather than a mutable variable, so that a stale or replayed write cannot
+    /// quietly become the price a settlement runs at.
+    pub fn publish_price(
+        ctx: Context<PublishPrice>,
+        feed_id: [u8; 32],
+        price: u64,
+        exponent: i32,
+        publish_time: i64,
+        source: String,
+    ) -> Result<()> {
+        require!(feed_id != [0u8; 32], ConduitError::PriceUnusable);
+        require!(price > 0, ConduitError::PriceUnusable);
+        require!(exponent <= 0, ConduitError::PriceUnusable);
+        require!(source.len() <= 16, ConduitError::PriceUnusable);
+
+        let now = Clock::get()?.unix_timestamp;
+        require!(
+            now.saturating_sub(publish_time) <= MAX_PRICE_AGE_SECONDS,
+            ConduitError::PriceUnusable
+        );
+        require!(
+            publish_time.saturating_sub(now) <= MAX_PRICE_AGE_SECONDS,
+            ConduitError::PriceUnusable
+        );
+
+        let feed = &mut ctx.accounts.price;
+
+        // Monotonic, which is what makes a replay useless. Without it an old
+        // signed write could be resubmitted later and would look current.
+        require!(
+            feed.publish_time < publish_time,
+            ConduitError::PriceNotNewer
+        );
+
+        feed.feed_id = feed_id;
+        feed.price = price;
+        feed.exponent = exponent;
+        feed.publish_time = publish_time;
+        feed.source = source;
+        feed.bump = ctx.bumps.price;
+
+        emit!(PricePublished {
+            feed_id,
+            price,
+            exponent,
+            publish_time,
+        });
+
+        Ok(())
+    }
+
     /// Moves tokens until the portfolio actually holds what it says it targets.
     ///
     /// Everything up to this point has been policy. `propose_rebalance` decides
@@ -242,14 +326,40 @@ pub mod conduit {
             let (price_info, mint_info, portfolio_ata, desk_ata) =
                 (&chunk[0], &chunk[1], &chunk[2], &chunk[3]);
 
-            // A price account nobody vouched for is worth nothing. The owner
-            // check is what stops a caller supplying their own.
-            require_keys_eq!(
-                *price_info.owner,
-                PYTH_RECEIVER,
-                ConduitError::PriceUnusable
-            );
-            let price = read_price(&price_info.try_borrow_data()?, &allowed.feed_id, now)?;
+            // A price account nobody vouched for is worth nothing, and the
+            // owner is what decides whether anybody did. Two owners are
+            // accepted and they are not equally trusted, which is the honest
+            // position rather than an awkward one.
+            //
+            // Pyth means many independent publishers observed a market and
+            // agreed. This program means one key asserted a number. The second
+            // exists because for most of this universe the first is not
+            // available at any price: Pyth gates equities behind a commercial
+            // grant, and the pre IPO names have no market to observe at all, so
+            // the issuer's mark is the price of record.
+            //
+            // What both share is the property the design rests on. Neither is
+            // written by the agent. An agent that could choose its own marks
+            // could satisfy any mandate while doing anything it liked.
+            let price = if price_info.owner == &PYTH_RECEIVER {
+                read_price(&price_info.try_borrow_data()?, &allowed.feed_id, now)?
+            } else if price_info.owner == &crate::ID {
+                // Deserialised rather than parsed by offset, so the
+                // discriminator is checked and a mandate or portfolio account
+                // cannot be passed off as a price.
+                let published: Account<'info, PublishedPrice> =
+                    Account::try_from(price_info)?;
+                read_published_price(
+                    &published.feed_id,
+                    published.price,
+                    published.exponent,
+                    published.publish_time,
+                    &allowed.feed_id,
+                    now,
+                )?
+            } else {
+                return err!(ConduitError::UnknownPriceSource);
+            };
 
             require_keys_eq!(
                 mint_info.key(),
@@ -456,6 +566,16 @@ pub mod conduit {
 /// The client reads these to build the agent activity feed, so the history shown
 /// to the user is reconstructed from chain state rather than from an application
 /// database that could disagree with it.
+/// A price entering the chain, so the history of what a settlement could have
+/// run at is recoverable without watching every account.
+#[event]
+pub struct PricePublished {
+    pub feed_id: [u8; 32],
+    pub price: u64,
+    pub exponent: i32,
+    pub publish_time: i64,
+}
+
 #[event]
 pub struct RebalanceExecuted {
     pub mandate: Pubkey,
@@ -498,6 +618,50 @@ pub struct InitializeDesk<'info> {
     pub desk: Account<'info, Desk>,
 
     pub cash_mint: Account<'info, Mint>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct InitializePublisher<'info> {
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + Publisher::INIT_SPACE,
+        seeds = [PUBLISHER_SEED],
+        bump,
+    )]
+    pub publisher: Account<'info, Publisher>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(feed_id: [u8; 32])]
+pub struct PublishPrice<'info> {
+    #[account(
+        seeds = [PUBLISHER_SEED],
+        bump = publisher.bump,
+        // The whole point of the account. Anyone may read a published price;
+        // exactly one key may write one.
+        has_one = authority @ ConduitError::UnauthorizedPublisher,
+    )]
+    pub publisher: Account<'info, Publisher>,
+
+    #[account(
+        init_if_needed,
+        payer = authority,
+        space = 8 + PublishedPrice::INIT_SPACE,
+        seeds = [PRICE_SEED, feed_id.as_ref()],
+        bump,
+    )]
+    pub price: Account<'info, PublishedPrice>,
 
     #[account(mut)]
     pub authority: Signer<'info>,

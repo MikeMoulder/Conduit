@@ -59,4 +59,10 @@ pub enum ConduitError {
     SettlementAccountsMismatch,
     #[msg("The portfolio holds nothing, so there is nothing to settle")]
     NothingToSettle,
+    #[msg("Only the publishing authority may write a price")]
+    UnauthorizedPublisher,
+    #[msg("A published price may not move backwards in time")]
+    PriceNotNewer,
+    #[msg("The price account is owned by neither Pyth nor this program")]
+    UnknownPriceSource,
 }

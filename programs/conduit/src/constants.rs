@@ -22,3 +22,10 @@ pub const PORTFOLIO_SEED: &[u8] = b"portfolio";
 
 /// Seed for the settlement desk. One per deployment.
 pub const DESK_SEED: &[u8] = b"desk";
+
+/// The single account naming who may publish a price.
+pub const PUBLISHER_SEED: &[u8] = b"publisher";
+
+/// One published price per feed, addressed by the feed it carries so that the
+/// account for a given instrument is derivable rather than announced.
+pub const PRICE_SEED: &[u8] = b"price";
