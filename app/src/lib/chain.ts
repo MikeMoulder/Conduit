@@ -86,6 +86,22 @@ export function extractProgramError(error: unknown): ProgramErrorInfo | null {
     return describeProgramError(anchorCode);
   }
 
+  // The shape `getSignatureStatuses` reports for a transaction that landed and
+  // failed. It arrives whenever preflight is skipped, which is exactly when a
+  // refusal is being recorded on chain deliberately, so this branch is not an
+  // edge case: it is the one that runs for every refusal in the activity feed.
+  const instructionError = (
+    error as { InstructionError?: [number, unknown] } | undefined
+  )?.InstructionError;
+
+  if (Array.isArray(instructionError)) {
+    const detail = instructionError[1];
+    const custom = (detail as { Custom?: number } | undefined)?.Custom;
+    if (typeof custom === "number") {
+      return describeProgramError(custom);
+    }
+  }
+
   const logs = (error as { logs?: string[] } | undefined)?.logs;
   if (Array.isArray(logs)) {
     for (const line of logs) {

@@ -204,9 +204,24 @@ export async function POST(request: Request): Promise<Response> {
 
     transaction.sign(keypair);
 
-    // Preflight stays on. A refusal caught at simulation costs nothing and still
-    // carries the program error, which is the interesting part either way.
-    signature = await connection.sendRawTransaction(transaction.serialize());
+    /**
+     * Preflight is skipped exactly when a refusal is expected.
+     *
+     * Simulation is the cheap path and stays on for anything that looks
+     * compliant: if the chain disagrees with us there, it costs nothing to find
+     * out. But a transaction stopped at preflight never reaches the ledger, so
+     * it leaves no trace, and a refusal with no trace is the one piece of
+     * evidence this project most wants to be able to point at.
+     *
+     * When the caller has been told the mandate will refuse this and submits it
+     * anyway, the refusal is worth a fee. It lands, it fails, and it stays in
+     * the account history for anyone to look up. That is the difference between
+     * claiming the chain enforces a mandate and being able to show where it
+     * did.
+     */
+    signature = await connection.sendRawTransaction(transaction.serialize(), {
+      skipPreflight: !evaluation.compliant,
+    });
   } catch (error) {
     const programError = extractProgramError(error);
     return Response.json({
