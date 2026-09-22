@@ -72,6 +72,15 @@ export interface RegisteredAsset {
    */
   feeds?: AssetFeeds;
   /**
+   * Local path to the issuer's logo, under `public/assets`.
+   *
+   * Downloaded rather than hotlinked by `npm run logos`. Eighteen external
+   * requests from three hosts on first render is not worth risking for a
+   * decorative asset, and having them local means the interface works with no
+   * network at all.
+   */
+  logo?: string;
+  /**
    * The issuer's mint on mainnet, where one exists.
    *
    * Recorded so switching to mainnet is a registry change rather than research.

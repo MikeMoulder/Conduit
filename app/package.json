@@ -10,7 +10,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build",
     "agent:keypair": "node scripts/create-agent-keypair.mjs",
-    "test": "node --import tsx --conditions=react-server --test tests/*.test.ts"
+    "test": "node --import tsx --conditions=react-server --test tests/*.test.ts",
+    "logos": "node scripts/fetch-logos.mjs"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",

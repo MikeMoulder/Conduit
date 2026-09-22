@@ -16,7 +16,8 @@
       },
       "mint": "haugTrskYNkNwjMLsStNxxWPouZRgpNS6VGJXxeut32",
       "issuer": "conduit-devnet",
-      "mainnetMint": "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp"
+      "mainnetMint": "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp",
+      "logo": "/assets/aapl.png"
     },
     {
       "symbol": "NVDA",
@@ -31,7 +32,8 @@
       },
       "mint": "EwRtqnrKMojfxq18VAVh9bVooDNPmcS6YR4zByhfScKy",
       "issuer": "conduit-devnet",
-      "mainnetMint": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh"
+      "mainnetMint": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+      "logo": "/assets/nvda.png"
     },
     {
       "symbol": "MSFT",
@@ -46,7 +48,8 @@
       },
       "mint": "EznVA5oK5YBdduSqn35PtTMjgNqoGvyW51Hoe9M9gu5L",
       "issuer": "conduit-devnet",
-      "mainnetMint": "XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX"
+      "mainnetMint": "XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX",
+      "logo": "/assets/msft.png"
     },
     {
       "symbol": "TSLA",
@@ -61,7 +64,8 @@
       },
       "mint": "Hr9kUtqkYqfFe6YcLUqNKcAdMWy9vVagwydBSwT4DKfW",
       "issuer": "conduit-devnet",
-      "mainnetMint": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB"
+      "mainnetMint": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB",
+      "logo": "/assets/tsla.png"
     },
     {
       "symbol": "GOOGL",
@@ -76,7 +80,8 @@
       },
       "mint": "At36ZtEQwYAJayjX4Jz6t1AEvZnmg1rSm3xfcZxvfyWQ",
       "issuer": "conduit-devnet",
-      "mainnetMint": "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN"
+      "mainnetMint": "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN",
+      "logo": "/assets/googl.png"
     },
     {
       "symbol": "AMZN",
@@ -90,7 +95,8 @@
       },
       "mint": "Drj3fKgCdsJ3wSEV8MHyUFh3wRdNafSVuWQ2meY3ec24",
       "issuer": "conduit-devnet",
-      "mainnetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg"
+      "mainnetMint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "logo": "/assets/amzn.png"
     },
     {
       "symbol": "SPY",
@@ -104,7 +110,8 @@
       },
       "mint": "CMV3qNCEa5xuVS4v9wV4U3p9wbtCrAsS6XD5Uwao92KK",
       "issuer": "conduit-devnet",
-      "mainnetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W"
+      "mainnetMint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "logo": "/assets/spy.png"
     },
     {
       "symbol": "BTC",
@@ -116,7 +123,8 @@
         "primary": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
       },
       "mint": "9u3ByGuiEpGypu9DCQjEnNzxoCUK9K7MsRzcN4v7e7mj",
-      "issuer": "conduit-devnet"
+      "issuer": "conduit-devnet",
+      "logo": "/assets/btc.png"
     },
     {
       "symbol": "ETH",
@@ -128,7 +136,8 @@
         "primary": "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace"
       },
       "mint": "DHoYCyFS9tKmozuU8WAAKmkdeM7ePWS5xuARBFFFpbWJ",
-      "issuer": "conduit-devnet"
+      "issuer": "conduit-devnet",
+      "logo": "/assets/eth.png"
     },
     {
       "symbol": "SOL",
@@ -140,7 +149,8 @@
         "primary": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
       },
       "mint": "7nYbxQdjwwacNvwod8SDZ7n17kZ3WeLCZYH8hyTGN998",
-      "issuer": "conduit-devnet"
+      "issuer": "conduit-devnet",
+      "logo": "/assets/sol.png"
     },
     {
       "symbol": "ANDURIL",
@@ -150,7 +160,8 @@
       "decimals": 9,
       "mainnetMint": "PresTj4Yc2bAR197Er7wz4UUKSfqt6FryBEdAriBoQB",
       "mint": "G2pa2J4gTrbDBAsnhqew9dUaAnqrUr5ctS48BbrkXA2A",
-      "issuer": "conduit-devnet"
+      "issuer": "conduit-devnet",
+      "logo": "/assets/anduril.png"
     },
     {
       "symbol": "ANTHROPIC",
@@ -160,7 +171,8 @@
       "decimals": 9,
       "mainnetMint": "Pren1FvFX6J3E4kXhJuCiAD5aDmGEb7qJRncwA8Lkhw",
       "mint": "FSy3J9wjSL4VbwDdF1U1GUzmYagHY4rvSQY1D5d1hr97",
-      "issuer": "conduit-devnet"
+      "issuer": "conduit-devnet",
+      "logo": "/assets/anthropic.png"
     },
     {
       "symbol": "FIGUREAI",
@@ -170,7 +182,8 @@
       "decimals": 9,
       "mainnetMint": "PreZad18qfPtbxNpMtMuAuX2zVpvkEU8DnJx56faCWd",
       "mint": "GjaBe4DMat57JBXJwx1tP53AkR7TTzJCBz7R4X3QJWVp",
-      "issuer": "conduit-devnet"
+      "issuer": "conduit-devnet",
+      "logo": "/assets/figureai.png"
     },
     {
       "symbol": "KALSHI",
@@ -180,7 +193,8 @@
       "decimals": 9,
       "mainnetMint": "PreLWGkkeqG1s4HEfFZSy9moCrJ7btsHuUtfcCeoRua",
       "mint": "8Ldz77EVH64o6Y1xYRskDLxNUvY3Z1pbw3RDk1E6Acgz",
-      "issuer": "conduit-devnet"
+      "issuer": "conduit-devnet",
+      "logo": "/assets/kalshi.png"
     },
     {
       "symbol": "NEURALINK",
@@ -190,7 +204,8 @@
       "decimals": 9,
       "mainnetMint": "PrekqLJvJ3qVdXmBGDiexvwUTF4rLFDa6HWS4HJbw9S",
       "mint": "8K9DYkrtJxy96KDaLr2qx461anQZ3iUyQ3csybyNGuFh",
-      "issuer": "conduit-devnet"
+      "issuer": "conduit-devnet",
+      "logo": "/assets/neuralink.png"
     },
     {
       "symbol": "OPENAI",
@@ -200,7 +215,8 @@
       "decimals": 9,
       "mainnetMint": "PreweJYECqtQwBtpxHL171nL2K6umo692gTm7Q3rpgF",
       "mint": "HUipJetryssZrkP6hJPZV7i9CiYDhSPePvd9FFYL4Z3W",
-      "issuer": "conduit-devnet"
+      "issuer": "conduit-devnet",
+      "logo": "/assets/openai.png"
     },
     {
       "symbol": "POLYMARKET",
@@ -210,7 +226,8 @@
       "decimals": 9,
       "mainnetMint": "Pre8AREmFPtoJFT8mQSXQLh56cwJmM7CFDRuoGBZiUP",
       "mint": "9dwbkn8JjpwFQz8g8XN6evieJcEyhnAjMceXdUTBCb3q",
-      "issuer": "conduit-devnet"
+      "issuer": "conduit-devnet",
+      "logo": "/assets/polymarket.png"
     },
     {
       "symbol": "SPACEX",
@@ -220,7 +237,8 @@
       "decimals": 9,
       "mainnetMint": "PreANxuXjsy2pvisWWMNB6YaJNzr7681wJJr2rHsfTh",
       "mint": "CV3BauS2PhTtGJvRLszPXyySY3oSADYPN3bg7dPkjbNj",
-      "issuer": "conduit-devnet"
+      "issuer": "conduit-devnet",
+      "logo": "/assets/spacex.png"
     }
   ]
 }
