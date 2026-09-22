@@ -1,8 +1,6 @@
-import { Program } from "@coral-xyz/anchor";
-import { Connection, type PublicKey } from "@solana/web3.js";
+import type { Connection, PublicKey } from "@solana/web3.js";
 
-import idl from "./idl/stockpilot.json";
-import type { Stockpilot } from "./idl/stockpilot";
+import { codecProgram } from "./program-client";
 
 /**
  * Reading mandate and portfolio accounts from the chain.
@@ -18,25 +16,7 @@ import type { Stockpilot } from "./idl/stockpilot";
  * value, which is a quiet source of bugs.
  */
 
-/**
- * A program client held only for its account coder.
- *
- * Building `BorshAccountsCoder` straight from the JSON IDL was the obvious
- * thing and it decodes into snake_case, because the JSON IDL is snake_case and
- * the raw coder takes it literally. `Program` converts the IDL to camelCase
- * first, which is why `program.account.mandate.fetch` returns `createdAt`
- * everywhere else in this codebase. Anchor keeps that conversion internal and
- * does not export it.
- *
- * So the coder comes from a `Program`, and there is then exactly one naming
- * convention in the project rather than two that differ by which helper a file
- * happened to reach for. The connection below is never used: decoding is a pure
- * function of the layout and the bytes, and constructing a `Connection` opens
- * no socket. A real connection is passed to the fetch helpers instead.
- */
-const coder = new Program<Stockpilot>(idl as Stockpilot, {
-  connection: new Connection("http://localhost"),
-}).coder.accounts;
+const coder = codecProgram.coder.accounts;
 
 export type MandateStatus = "active" | "paused" | "closed";
 
