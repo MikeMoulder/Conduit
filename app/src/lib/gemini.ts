@@ -113,9 +113,20 @@ function availableModels(preferred: string): string[] {
   return usable.length > 0 ? usable : ordered;
 }
 
+export interface GeminiPart {
+  text?: string;
+  functionCall?: { name: string; args?: Record<string, unknown> };
+  functionResponse?: { name: string; response: Record<string, unknown> };
+}
+
+export interface GeminiContent {
+  role?: "user" | "model";
+  parts: GeminiPart[];
+}
+
 interface RawResponse {
   candidates?: {
-    content?: { parts?: { text?: string }[] };
+    content?: { parts?: GeminiPart[]; role?: string };
     finishReason?: string;
   }[];
   usageMetadata?: { totalTokenCount?: number };
@@ -163,6 +174,101 @@ function extractText(data: RawResponse): string | null {
   const candidate = data.candidates?.[0];
   const text = candidate?.content?.parts?.[0]?.text;
   return typeof text === "string" && text.length > 0 ? text : null;
+}
+
+/** A tool the model may call, in Gemini's own declaration dialect. */
+export interface ToolDeclaration {
+  name: string;
+  description: string;
+  parameters: GeminiSchema;
+}
+
+export interface ToolTurnRequest {
+  systemInstruction: string;
+  /** The whole conversation so far, including prior tool results. */
+  contents: GeminiContent[];
+  tools: ToolDeclaration[];
+  temperature?: number;
+  maxOutputTokens?: number;
+}
+
+export interface ToolTurnResult {
+  /** Everything the model said this turn: prose, tool calls, or both. */
+  parts: GeminiPart[];
+  model: string;
+  totalTokens: number | null;
+  finishReason: string | null;
+}
+
+/**
+ * One turn of a tool calling conversation.
+ *
+ * Separate from `generateStructured` because the two want opposite things. That
+ * one constrains the model to a single schema and validates the result. This one
+ * must leave the reply open, because a useful turn can be prose, a tool call, or
+ * several tool calls at once, and which of those it is cannot be known in
+ * advance.
+ *
+ * The model ladder and its cooldowns are shared, so a model that has just failed
+ * a pipeline stage is not immediately retried here.
+ *
+ * Schema safety does not disappear, it moves. Arguments the model supplies for a
+ * tool are validated by the tool before anything runs, which is the same rule as
+ * before: a number that reaches a transaction has passed a schema.
+ */
+export async function generateWithTools(
+  request: ToolTurnRequest,
+): Promise<ToolTurnResult> {
+  const env = getEnv();
+  const models = availableModels(env.GEMINI_MODEL);
+  const failures: string[] = [];
+
+  const body = {
+    systemInstruction: { parts: [{ text: request.systemInstruction }] },
+    contents: request.contents,
+    tools: [{ functionDeclarations: request.tools }],
+    generationConfig: {
+      temperature: request.temperature ?? 0,
+      maxOutputTokens: request.maxOutputTokens ?? 4096,
+    },
+  };
+
+  for (const model of models) {
+    const response = await callModel(model, body);
+
+    if (!response.ok) {
+      if ([404, 429, 503, 500, 0].includes(response.status)) {
+        unavailableUntil.set(model, Date.now() + COOLDOWN_MS);
+      }
+      failures.push(`${model}: http ${response.status} ${response.detail}`);
+      continue;
+    }
+
+    const candidate = response.data.candidates?.[0];
+    const parts = candidate?.content?.parts ?? [];
+
+    // An empty reply is not usable and is not the prompt's fault, so try the
+    // next model rather than reporting silence to the caller as an answer.
+    if (parts.length === 0) {
+      failures.push(
+        `${model}: empty reply, finishReason=${candidate?.finishReason ?? "unknown"}`,
+      );
+      continue;
+    }
+
+    return {
+      parts,
+      model,
+      totalTokens: response.data.usageMetadata?.totalTokenCount ?? null,
+      finishReason: candidate?.finishReason ?? null,
+    };
+  }
+
+  throw new GeminiError(
+    "no model answered the tool turn",
+    "copilot",
+    failures.join(" | "),
+  );
 }
 
 /**
