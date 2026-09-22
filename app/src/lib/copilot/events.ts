@@ -1,6 +1,7 @@
 import type { MandateView, PortfolioView } from "../accounts";
 import type { ActivityRecord } from "../events";
 import type { ProposalEvaluation } from "../proposal";
+import type { PortfolioHoldings } from "../holdings";
 
 /**
  * What the copilot sends to the browser while it works, and what the browser
@@ -35,11 +36,21 @@ export type Card =
       portfolio: PortfolioView;
       /** Present so weights can be shown against the limits that bind them. */
       mandate: MandateView | null;
+      /**
+       * What is actually held, where the mandate can be settled.
+       *
+       * Separate from the positions above because they are different claims.
+       * A position is a target the program will enforce. A holding is a token
+       * account balance. Showing one and calling it the other was wrong, and
+       * this field is how the card can stop doing that.
+       */
+      holdings: PortfolioHoldings | null;
     }
   | { kind: "history"; records: ActivityRecord[] }
   | { kind: "analysis"; analysis: AnalysisCard }
   | { kind: "verdict"; evaluation: ProposalEvaluation; positions: WeightRow[] }
-  | { kind: "submission"; submission: SubmissionCard };
+  | { kind: "submission"; submission: SubmissionCard }
+  | { kind: "settlement"; settlement: SettlementCard };
 
 export interface UniverseRow {
   symbol: string;
@@ -66,7 +77,7 @@ export interface WeightRow {
   symbol: string;
   mint: string;
   targetBps: number;
-  /** What is held now, so a proposal reads as a change rather than a list. */
+  /** The target this replaces, so a proposal reads as a change, not a list. */
   currentBps: number;
 }
 
@@ -99,6 +110,17 @@ export interface AnalysisCard {
   stages: { stage: string; model: string; durationMs: number }[];
   evaluation: ProposalEvaluation;
   excludedForMissingPrice: string[];
+}
+
+export interface SettlementCard {
+  settled: boolean;
+  signature: string | null;
+  slot: number | null;
+  /** Balances either side of the transfer, so the change is visible. */
+  before: PortfolioHoldings | null;
+  after: PortfolioHoldings | null;
+  programError: { code: number; name: string; message: string } | null;
+  detail: string | null;
 }
 
 export interface SubmissionCard {
@@ -144,6 +166,12 @@ export type PendingAction =
       kind: "set-status";
       mandate: string;
       status: "active" | "paused" | "closed";
+      summary: string;
+    }
+  | {
+      kind: "settle";
+      /** Signed by the agent on the server once approved. */
+      mandate: string;
       summary: string;
     };
 

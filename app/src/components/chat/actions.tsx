@@ -24,6 +24,11 @@ import { AssetBadge, CardView } from "./cards";
  * pausing one, is signed by the owner, because the agent has no way to reach
  * those instructions at all. That difference is the architecture, and this is
  * the first screen where a person can see it.
+ *
+ * Settlement is also signed by the agent, and signing it decides nothing. Every
+ * quantity is worked out inside the program from targets it already accepted and
+ * prices it reads itself. It is the same single power, carried to the point
+ * where a target stops being a number and becomes a balance.
  */
 
 type Phase =
@@ -48,7 +53,9 @@ export function ActionCard({
   if (phase.state === "dismissed") return null;
   if (phase.state === "done") return <CardView card={phase.card} />;
 
-  const signer = action.kind === "submit-rebalance" ? "the agent" : "your wallet";
+  const agentSigns =
+    action.kind === "submit-rebalance" || action.kind === "settle";
+  const signer = agentSigns ? "the agent" : "your wallet";
   const dangerous =
     action.kind === "submit-rebalance" && !action.evaluation.compliant;
   const permanent = action.kind === "set-status" && action.status === "closed";
@@ -88,6 +95,35 @@ export function ActionCard({
         return;
       }
 
+      if (action.kind === "settle") {
+        setPhase({ state: "working", note: "Moving the tokens" });
+
+        const response = await fetch("/api/agent/settle", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mandate: action.mandate }),
+        });
+
+        const data = await response.json();
+        setPhase({
+          state: "done",
+          card: {
+            kind: "settlement",
+            settlement: {
+              settled: Boolean(data.settled),
+              signature: data.signature ?? null,
+              slot: data.slot ?? null,
+              before: data.before ?? null,
+              after: data.after ?? null,
+              programError: data.programError ?? null,
+              detail: data.detail ?? data.error ?? null,
+            },
+          },
+        });
+        onSettled();
+        return;
+      }
+
       // Everything below is signed by the owner, so it needs a wallet rather
       // than a route.
       if (!program || !publicKey) {
@@ -95,6 +131,11 @@ export function ActionCard({
           state: "failed",
           message: "Connect a wallet first. Only the owner can sign this.",
         });
+        return;
+      }
+
+      if (action.kind !== "create-mandate" && action.kind !== "set-status") {
+        setPhase({ state: "failed", message: "Nothing to approve here." });
         return;
       }
 
@@ -176,7 +217,9 @@ export function ActionCard({
             ? "Create this mandate"
             : action.kind === "submit-rebalance"
               ? "Submit this rebalance"
-              : `Set the mandate to ${action.status}`}
+              : action.kind === "settle"
+                ? "Settle this portfolio"
+                : `Set the mandate to ${action.status}`}
         </span>
         <span className="font-mono text-[11px] text-zinc-500">
           signed by {signer}
@@ -233,7 +276,9 @@ export function ActionCard({
               ? "Send it and let the chain refuse"
               : permanent
                 ? "Close permanently"
-                : "Approve"}
+                : action.kind === "settle"
+                  ? "Settle"
+                  : "Approve"}
         </button>
         <button
           type="button"

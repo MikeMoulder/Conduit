@@ -13,6 +13,7 @@ import { snapshotMarket, pricedSymbols } from "../market";
 import { validateConstraints, validateUniverse } from "../mandate";
 import { evaluateProposal } from "../proposal";
 import { getConnection } from "../rpc";
+import { fetchHoldings, isSettleable, settleableAsset } from "../holdings";
 import { getAgentIdentity } from "../agent-identity";
 import type {
   Card,
@@ -305,23 +306,48 @@ const getPortfolio: CopilotTool = {
     const portfolio = await fetchPortfolio(getConnection(), address);
     if (!portfolio) {
       throw new ToolError(
-        "The mandate exists but has no portfolio account, so there is nothing held.",
+        "The mandate exists but has no portfolio account, so there is nothing to hold.",
       );
     }
 
+    const holdings = await fetchHoldings(getConnection(), address, mandate);
+
     return {
       result: {
-        cashBps: portfolio.cashBps,
-        positions: portfolio.positions.map((p) => ({
-          symbol: getAssetByMint(p.mint)?.symbol ?? p.mint,
-          targetBps: p.targetBps,
-        })),
+        // Targets and holdings are reported separately and labelled, because
+        // conflating them is the exact mistake this interface used to make.
+        targets: {
+          cashBps: portfolio.cashBps,
+          positions: portfolio.positions.map((p) => ({
+            symbol: getAssetByMint(p.mint)?.symbol ?? p.mint,
+            targetBps: p.targetBps,
+          })),
+          note: "Weights the program enforces. Not custody.",
+        },
+        holdings: holdings.settleable
+          ? {
+              cash: holdings.cash?.uiAmount ?? 0,
+              assets: holdings.assets
+                .filter((a) => a.uiAmount > 0)
+                .map((a) => ({ symbol: a.symbol, amount: a.uiAmount })),
+              note: holdings.funded
+                ? "Actual token balances."
+                : "Nothing has been settled yet, so the portfolio owns no tokens.",
+            }
+          : {
+              note: "This mandate cannot be settled on chain, so it holds targets only. Settlement needs a price the program can verify, which exists for the crypto sleeve on devnet and not for the tokenized equities or pre IPO names.",
+            },
       },
       summary:
         portfolio.positions.length === 0
-          ? "fully in cash"
-          : `${portfolio.positions.length} positions, ${portfolio.cashBps} bps cash`,
-      card: { kind: "portfolio", portfolio, mandate },
+          ? "no targets set"
+          : `${portfolio.positions.length} targets` +
+            (holdings.settleable
+              ? holdings.funded
+                ? ", settled"
+                : ", not yet settled"
+              : ", policy only"),
+      card: { kind: "portfolio", portfolio, mandate, holdings },
       sources: SOLANA_SOURCE,
     };
   },
@@ -826,6 +852,76 @@ const setStatus: CopilotTool = {
   },
 };
 
+const settlePortfolio: CopilotTool = {
+  label: "Preparing the settlement",
+  declaration: {
+    name: "settle_portfolio",
+    description:
+      "Prepares a settlement, which moves real tokens until the portfolio actually holds what it targets. Everything before this is policy: a position is a weight the program enforces, not custody. Only works on a mandate whose every asset has a price the program can verify on chain, which today means the crypto sleeve. This does NOT execute: it returns a card the person approves.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        mandateId: { type: "INTEGER", description: "Which mandate. Defaults to 0." },
+      },
+    },
+  },
+  async run(args, ctx) {
+    const { mandateId = 0 } = z.object({ mandateId: mandateIdArg }).parse(args);
+    const { mandate, address } = await loadMandate(ctx, mandateId);
+
+    if (!isSettleable(mandate)) {
+      const blocked = mandate.allowedAssets
+        .filter((a) => !settleableAsset(a.mint))
+        .map((a) => getAssetByMint(a.mint)?.symbol ?? a.mint);
+
+      throw new ToolError(
+        `This mandate cannot be settled on chain. Settlement needs a price the program can verify itself, and there is none for ${blocked.join(", ")}. A mandate over the crypto sleeve can be settled; one holding tokenized equities or pre IPO names is policy only.`,
+      );
+    }
+
+    const { portfolio: portfolioAddress } = addresses(ctx, mandateId);
+    const portfolio = await fetchPortfolio(getConnection(), portfolioAddress);
+
+    if (!portfolio || portfolio.positions.length === 0) {
+      throw new ToolError(
+        "There are no targets to settle into. Propose and approve a rebalance first.",
+      );
+    }
+
+    const holdings = await fetchHoldings(getConnection(), portfolioAddress, mandate);
+
+    if (!holdings.funded) {
+      throw new ToolError(
+        "The portfolio has no cash and no tokens, so there is nothing to settle with. It has to be funded before it can hold anything.",
+      );
+    }
+
+    const targets = portfolio.positions
+      .map(
+        (p) =>
+          `${getAssetByMint(p.mint)?.symbol ?? p.mint} at ${bpsToPercent(p.targetBps)}`,
+      )
+      .join(", ");
+
+    return {
+      result: {
+        prepared: true,
+        targets: portfolio.positions.map((p) => ({
+          symbol: getAssetByMint(p.mint)?.symbol ?? p.mint,
+          targetBps: p.targetBps,
+        })),
+        note: "Waiting for the person to approve. No tokens have moved.",
+      },
+      summary: `ready to settle ${portfolio.positions.length} positions`,
+      action: {
+        kind: "settle",
+        mandate: address.toBase58(),
+        summary: `Buy and sell until the portfolio actually holds ${targets}. Prices come from the Pyth accounts the mandate named, and the program checks the result against the mandate again once the tokens have moved.`,
+      },
+    };
+  },
+};
+
 export const TOOLS: Record<string, CopilotTool> = {
   list_universe: listUniverse,
   get_prices: getPrices,
@@ -837,6 +933,7 @@ export const TOOLS: Record<string, CopilotTool> = {
   propose_rebalance: proposeRebalance,
   prepare_mandate: prepareMandate,
   set_mandate_status: setStatus,
+  settle_portfolio: settlePortfolio,
 };
 
 export const TOOL_DECLARATIONS: ToolDeclaration[] = Object.values(TOOLS).map(
