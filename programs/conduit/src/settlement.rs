@@ -297,12 +297,224 @@ pub fn leg_for(
     }))
 }
 
+/* -------------------------------------------------------------------------- */
+/* Reading a price off the chain                                              */
+/* -------------------------------------------------------------------------- */
+
+/// The Pyth receiver program on Solana. A price account must be owned by it.
+///
+/// Checked rather than assumed. Without it, anyone could hand this instruction
+/// an account they wrote themselves containing whatever price suited them, and
+/// every protection in this program would then be measured against a number
+/// they chose.
+pub const PYTH_RECEIVER: Pubkey = pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");
+
+/// How old a price may be before this program refuses to settle on it.
+///
+/// Devnet feeds update roughly every second, so two minutes is generous. It is
+/// deliberately not longer: a settlement priced off a stale feed moves real
+/// balances at a rate that no longer exists, and failing is the better outcome.
+pub const MAX_PRICE_AGE_SECONDS: i64 = 120;
+
+/// Where the price message starts inside a `PriceUpdateV2` account.
+///
+/// The layout is eight bytes of discriminator, a thirty two byte write
+/// authority, a verification level, and then the message. The verification
+/// level is the part that needs care: it is an enum whose `Partial` variant
+/// carries a byte of its own, so the message begins at a different offset
+/// depending on which variant is present. Assuming one width silently misreads
+/// every field after it, which is the worst possible failure here because the
+/// result is still a number.
+fn message_offset(data: &[u8]) -> Result<usize> {
+    const TAG: usize = 8 + 32;
+    require!(data.len() > TAG, ConduitError::PriceUnusable);
+
+    // 0 is Partial, which carries a u8. 1 is Full, which carries nothing.
+    let width = match data[TAG] {
+        0 => 2,
+        1 => 1,
+        _ => return Err(ConduitError::PriceUnusable.into()),
+    };
+
+    Ok(TAG + width)
+}
+
+fn read_i64(data: &[u8], at: usize) -> Result<i64> {
+    let bytes: [u8; 8] = data
+        .get(at..at + 8)
+        .ok_or(ConduitError::PriceUnusable)?
+        .try_into()
+        .map_err(|_| ConduitError::PriceUnusable)?;
+    Ok(i64::from_le_bytes(bytes))
+}
+
+fn read_i32(data: &[u8], at: usize) -> Result<i32> {
+    let bytes: [u8; 4] = data
+        .get(at..at + 4)
+        .ok_or(ConduitError::PriceUnusable)?
+        .try_into()
+        .map_err(|_| ConduitError::PriceUnusable)?;
+    Ok(i32::from_le_bytes(bytes))
+}
+
+/// Reads a price, and refuses it unless it is the one the mandate bound.
+///
+/// The feed id check is why the mandate has carried a `feed_id` per permitted
+/// asset since it was first written, with a comment saying valuation must not
+/// be repointable at a different instrument. This is that check finally being
+/// made. A price account for Bitcoin cannot be used to settle a position in
+/// Solana, however convenient the number would be.
+pub fn read_price(
+    data: &[u8],
+    expected_feed_id: &[u8; 32],
+    now: i64,
+) -> Result<Price> {
+    require!(
+        expected_feed_id != &[0u8; 32],
+        ConduitError::MandateNotSettleable
+    );
+
+    let base = message_offset(data)?;
+
+    let feed_id: &[u8] = data
+        .get(base..base + 32)
+        .ok_or(ConduitError::PriceUnusable)?;
+    require!(feed_id == expected_feed_id, ConduitError::PriceFeedMismatch);
+
+    let price = read_i64(data, base + 32)?;
+    let exponent = read_i32(data, base + 48)?;
+    let publish_time = read_i64(data, base + 52)?;
+
+    require!(price > 0, ConduitError::PriceUnusable);
+    require!(exponent <= 0, ConduitError::PriceUnusable);
+    require!(
+        now.saturating_sub(publish_time) <= MAX_PRICE_AGE_SECONDS,
+        ConduitError::PriceUnusable
+    );
+    // A price stamped in the future is as wrong as a stale one, and means
+    // something is misconfigured rather than merely slow.
+    require!(
+        publish_time.saturating_sub(now) <= MAX_PRICE_AGE_SECONDS,
+        ConduitError::PriceUnusable
+    );
+
+    Ok(Price {
+        value: price as u64,
+        exponent,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     /// Six decimals, as USDC and most stablecoins use.
     const CASH_DECIMALS: u8 = 6;
+
+    /// A real `PriceUpdateV2` account, read off devnet with the Solana CLI.
+    ///
+    /// Genuine bytes rather than a constructed fixture, which is the point. A
+    /// hand written one would encode whatever layout I believed was correct,
+    /// and that belief is exactly what is under test.
+    const SOL_USD_ACCOUNT: [u8; 134] = [
+        0x22, 0xf1, 0x23, 0x63, 0x9d, 0x7e, 0xf4, 0xcd, 0x60, 0x31, 0x47, 0x04,
+        0x34, 0x0d, 0xed, 0xdf, 0x37, 0x1f, 0xd4, 0x24, 0x72, 0x14, 0x8f, 0x24,
+        0x8e, 0x9d, 0x1a, 0x6d, 0x1a, 0x5e, 0xb2, 0xac, 0x3a, 0xcd, 0x8b, 0x7f,
+        0xd5, 0xd6, 0xb2, 0x43, 0x01, 0xef, 0x0d, 0x8b, 0x6f, 0xda, 0x2c, 0xeb,
+        0xa4, 0x1d, 0xa1, 0x5d, 0x40, 0x95, 0xd1, 0xda, 0x39, 0x2a, 0x0d, 0x2f,
+        0x8e, 0xd0, 0xc6, 0xc7, 0xbc, 0x0f, 0x4c, 0xfa, 0xc8, 0xc2, 0x80, 0xb5,
+        0x6d, 0xe9, 0xb6, 0x21, 0xb6, 0x02, 0x00, 0x00, 0x00, 0x34, 0x9f, 0x1b,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0xff, 0xff, 0xff, 0x87, 0x59, 0xb2,
+        0x6a, 0x00, 0x00, 0x00, 0x00, 0x86, 0x59, 0xb2, 0x6a, 0x00, 0x00, 0x00,
+        0x00, 0x8c, 0x74, 0x2a, 0xb9, 0x02, 0x00, 0x00, 0x00, 0xae, 0x6c, 0x12,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x25, 0xc0, 0xf1, 0x1d, 0x00, 0x00, 0x00,
+        0x00, 0x00,
+    ];
+
+    /// The feed that account carries: Pyth SOL/USD.
+    const SOL_FEED_ID: [u8; 32] = [
+        0xef, 0x0d, 0x8b, 0x6f, 0xda, 0x2c, 0xeb, 0xa4, 0x1d, 0xa1, 0x5d, 0x40,
+        0x95, 0xd1, 0xda, 0x39, 0x2a, 0x0d, 0x2f, 0x8e, 0xd0, 0xc6, 0xc7, 0xbc,
+        0x0f, 0x4c, 0xfa, 0xc8, 0xc2, 0x80, 0xb5, 0x6d,
+    ];
+
+    /// The moment that account was published.
+    const SOL_PUBLISH_TIME: i64 = 1_790_073_223;
+
+    #[test]
+    fn reads_a_real_price_account() {
+        let price = read_price(&SOL_USD_ACCOUNT, &SOL_FEED_ID, SOL_PUBLISH_TIME).unwrap();
+        assert_eq!(price.value, 11_645_597_417);
+        assert_eq!(price.exponent, -8);
+
+        // A hundred and sixteen dollars and change, as SOL was at the time.
+        let value = value_of(1_000_000_000, 9, price, CASH_DECIMALS).unwrap();
+        assert_eq!(value, 116_455_974);
+    }
+
+    #[test]
+    fn refuses_a_price_account_for_a_different_feed() {
+        let mut wrong = SOL_FEED_ID;
+        wrong[0] ^= 0xff;
+        assert!(read_price(&SOL_USD_ACCOUNT, &wrong, SOL_PUBLISH_TIME).is_err());
+    }
+
+    #[test]
+    fn refuses_an_asset_the_mandate_bound_to_no_feed() {
+        // All zeros is how the registry records an asset with no Pyth feed.
+        // Settling one would mean pricing it from an account nobody vouched for.
+        assert!(read_price(&SOL_USD_ACCOUNT, &[0u8; 32], SOL_PUBLISH_TIME).is_err());
+    }
+
+    #[test]
+    fn refuses_a_stale_price() {
+        let late = SOL_PUBLISH_TIME + MAX_PRICE_AGE_SECONDS + 1;
+        assert!(read_price(&SOL_USD_ACCOUNT, &SOL_FEED_ID, late).is_err());
+
+        let just_inside = SOL_PUBLISH_TIME + MAX_PRICE_AGE_SECONDS;
+        assert!(read_price(&SOL_USD_ACCOUNT, &SOL_FEED_ID, just_inside).is_ok());
+    }
+
+    #[test]
+    fn refuses_a_price_stamped_in_the_future() {
+        let early = SOL_PUBLISH_TIME - MAX_PRICE_AGE_SECONDS - 1;
+        assert!(read_price(&SOL_USD_ACCOUNT, &SOL_FEED_ID, early).is_err());
+    }
+
+    #[test]
+    fn refuses_an_account_too_short_to_hold_a_price() {
+        for length in [0usize, 8, 40, 41, 70] {
+            let truncated = &SOL_USD_ACCOUNT[..length.min(SOL_USD_ACCOUNT.len())];
+            assert!(
+                read_price(truncated, &SOL_FEED_ID, SOL_PUBLISH_TIME).is_err(),
+                "accepted an account of {length} bytes"
+            );
+        }
+    }
+
+    #[test]
+    fn refuses_an_unknown_verification_level() {
+        let mut tampered = SOL_USD_ACCOUNT;
+        tampered[40] = 7;
+        assert!(read_price(&tampered, &SOL_FEED_ID, SOL_PUBLISH_TIME).is_err());
+    }
+
+    #[test]
+    fn a_partial_verification_shifts_every_field_after_it() {
+        // Partial carries a byte of its own, so the message starts one later.
+        // Reading it at the Full offset misreads the feed id and everything
+        // beyond it, which is why the width is derived rather than assumed.
+        let mut partial = [0u8; 135];
+        partial[..40].copy_from_slice(&SOL_USD_ACCOUNT[..40]);
+        partial[40] = 0; // Partial
+        partial[41] = 13; // its signature count
+        partial[42..].copy_from_slice(&SOL_USD_ACCOUNT[41..]);
+
+        let price = read_price(&partial, &SOL_FEED_ID, SOL_PUBLISH_TIME).unwrap();
+        assert_eq!(price.value, 11_645_597_417);
+        assert_eq!(price.exponent, -8);
+    }
+
 
     /// Roughly the shape of the live SOL feed: 116.45 at exponent -8.
     fn sol_price() -> Price {
