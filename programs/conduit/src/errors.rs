@@ -49,4 +49,12 @@ pub enum ConduitError {
 
     #[msg("The mandate's permitted asset universe is empty")]
     EmptyAssetUniverse,
+    #[msg("The price account does not carry the feed this mandate bound to that asset")]
+    PriceFeedMismatch,
+    #[msg("The price is stale, zero, or reported in a form this program will not use")]
+    PriceUnusable,
+    #[msg("This mandate permits an asset with no on chain price, so it cannot be settled")]
+    MandateNotSettleable,
+    #[msg("The accounts supplied do not match the assets this mandate permits")]
+    SettlementAccountsMismatch,
 }

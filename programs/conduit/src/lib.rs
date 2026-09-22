@@ -16,6 +16,7 @@ use anchor_lang::prelude::*;
 pub mod constants;
 pub mod errors;
 pub mod policy;
+pub mod settlement;
 pub mod state;
 
 use constants::{MANDATE_SEED, MAX_ASSETS, PORTFOLIO_SEED};
