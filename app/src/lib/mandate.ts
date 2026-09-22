@@ -1,7 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 
 import { getAssetBySymbol, type RegisteredAsset } from "./assets";
-import { BPS_DENOMINATOR, MAX_ASSETS } from "./chain";
+import { BPS_DENOMINATOR, MAX_ASSETS, bpsToPercent } from "./chain";
 
 /**
  * The mandate as the owner writes it, and the checks the program will apply.
@@ -68,7 +68,7 @@ export function validateConstraints(c: MandateConstraintsInput): Violation[] {
     if (!Number.isInteger(value) || value < 0 || value > BPS_DENOMINATOR) {
       violations.push({
         field,
-        message: `Must be a whole number between 0 and ${BPS_DENOMINATOR} basis points.`,
+        message: `Must be a whole number between 0 and ${BPS_DENOMINATOR} basis points, where ${BPS_DENOMINATOR} is the whole portfolio.`,
         onChainError: "InvalidBasisPoints",
       });
     }
@@ -104,10 +104,11 @@ export function validateConstraints(c: MandateConstraintsInput): Violation[] {
         field: "maxPositionBps",
         message:
           `${c.maxAssets} position${c.maxAssets === 1 ? "" : "s"} of at most ` +
-          `${c.maxPositionBps} bps is ${deployable} bps, ` +
-          `and ${c.minCashBps} bps of required cash brings the total to ${reachable}. ` +
-          `That strands ${stranded} bps which can never be allocated or held as cash. ` +
-          `Raise the position limit, allow more positions, or raise the cash floor.`,
+          `${bpsToPercent(c.maxPositionBps)} is ${bpsToPercent(deployable)}, ` +
+          `and ${bpsToPercent(c.minCashBps)} of required cash brings the total to ` +
+          `${bpsToPercent(reachable)}. That strands ${bpsToPercent(stranded)} which can ` +
+          `never be allocated or held as cash. Raise the position limit, allow more ` +
+          `positions, or raise the cash floor.`,
         onChainError: "ContradictoryConstraints",
       });
     }

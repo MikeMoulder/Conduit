@@ -1,4 +1,4 @@
-import { BPS_DENOMINATOR } from "./chain";
+import { BPS_DENOMINATOR, bpsToPercent } from "./chain";
 import type { MandateConstraintsView } from "./accounts";
 
 /**
@@ -161,7 +161,7 @@ export function evaluateProposal(input: EvaluationInput): ProposalEvaluation {
       refuse({
         rule: "basis points",
         mint: position.mint,
-        detail: `${position.targetBps} is not a whole number of basis points within ${BPS_DENOMINATOR}`,
+        detail: `${position.targetBps} is not a whole number of basis points within ${BPS_DENOMINATOR}, which is 100 percent`,
         onChainError: "InvalidBasisPoints",
       });
     } else if (position.targetBps <= 0) {
@@ -177,7 +177,7 @@ export function evaluateProposal(input: EvaluationInput): ProposalEvaluation {
       refuse({
         rule: "concentration",
         mint: position.mint,
-        detail: `${position.targetBps} bps exceeds the ${constraints.maxPositionBps} bps cap on any single position`,
+        detail: `${bpsToPercent(position.targetBps)} exceeds the ${bpsToPercent(constraints.maxPositionBps)} cap on any single position`,
         onChainError: "PositionExceedsMaxSize",
       });
     }
@@ -207,7 +207,7 @@ export function evaluateProposal(input: EvaluationInput): ProposalEvaluation {
   if (allocatedBps > BPS_DENOMINATOR) {
     refuse({
       rule: "total allocation",
-      detail: `allocations total ${allocatedBps} bps, which is more than the whole portfolio`,
+      detail: `allocations total ${bpsToPercent(allocatedBps)}, which is more than the whole portfolio`,
       onChainError: "AllocationMustSumToFull",
     });
   }
@@ -217,7 +217,7 @@ export function evaluateProposal(input: EvaluationInput): ProposalEvaluation {
   if (cashBps < constraints.minCashBps) {
     refuse({
       rule: "cash floor",
-      detail: `${cashBps} bps of cash is below the ${constraints.minCashBps} bps the mandate requires`,
+      detail: `${bpsToPercent(cashBps)} of cash is below the ${bpsToPercent(constraints.minCashBps)} the mandate requires`,
       onChainError: "InsufficientCashReserve",
     });
   }
@@ -227,7 +227,7 @@ export function evaluateProposal(input: EvaluationInput): ProposalEvaluation {
   if (turnoverBps > constraints.maxTurnoverBps) {
     refuse({
       rule: "turnover",
-      detail: `${turnoverBps} bps would change hands, above the ${constraints.maxTurnoverBps} bps limit for one rebalance`,
+      detail: `${bpsToPercent(turnoverBps)} of the book would change hands, above the ${bpsToPercent(constraints.maxTurnoverBps)} limit for one rebalance`,
       onChainError: "TurnoverExceeded",
     });
   }

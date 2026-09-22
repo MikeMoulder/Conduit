@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { fetchMandate, fetchPortfolio, type MandateView } from "../accounts";
 import { getAssetByMint, getAssetBySymbol, listAssets } from "../assets";
-import { MAX_ASSETS, mandatePda, portfolioPda } from "../chain";
+import { MAX_ASSETS, bpsToPercent, mandatePda, portfolioPda } from "../chain";
 import { fetchActivity } from "../events";
 import type { ToolDeclaration } from "../gemini";
 import { runPipeline, type MandateSpec } from "../agents/pipeline";
@@ -664,7 +664,7 @@ const proposeRebalance: CopilotTool = {
         positions: rows,
         evaluation,
         summary: evaluation.compliant
-          ? `${rows.length} positions, ${evaluation.turnoverBps} bps of turnover, ${evaluation.cashBps} bps left in cash.`
+          ? `${rows.length} positions. ${bpsToPercent(evaluation.turnoverBps)} of the book changes hands, leaving ${bpsToPercent(evaluation.cashBps)} in cash.`
           : `The program would refuse this with ${evaluation.firstRefusal}. Submitting it anyway records the refusal on chain.`,
       },
     };
@@ -753,7 +753,11 @@ const prepareMandate: CopilotTool = {
           symbols: input.symbols,
           agent: agent.publicKey,
         },
-        summary: `Positions capped at ${input.maxPositionBps} bps, at least ${input.minCashBps} bps in cash, at most ${input.maxTurnoverBps} bps of turnover, ${input.maxAssets} positions across ${input.symbols.join(", ")}.`,
+        summary:
+          `No single position above ${bpsToPercent(input.maxPositionBps)}. ` +
+          `At least ${bpsToPercent(input.minCashBps)} held in cash. ` +
+          `At most ${bpsToPercent(input.maxTurnoverBps)} of the book may change hands in one rebalance. ` +
+          `Up to ${input.maxAssets} positions, chosen from ${input.symbols.join(", ")}.`,
       },
     };
   },
