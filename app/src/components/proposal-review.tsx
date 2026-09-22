@@ -68,11 +68,17 @@ const DEFAULT_OBJECTIVE =
 export function ProposalReview({
   mandate,
   portfolio,
-  onPortfolioChange,
+  onSubmitted,
 }: {
   mandate: MandateView;
   portfolio: PortfolioView;
-  onPortfolioChange: (portfolio: PortfolioView) => void;
+  /**
+   * Called after any submission settles, accepted or refused. The portfolio is
+   * only supplied when it changed. A refusal is submitted without preflight so
+   * that it lands, which means the history moves either way and the feed has to
+   * be told either way.
+   */
+  onSubmitted: (portfolio: PortfolioView | null) => void;
 }) {
   const [objective, setObjective] = useState(DEFAULT_OBJECTIVE);
   const [running, setRunning] = useState(false);
@@ -147,7 +153,7 @@ export function ProposalReview({
       });
       const data = (await response.json()) as SubmitResponse;
       setSubmission(data);
-      if (data.accepted && data.portfolio) onPortfolioChange(data.portfolio);
+      onSubmitted(data.accepted && data.portfolio ? data.portfolio : null);
     } catch (error) {
       setSubmission({
         accepted: false,

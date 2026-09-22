@@ -13,6 +13,7 @@ import {
   type MandateView,
   type PortfolioView,
 } from "@/lib/accounts";
+import { ActivityFeed } from "@/components/activity-feed";
 import { ProposalReview } from "@/components/proposal-review";
 
 /**
@@ -39,6 +40,8 @@ export function PortfolioView() {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   /** Bumped to force a reread. Changing it is what the reload button does. */
   const [nonce, setNonce] = useState(0);
+  /** Bumped when a submission settles, so the history refetches. */
+  const [revision, setRevision] = useState(0);
 
   const addresses = useMemo(() => {
     if (!publicKey) return null;
@@ -142,9 +145,10 @@ export function PortfolioView() {
             <ProposalReview
               mandate={fresh.mandate}
               portfolio={fresh.portfolio}
-              onPortfolioChange={(portfolio) =>
-                setLoaded({ ...fresh, portfolio })
-              }
+              onSubmitted={(portfolio) => {
+                if (portfolio) setLoaded({ ...fresh, portfolio });
+                setRevision((r) => r + 1);
+              }}
             />
           ) : (
             <p className="text-sm text-amber-400">
@@ -152,6 +156,10 @@ export function PortfolioView() {
               rebalance.
             </p>
           )}
+          <ActivityFeed
+            mandate={fresh.mandate.address}
+            revision={revision}
+          />
         </>
       )}
     </div>
