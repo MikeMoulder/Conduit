@@ -3,6 +3,15 @@ members = ["programs/*"]
 resolver = "2"
 
 [profile.release]
+# Optimise for size rather than speed.
+#
+# On chain, the length of the deployed program is rent that is paid for, and a
+# program that will not fit its allocated space cannot be upgraded at all.
+# Nothing here is in a hot loop: the heaviest instruction parses three price
+# accounts and makes a handful of cross program calls, so trading some
+# instruction count for a smaller binary is the right way round.
+opt-level = "z"
+strip = true
 # overflow-checks is deliberately enabled in release builds. This program does
 # financial arithmetic on user funds, where a silent wraparound is far worse than
 # a failed transaction. The cost is a few compute units per operation.

@@ -311,10 +311,19 @@ pub const PYTH_RECEIVER: Pubkey = pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJ
 
 /// How old a price may be before this program refuses to settle on it.
 ///
-/// Devnet feeds update roughly every second, so two minutes is generous. It is
-/// deliberately not longer: a settlement priced off a stale feed moves real
-/// balances at a rate that no longer exists, and failing is the better outcome.
-pub const MAX_PRICE_AGE_SECONDS: i64 = 120;
+/// Ten minutes, chosen against what devnet actually does rather than what would
+/// look strict. The sponsored feeds there are pushed roughly once a minute and
+/// occasionally skip, so two minutes left almost no headroom and would have
+/// failed settlements for no reason.
+///
+/// It still does the job it exists for. The abandoned shards carrying these
+/// same feeds are months out of date, one of them a hundred and ninety two
+/// days, so anything meaningfully stale is refused by a factor of thousands. A
+/// settlement priced off an old feed moves real balances at a rate that no
+/// longer exists, and failing is the better outcome.
+///
+/// Mainnet updates sub second. This would be tightened there.
+pub const MAX_PRICE_AGE_SECONDS: i64 = 600;
 
 /// Where the price message starts inside a `PriceUpdateV2` account.
 ///
@@ -468,6 +477,7 @@ mod tests {
 
     #[test]
     fn refuses_a_stale_price() {
+        // The abandoned devnet shards are months old, so this margin is huge.
         let late = SOL_PUBLISH_TIME + MAX_PRICE_AGE_SECONDS + 1;
         assert!(read_price(&SOL_USD_ACCOUNT, &SOL_FEED_ID, late).is_err());
 

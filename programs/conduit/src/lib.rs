@@ -12,6 +12,7 @@
 //! reach.
 
 use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 pub mod constants;
 pub mod errors;
@@ -19,10 +20,13 @@ pub mod policy;
 pub mod settlement;
 pub mod state;
 
-use constants::{MANDATE_SEED, MAX_ASSETS, PORTFOLIO_SEED};
+use constants::{BPS_DENOMINATOR, DESK_SEED, MANDATE_SEED, MAX_ASSETS, PORTFOLIO_SEED};
 use errors::ConduitError;
 use policy::{evaluate_proposal, ProposedPosition};
-use state::{AllowedAsset, Mandate, MandateConstraints, MandateStatus, Portfolio, Position};
+use settlement::{leg_for, net_asset_value, read_price, Holding, PYTH_RECEIVER};
+use state::{
+    AllowedAsset, Desk, Mandate, MandateConstraints, MandateStatus, Portfolio, Position,
+};
 
 declare_id!("6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu");
 
@@ -171,6 +175,280 @@ pub mod conduit {
         mandate.status = status;
         Ok(())
     }
+
+    /// Opens the desk that settlements trade against.
+    ///
+    /// Called once. The desk is funded afterwards by ordinary transfers into
+    /// its token accounts, which is deliberate: funding it is not a privileged
+    /// operation this program needs to model, it is somebody sending tokens to
+    /// an address.
+    pub fn initialize_desk(ctx: Context<InitializeDesk>) -> Result<()> {
+        let desk = &mut ctx.accounts.desk;
+        desk.authority = ctx.accounts.authority.key();
+        desk.cash_mint = ctx.accounts.cash_mint.key();
+        desk.bump = ctx.bumps.desk;
+        Ok(())
+    }
+
+    /// Moves tokens until the portfolio actually holds what it says it targets.
+    ///
+    /// Everything up to this point has been policy. `propose_rebalance` decides
+    /// what the weights should be and refuses anything the mandate forbids, but
+    /// it moves nothing: a position was a number in an account. This is where
+    /// value changes hands.
+    ///
+    /// The prices come from Pyth accounts on chain, each one checked against the
+    /// feed id the mandate bound to that asset when it was created. The
+    /// portfolio is valued from its actual token balances rather than from
+    /// anything it claims about itself, because the balances are the only thing
+    /// here that cannot be wrong.
+    ///
+    /// Signed by the agent, which is consistent rather than a new power. The
+    /// agent chooses nothing here: every quantity is derived from targets the
+    /// program already accepted and prices it did not supply. It is the same
+    /// authority to execute an approved allocation, carried through to the point
+    /// where the allocation becomes real.
+    ///
+    /// Assets are passed as four accounts each, in the order the mandate
+    /// permits them: the price update, the mint, the portfolio token account and
+    /// the desk token account.
+    pub fn settle<'info>(ctx: Context<'_, '_, 'info, 'info, Settle<'info>>) -> Result<()> {
+        let mandate = &ctx.accounts.mandate;
+
+        require!(
+            mandate.status == MandateStatus::Active,
+            ConduitError::MandateNotActive
+        );
+
+        let expected = mandate
+            .allowed_assets
+            .len()
+            .checked_mul(4)
+            .ok_or(ConduitError::ArithmeticOverflow)?;
+        require!(
+            ctx.remaining_accounts.len() == expected,
+            ConduitError::SettlementAccountsMismatch
+        );
+
+        let now = Clock::get()?.unix_timestamp;
+        let cash_decimals = ctx.accounts.cash_mint.decimals;
+
+        let mut holdings: Vec<Holding> = Vec::with_capacity(mandate.allowed_assets.len());
+        let mut legs_accounts: Vec<(&AccountInfo<'info>, &AccountInfo<'info>)> =
+            Vec::with_capacity(mandate.allowed_assets.len());
+
+        for (index, allowed) in mandate.allowed_assets.iter().enumerate() {
+            let chunk = &ctx.remaining_accounts[index * 4..index * 4 + 4];
+            let (price_info, mint_info, portfolio_ata, desk_ata) =
+                (&chunk[0], &chunk[1], &chunk[2], &chunk[3]);
+
+            // A price account nobody vouched for is worth nothing. The owner
+            // check is what stops a caller supplying their own.
+            require_keys_eq!(
+                *price_info.owner,
+                PYTH_RECEIVER,
+                ConduitError::PriceUnusable
+            );
+            let price = read_price(&price_info.try_borrow_data()?, &allowed.feed_id, now)?;
+
+            require_keys_eq!(
+                mint_info.key(),
+                allowed.mint,
+                ConduitError::SettlementAccountsMismatch
+            );
+
+            let mint: Account<'info, Mint> = Account::try_from(mint_info)?;
+            let portfolio_token: Account<'info, TokenAccount> = Account::try_from(portfolio_ata)?;
+            let desk_token: Account<'info, TokenAccount> = Account::try_from(desk_ata)?;
+
+            require_keys_eq!(
+                portfolio_token.owner,
+                ctx.accounts.portfolio.key(),
+                ConduitError::SettlementAccountsMismatch
+            );
+            require_keys_eq!(
+                portfolio_token.mint,
+                allowed.mint,
+                ConduitError::SettlementAccountsMismatch
+            );
+            require_keys_eq!(
+                desk_token.owner,
+                ctx.accounts.desk.key(),
+                ConduitError::SettlementAccountsMismatch
+            );
+            require_keys_eq!(
+                desk_token.mint,
+                allowed.mint,
+                ConduitError::SettlementAccountsMismatch
+            );
+
+            // An asset the portfolio no longer targets is a target of zero
+            // rather than an omission, which is what closes a position.
+            let target_bps = ctx
+                .accounts
+                .portfolio
+                .positions
+                .iter()
+                .find(|p| p.mint == allowed.mint)
+                .map(|p| p.target_bps)
+                .unwrap_or(0);
+
+            holdings.push(Holding {
+                balance: portfolio_token.amount,
+                decimals: mint.decimals,
+                price,
+                target_bps,
+            });
+            legs_accounts.push((portfolio_ata, desk_ata));
+        }
+
+        let nav = net_asset_value(
+            ctx.accounts.portfolio_cash.amount,
+            cash_decimals,
+            &holdings,
+        )?;
+        require!(nav > 0, ConduitError::NothingToSettle);
+
+        let mandate_key = ctx.accounts.mandate.key();
+        let portfolio_seeds: &[&[u8]] = &[
+            PORTFOLIO_SEED,
+            mandate_key.as_ref(),
+            &[ctx.accounts.portfolio.bump],
+        ];
+        let desk_seeds: &[&[u8]] = &[DESK_SEED, &[ctx.accounts.desk.bump]];
+
+        let mut executed: u8 = 0;
+
+        for (holding, (portfolio_ata, desk_ata)) in holdings.iter().zip(legs_accounts.iter()) {
+            let Some(leg) = leg_for(holding, nav, cash_decimals)? else {
+                continue;
+            };
+
+            if leg.buying {
+                // Asset in from the desk, cash out to it. The desk cannot
+                // deliver more than its inventory, and the transfer fails
+                // rather than inventing supply.
+                token::transfer(
+                    CpiContext::new_with_signer(
+                        ctx.accounts.token_program.to_account_info(),
+                        Transfer {
+                            from: (*desk_ata).clone(),
+                            to: (*portfolio_ata).clone(),
+                            authority: ctx.accounts.desk.to_account_info(),
+                        },
+                        &[desk_seeds],
+                    ),
+                    leg.asset_amount,
+                )?;
+
+                token::transfer(
+                    CpiContext::new_with_signer(
+                        ctx.accounts.token_program.to_account_info(),
+                        Transfer {
+                            from: ctx.accounts.portfolio_cash.to_account_info(),
+                            to: ctx.accounts.desk_cash.to_account_info(),
+                            authority: ctx.accounts.portfolio.to_account_info(),
+                        },
+                        &[portfolio_seeds],
+                    ),
+                    leg.cash_amount,
+                )?;
+            } else {
+                token::transfer(
+                    CpiContext::new_with_signer(
+                        ctx.accounts.token_program.to_account_info(),
+                        Transfer {
+                            from: (*portfolio_ata).clone(),
+                            to: (*desk_ata).clone(),
+                            authority: ctx.accounts.portfolio.to_account_info(),
+                        },
+                        &[portfolio_seeds],
+                    ),
+                    leg.asset_amount,
+                )?;
+
+                token::transfer(
+                    CpiContext::new_with_signer(
+                        ctx.accounts.token_program.to_account_info(),
+                        Transfer {
+                            from: ctx.accounts.desk_cash.to_account_info(),
+                            to: ctx.accounts.portfolio_cash.to_account_info(),
+                            authority: ctx.accounts.desk.to_account_info(),
+                        },
+                        &[desk_seeds],
+                    ),
+                    leg.cash_amount,
+                )?;
+            }
+
+            executed = executed.saturating_add(1);
+        }
+
+        // The mandate, checked again against what is actually held.
+        //
+        // Every weight here was already approved by `propose_rebalance`, so this
+        // is not re-litigating the policy. It is checking that settling it did
+        // what it was supposed to. A mistake in the arithmetic above, or a price
+        // that moved between valuation and execution, would show up as a
+        // portfolio that breaches its own mandate, and the whole transaction
+        // reverts rather than leaving it that way.
+        ctx.accounts.portfolio_cash.reload()?;
+        let settled_cash = ctx.accounts.portfolio_cash.amount;
+
+        let mut settled: Vec<Holding> = Vec::with_capacity(holdings.len());
+        for (holding, (portfolio_ata, _)) in holdings.iter().zip(legs_accounts.iter()) {
+            let token: Account<'info, TokenAccount> = Account::try_from(*portfolio_ata)?;
+            settled.push(Holding {
+                balance: token.amount,
+                ..*holding
+            });
+        }
+
+        let settled_nav = net_asset_value(settled_cash, cash_decimals, &settled)?;
+        require!(settled_nav > 0, ConduitError::ArithmeticOverflow);
+
+        for holding in settled.iter() {
+            let value = settlement::value_of(
+                holding.balance,
+                holding.decimals,
+                holding.price,
+                cash_decimals,
+            )?;
+            let weight_bps = (value as u128)
+                .checked_mul(BPS_DENOMINATOR as u128)
+                .ok_or(ConduitError::ArithmeticOverflow)?
+                .checked_div(settled_nav as u128)
+                .ok_or(ConduitError::ArithmeticOverflow)? as u16;
+
+            require!(
+                weight_bps <= mandate.constraints.max_position_bps,
+                ConduitError::PositionExceedsMaxSize
+            );
+        }
+
+        let settled_cash_bps = (settled_cash as u128)
+            .checked_mul(BPS_DENOMINATOR as u128)
+            .ok_or(ConduitError::ArithmeticOverflow)?
+            .checked_div(settled_nav as u128)
+            .ok_or(ConduitError::ArithmeticOverflow)? as u16;
+
+        require!(
+            settled_cash_bps >= mandate.constraints.min_cash_bps,
+            ConduitError::InsufficientCashReserve
+        );
+
+        emit!(PortfolioSettled {
+            mandate: mandate_key,
+            portfolio: ctx.accounts.portfolio.key(),
+            agent: ctx.accounts.agent.key(),
+            nav: settled_nav,
+            cash_bps: settled_cash_bps,
+            legs: executed,
+            timestamp: now,
+        });
+
+        Ok(())
+    }
 }
 
 /// Emitted on every accepted rebalance.
@@ -188,6 +466,81 @@ pub struct RebalanceExecuted {
     pub position_count: u8,
     pub sequence: u64,
     pub timestamp: i64,
+}
+
+/// Emitted when a settlement actually moves tokens.
+///
+/// Separate from RebalanceExecuted on purpose. That one records a decision, this
+/// one records value changing hands, and conflating the two would make a
+/// portfolio look settled because somebody approved a target.
+#[event]
+pub struct PortfolioSettled {
+    pub mandate: Pubkey,
+    pub portfolio: Pubkey,
+    pub agent: Pubkey,
+    /// Portfolio value in cash base units, after settling.
+    pub nav: u64,
+    pub cash_bps: u16,
+    /// How many assets actually traded. Zero means it was already in line.
+    pub legs: u8,
+    pub timestamp: i64,
+}
+
+#[derive(Accounts)]
+pub struct InitializeDesk<'info> {
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + Desk::INIT_SPACE,
+        seeds = [DESK_SEED],
+        bump,
+    )]
+    pub desk: Account<'info, Desk>,
+
+    pub cash_mint: Account<'info, Mint>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Settle<'info> {
+    pub mandate: Account<'info, Mandate>,
+
+    #[account(
+        seeds = [PORTFOLIO_SEED, mandate.key().as_ref()],
+        bump = portfolio.bump,
+        constraint = portfolio.mandate == mandate.key() @ ConduitError::SettlementAccountsMismatch,
+    )]
+    pub portfolio: Account<'info, Portfolio>,
+
+    #[account(seeds = [DESK_SEED], bump = desk.bump)]
+    pub desk: Account<'info, Desk>,
+
+    /// The agent executes, and chooses nothing while doing so.
+    #[account(constraint = mandate.agent == agent.key() @ ConduitError::UnauthorizedAgent)]
+    pub agent: Signer<'info>,
+
+    #[account(constraint = desk.cash_mint == cash_mint.key() @ ConduitError::SettlementAccountsMismatch)]
+    pub cash_mint: Account<'info, Mint>,
+
+    #[account(
+        mut,
+        constraint = portfolio_cash.owner == portfolio.key() @ ConduitError::SettlementAccountsMismatch,
+        constraint = portfolio_cash.mint == cash_mint.key() @ ConduitError::SettlementAccountsMismatch,
+    )]
+    pub portfolio_cash: Account<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        constraint = desk_cash.owner == desk.key() @ ConduitError::SettlementAccountsMismatch,
+        constraint = desk_cash.mint == cash_mint.key() @ ConduitError::SettlementAccountsMismatch,
+    )]
+    pub desk_cash: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]

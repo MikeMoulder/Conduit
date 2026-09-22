@@ -19,3 +19,6 @@ pub const MANDATE_SEED: &[u8] = b"mandate";
 
 /// PDA seed prefix for portfolio accounts.
 pub const PORTFOLIO_SEED: &[u8] = b"portfolio";
+
+/// Seed for the settlement desk. One per deployment.
+pub const DESK_SEED: &[u8] = b"desk";

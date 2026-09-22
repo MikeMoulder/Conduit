@@ -57,4 +57,6 @@ pub enum ConduitError {
     MandateNotSettleable,
     #[msg("The accounts supplied do not match the assets this mandate permits")]
     SettlementAccountsMismatch,
+    #[msg("The portfolio holds nothing, so there is nothing to settle")]
+    NothingToSettle,
 }

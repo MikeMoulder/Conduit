@@ -14,7 +14,12 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
 anchor-lang = "0.31.2"
+# Only the classic token program. The default feature set also pulls in
+# Token-2022 and the associated token program, neither of which this program
+# calls, and both of which cost real binary size on a chain where the deployed
+# length is rent you pay for.
+anchor-spl = { version = "0.31.2", default-features = false, features = ["token"] }
