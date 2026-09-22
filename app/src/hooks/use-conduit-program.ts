@@ -4,8 +4,8 @@ import { useMemo } from "react";
 import { AnchorProvider, Program } from "@coral-xyz/anchor";
 import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
 
-import idl from "@/lib/idl/stockpilot.json";
-import type { Stockpilot } from "@/lib/idl/stockpilot";
+import idl from "@/lib/idl/conduit.json";
+import type { Conduit } from "@/lib/idl/conduit";
 
 /**
  * The CONDUIT program, bound to the connected wallet.
@@ -21,7 +21,7 @@ import type { Stockpilot } from "@/lib/idl/stockpilot";
  * server is HTTP only. Sending goes through the wallet and confirmation goes
  * through `confirmSignature`.
  */
-export function useStockpilotProgram(): Program<Stockpilot> | null {
+export function useConduitProgram(): Program<Conduit> | null {
   const { connection } = useConnection();
   const wallet = useAnchorWallet();
 
@@ -33,6 +33,6 @@ export function useStockpilotProgram(): Program<Stockpilot> | null {
       preflightCommitment: "confirmed",
     });
 
-    return new Program(idl as Stockpilot, provider);
+    return new Program(idl as Conduit, provider);
   }, [connection, wallet]);
 }

@@ -1,14 +1,20 @@
-{
+/**
+ * Program IDL in camelCase format in order to be used in JS/TS.
+ *
+ * Note that this is only a type helper and is not the actual IDL. The original
+ * IDL can be found at `target/idl/conduit.json`.
+ */
+export type Conduit = {
   "address": "6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu",
   "metadata": {
-    "name": "stockpilot",
+    "name": "conduit",
     "version": "0.1.0",
     "spec": "0.1.0",
     "description": "On chain investment mandate enforcement for tokenized equity portfolios"
   },
   "instructions": [
     {
-      "name": "initialize_mandate",
+      "name": "initializeMandate",
       "docs": [
         "Creates a mandate: the constitution a portfolio will operate under.",
         "",
@@ -49,7 +55,7 @@
               },
               {
                 "kind": "arg",
-                "path": "mandate_id"
+                "path": "mandateId"
               }
             ]
           }
@@ -60,29 +66,29 @@
           "signer": true
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "mandate_id",
+          "name": "mandateId",
           "type": "u64"
         },
         {
           "name": "constraints",
           "type": {
             "defined": {
-              "name": "MandateConstraints"
+              "name": "mandateConstraints"
             }
           }
         },
         {
-          "name": "allowed_assets",
+          "name": "allowedAssets",
           "type": {
             "vec": {
               "defined": {
-                "name": "AllowedAsset"
+                "name": "allowedAsset"
               }
             }
           }
@@ -94,7 +100,7 @@
       ]
     },
     {
-      "name": "initialize_portfolio",
+      "name": "initializePortfolio",
       "docs": [
         "Opens the portfolio governed by a mandate.",
         "",
@@ -151,14 +157,14 @@
           ]
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
     },
     {
-      "name": "propose_rebalance",
+      "name": "proposeRebalance",
       "docs": [
         "The agent asks to move the portfolio to a new allocation.",
         "",
@@ -226,7 +232,7 @@
           "type": {
             "vec": {
               "defined": {
-                "name": "ProposedPosition"
+                "name": "proposedPosition"
               }
             }
           }
@@ -234,7 +240,7 @@
       ]
     },
     {
-      "name": "set_mandate_status",
+      "name": "setMandateStatus",
       "docs": [
         "Owner suspends or resumes the agent, or closes the mandate permanently.",
         "",
@@ -270,7 +276,7 @@
           "name": "status",
           "type": {
             "defined": {
-              "name": "MandateStatus"
+              "name": "mandateStatus"
             }
           }
         }
@@ -279,7 +285,7 @@
   ],
   "accounts": [
     {
-      "name": "Mandate",
+      "name": "mandate",
       "discriminator": [
         113,
         216,
@@ -292,7 +298,7 @@
       ]
     },
     {
-      "name": "Portfolio",
+      "name": "portfolio",
       "discriminator": [
         94,
         158,
@@ -307,7 +313,7 @@
   ],
   "events": [
     {
-      "name": "RebalanceExecuted",
+      "name": "rebalanceExecuted",
       "discriminator": [
         194,
         41,
@@ -323,78 +329,78 @@
   "errors": [
     {
       "code": 6000,
-      "name": "MandateNotActive",
+      "name": "mandateNotActive",
       "msg": "Mandate is not active, so it cannot accept proposals"
     },
     {
       "code": 6001,
-      "name": "UnauthorizedAgent",
+      "name": "unauthorizedAgent",
       "msg": "Signer is not the agent delegated by this mandate"
     },
     {
       "code": 6002,
-      "name": "UnauthorizedOwner",
+      "name": "unauthorizedOwner",
       "msg": "Signer is not the owner of this mandate"
     },
     {
       "code": 6003,
-      "name": "TooManyAssets",
+      "name": "tooManyAssets",
       "msg": "Proposal references more assets than the mandate permits"
     },
     {
       "code": 6004,
-      "name": "AssetNotAllowed",
+      "name": "assetNotAllowed",
       "msg": "Proposal references an asset outside the mandate's permitted universe"
     },
     {
       "code": 6005,
-      "name": "DuplicateAsset",
+      "name": "duplicateAsset",
       "msg": "Proposal references the same asset more than once"
     },
     {
       "code": 6006,
-      "name": "PositionExceedsMaxSize",
+      "name": "positionExceedsMaxSize",
       "msg": "A single position exceeds the mandate's maximum position size"
     },
     {
       "code": 6007,
-      "name": "InsufficientCashReserve",
+      "name": "insufficientCashReserve",
       "msg": "Proposal leaves less cash than the mandate's minimum reserve"
     },
     {
       "code": 6008,
-      "name": "AllocationMustSumToFull",
+      "name": "allocationMustSumToFull",
       "msg": "Allocations and cash must sum to exactly 10000 basis points"
     },
     {
       "code": 6009,
-      "name": "TurnoverExceeded",
+      "name": "turnoverExceeded",
       "msg": "Proposal turnover exceeds the mandate's per rebalance limit"
     },
     {
       "code": 6010,
-      "name": "InvalidBasisPoints",
+      "name": "invalidBasisPoints",
       "msg": "A basis point value exceeds 10000"
     },
     {
       "code": 6011,
-      "name": "ContradictoryConstraints",
+      "name": "contradictoryConstraints",
       "msg": "Mandate constraints are internally contradictory and can never be satisfied"
     },
     {
       "code": 6012,
-      "name": "ArithmeticOverflow",
+      "name": "arithmeticOverflow",
       "msg": "Arithmetic overflow while evaluating the proposal"
     },
     {
       "code": 6013,
-      "name": "EmptyAssetUniverse",
+      "name": "emptyAssetUniverse",
       "msg": "The mandate's permitted asset universe is empty"
     }
   ],
   "types": [
     {
-      "name": "AllowedAsset",
+      "name": "allowedAsset",
       "docs": [
         "One asset the mandate permits the agent to hold.",
         "",
@@ -412,7 +418,7 @@
             "type": "pubkey"
           },
           {
-            "name": "feed_id",
+            "name": "feedId",
             "type": {
               "array": [
                 "u8",
@@ -424,7 +430,7 @@
       }
     },
     {
-      "name": "Mandate",
+      "name": "mandate",
       "docs": [
         "The constitution.",
         "",
@@ -438,7 +444,7 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "mandate_id",
+            "name": "mandateId",
             "docs": [
               "Caller supplied discriminator, part of this account's PDA seeds.",
               "",
@@ -470,19 +476,19 @@
             ],
             "type": {
               "defined": {
-                "name": "MandateConstraints"
+                "name": "mandateConstraints"
               }
             }
           },
           {
-            "name": "allowed_assets",
+            "name": "allowedAssets",
             "docs": [
               "Universe of assets the agent may hold."
             ],
             "type": {
               "vec": {
                 "defined": {
-                  "name": "AllowedAsset"
+                  "name": "allowedAsset"
                 }
               }
             }
@@ -491,7 +497,7 @@
             "name": "status",
             "type": {
               "defined": {
-                "name": "MandateStatus"
+                "name": "mandateStatus"
               }
             }
           },
@@ -507,22 +513,22 @@
             "type": "u8"
           },
           {
-            "name": "created_at",
+            "name": "createdAt",
             "type": "i64"
           },
           {
-            "name": "rebalance_count",
+            "name": "rebalanceCount",
             "type": "u64"
           },
           {
-            "name": "last_rebalance_at",
+            "name": "lastRebalanceAt",
             "type": "i64"
           }
         ]
       }
     },
     {
-      "name": "MandateConstraints",
+      "name": "mandateConstraints",
       "docs": [
         "The numeric limits a proposal is checked against.",
         "",
@@ -533,28 +539,28 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "max_position_bps",
+            "name": "maxPositionBps",
             "docs": [
               "Largest share any single position may occupy."
             ],
             "type": "u16"
           },
           {
-            "name": "min_cash_bps",
+            "name": "minCashBps",
             "docs": [
               "Smallest share that must remain in cash."
             ],
             "type": "u16"
           },
           {
-            "name": "max_turnover_bps",
+            "name": "maxTurnoverBps",
             "docs": [
               "Largest share of the portfolio that may change hands in one rebalance."
             ],
             "type": "u16"
           },
           {
-            "name": "max_assets",
+            "name": "maxAssets",
             "docs": [
               "Largest number of simultaneous positions."
             ],
@@ -564,7 +570,7 @@
       }
     },
     {
-      "name": "MandateStatus",
+      "name": "mandateStatus",
       "docs": [
         "Lifecycle of a mandate."
       ],
@@ -572,19 +578,19 @@
         "kind": "enum",
         "variants": [
           {
-            "name": "Active"
+            "name": "active"
           },
           {
-            "name": "Paused"
+            "name": "paused"
           },
           {
-            "name": "Closed"
+            "name": "closed"
           }
         ]
       }
     },
     {
-      "name": "Portfolio",
+      "name": "portfolio",
       "docs": [
         "The live allocation operating under a mandate."
       ],
@@ -607,13 +613,13 @@
             "type": {
               "vec": {
                 "defined": {
-                  "name": "Position"
+                  "name": "position"
                 }
               }
             }
           },
           {
-            "name": "cash_bps",
+            "name": "cashBps",
             "docs": [
               "Share currently held in cash. Positions plus cash always total 10000 bps."
             ],
@@ -624,18 +630,18 @@
             "type": "u8"
           },
           {
-            "name": "created_at",
+            "name": "createdAt",
             "type": "i64"
           },
           {
-            "name": "updated_at",
+            "name": "updatedAt",
             "type": "i64"
           }
         ]
       }
     },
     {
-      "name": "Position",
+      "name": "position",
       "docs": [
         "A single holding, expressed as a target share of the portfolio.",
         "",
@@ -651,14 +657,14 @@
             "type": "pubkey"
           },
           {
-            "name": "target_bps",
+            "name": "targetBps",
             "type": "u16"
           }
         ]
       }
     },
     {
-      "name": "ProposedPosition",
+      "name": "proposedPosition",
       "docs": [
         "A target weight the agent is asking for."
       ],
@@ -670,14 +676,14 @@
             "type": "pubkey"
           },
           {
-            "name": "target_bps",
+            "name": "targetBps",
             "type": "u16"
           }
         ]
       }
     },
     {
-      "name": "RebalanceExecuted",
+      "name": "rebalanceExecuted",
       "docs": [
         "Emitted on every accepted rebalance.",
         "",
@@ -701,15 +707,15 @@
             "type": "pubkey"
           },
           {
-            "name": "turnover_bps",
+            "name": "turnoverBps",
             "type": "u16"
           },
           {
-            "name": "cash_bps",
+            "name": "cashBps",
             "type": "u16"
           },
           {
-            "name": "position_count",
+            "name": "positionCount",
             "type": "u8"
           },
           {
@@ -724,4 +730,4 @@
       }
     }
   ]
-}
+};

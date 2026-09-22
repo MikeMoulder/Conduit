@@ -2,7 +2,7 @@ import { BN } from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 
 import { getAssetBySymbol } from "./assets";
-import idl from "./idl/stockpilot.json";
+import idl from "./idl/conduit.json";
 
 /**
  * Addresses, encodings and error names for the CONDUIT program.

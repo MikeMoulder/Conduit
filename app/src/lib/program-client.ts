@@ -1,8 +1,8 @@
 import { Program } from "@coral-xyz/anchor";
 import { Connection } from "@solana/web3.js";
 
-import idl from "./idl/stockpilot.json";
-import type { Stockpilot } from "./idl/stockpilot";
+import idl from "./idl/conduit.json";
+import type { Conduit } from "./idl/conduit";
 
 /**
  * A program client held only for its coders.
@@ -27,6 +27,6 @@ import type { Stockpilot } from "./idl/stockpilot";
  * the bytes, and constructing a `Connection` opens no socket. Callers that need
  * to talk to a cluster pass their own.
  */
-export const codecProgram = new Program<Stockpilot>(idl as Stockpilot, {
+export const codecProgram = new Program<Conduit>(idl as Conduit, {
   connection: new Connection("http://localhost"),
 });

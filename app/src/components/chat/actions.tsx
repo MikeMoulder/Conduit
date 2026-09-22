@@ -7,7 +7,7 @@ import { PublicKey, Transaction } from "@solana/web3.js";
 import { bpsToPercent, extractProgramError } from "@/lib/chain";
 import { confirmSignature } from "@/lib/confirm";
 import { createMandateInstructions, setStatusInstruction } from "@/lib/mandate-tx";
-import { useStockpilotProgram } from "@/hooks/use-program";
+import { useConduitProgram } from "@/hooks/use-conduit-program";
 import type { Card, PendingAction } from "@/lib/copilot/events";
 import { CardView } from "./cards";
 
@@ -43,7 +43,7 @@ export function ActionCard({
   const [phase, setPhase] = useState<Phase>({ state: "idle" });
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
-  const program = useStockpilotProgram();
+  const program = useConduitProgram();
 
   if (phase.state === "dismissed") return null;
   if (phase.state === "done") return <CardView card={phase.card} />;

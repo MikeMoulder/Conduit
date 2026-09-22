@@ -7,7 +7,7 @@ use anchor_lang::prelude::*;
 /// breached, and a single generic "invalid allocation" error would make the
 /// enforcement look arbitrary rather than principled.
 #[error_code]
-pub enum StockpilotError {
+pub enum ConduitError {
     #[msg("Mandate is not active, so it cannot accept proposals")]
     MandateNotActive,
 

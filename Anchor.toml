@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-stockpilot = "6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu"
+conduit = "6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu"
 
 [programs.localnet]
-stockpilot = "6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu"
+conduit = "6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu"
 
 [registry]
 url = "https://api.apr.dev"

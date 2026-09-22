@@ -24,7 +24,7 @@ import { BN, Program } from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { assert } from "chai";
 
-import type { Stockpilot } from "../target/types/stockpilot";
+import type { Conduit } from "../target/types/conduit";
 import {
   extractProgramError,
   mandatePda as chainMandatePda,
@@ -46,12 +46,12 @@ anchor.setProvider(provider);
 
 const idl = JSON.parse(
   fs.readFileSync(
-    path.resolve(process.cwd(), "target", "idl", "stockpilot.json"),
+    path.resolve(process.cwd(), "target", "idl", "conduit.json"),
     "utf8",
   ),
-) as Stockpilot;
+) as Conduit;
 
-const program = new Program<Stockpilot>(idl, provider);
+const program = new Program<Conduit>(idl, provider);
 const owner = provider.wallet;
 const connection = provider.connection;
 

@@ -1,12 +1,12 @@
 [package]
-name = "stockpilot"
+name = "conduit"
 version = "0.1.0"
 description = "On chain investment mandate enforcement for tokenized equity portfolios"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "stockpilot"
+name = "conduit"
 
 [features]
 default = []

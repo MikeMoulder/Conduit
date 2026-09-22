@@ -2,7 +2,7 @@
  * Integration tests for the CONDUIT constitution, run against the deployed
  * program on devnet.
  *
- * The unit tests in `programs/stockpilot/src/policy.rs` already prove the policy
+ * The unit tests in `programs/conduit/src/policy.rs` already prove the policy
  * arithmetic. These tests exist to prove something the unit tests cannot: that
  * the enforcement is real on chain. Every rejection below is a transaction that
  * the cluster refuses, not a client side guard that a determined caller could
@@ -19,7 +19,7 @@ import { BN, Program } from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { assert } from "chai";
 
-import type { Stockpilot } from "../target/types/stockpilot";
+import type { Conduit } from "../target/types/conduit";
 import {
   PROGRAM_ID,
   mandatePda as chainMandatePda,
@@ -42,12 +42,12 @@ anchor.setProvider(provider);
  */
 const idl = JSON.parse(
   fs.readFileSync(
-    path.resolve(process.cwd(), "target", "idl", "stockpilot.json"),
+    path.resolve(process.cwd(), "target", "idl", "conduit.json"),
     "utf8",
   ),
-) as Stockpilot;
+) as Conduit;
 
-const program = new Program<Stockpilot>(idl, provider);
+const program = new Program<Conduit>(idl, provider);
 const owner = provider.wallet;
 
 /** Basis points helper, so tests read in percent rather than raw integers. */

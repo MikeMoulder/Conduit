@@ -1,4 +1,4 @@
-//! STOCKPILOT: on chain enforcement of an investment mandate.
+//! CONDUIT: on chain enforcement of an investment mandate.
 //!
 //! The premise of this program is that an autonomous agent managing someone's
 //! money should not be trusted, and does not need to be. The owner writes their
@@ -19,14 +19,14 @@ pub mod policy;
 pub mod state;
 
 use constants::{MANDATE_SEED, MAX_ASSETS, PORTFOLIO_SEED};
-use errors::StockpilotError;
+use errors::ConduitError;
 use policy::{evaluate_proposal, ProposedPosition};
 use state::{AllowedAsset, Mandate, MandateConstraints, MandateStatus, Portfolio, Position};
 
 declare_id!("6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu");
 
 #[program]
-pub mod stockpilot {
+pub mod conduit {
     use super::*;
 
     /// Creates a mandate: the constitution a portfolio will operate under.
@@ -42,11 +42,11 @@ pub mod stockpilot {
     ) -> Result<()> {
         require!(
             !allowed_assets.is_empty(),
-            StockpilotError::EmptyAssetUniverse
+            ConduitError::EmptyAssetUniverse
         );
         require!(
             allowed_assets.len() <= MAX_ASSETS,
-            StockpilotError::TooManyAssets
+            ConduitError::TooManyAssets
         );
 
         // A universe containing the same mint twice would let a proposal satisfy
@@ -55,7 +55,7 @@ pub mod stockpilot {
         for (i, asset) in allowed_assets.iter().enumerate() {
             require!(
                 !allowed_assets[..i].iter().any(|a| a.mint == asset.mint),
-                StockpilotError::DuplicateAsset
+                ConduitError::DuplicateAsset
             );
         }
 
@@ -112,7 +112,7 @@ pub mod stockpilot {
 
         require!(
             mandate.status == MandateStatus::Active,
-            StockpilotError::MandateNotActive
+            ConduitError::MandateNotActive
         );
 
         let report = evaluate_proposal(
@@ -137,7 +137,7 @@ pub mod stockpilot {
         mandate.rebalance_count = mandate
             .rebalance_count
             .checked_add(1)
-            .ok_or(StockpilotError::ArithmeticOverflow)?;
+            .ok_or(ConduitError::ArithmeticOverflow)?;
         mandate.last_rebalance_at = now;
 
         emit!(RebalanceExecuted {
@@ -164,7 +164,7 @@ pub mod stockpilot {
 
         require!(
             mandate.status != MandateStatus::Closed,
-            StockpilotError::MandateNotActive
+            ConduitError::MandateNotActive
         );
 
         mandate.status = status;
@@ -210,7 +210,7 @@ pub struct InitializeMandate<'info> {
 #[derive(Accounts)]
 pub struct InitializePortfolio<'info> {
     #[account(
-        has_one = owner @ StockpilotError::UnauthorizedOwner,
+        has_one = owner @ ConduitError::UnauthorizedOwner,
     )]
     pub mandate: Account<'info, Mandate>,
 
@@ -235,7 +235,7 @@ pub struct ProposeRebalance<'info> {
     /// agent named in the mandate is refused before the proposal is even read.
     #[account(
         mut,
-        has_one = agent @ StockpilotError::UnauthorizedAgent,
+        has_one = agent @ ConduitError::UnauthorizedAgent,
     )]
     pub mandate: Account<'info, Mandate>,
 
@@ -253,7 +253,7 @@ pub struct ProposeRebalance<'info> {
 pub struct SetMandateStatus<'info> {
     #[account(
         mut,
-        has_one = owner @ StockpilotError::UnauthorizedOwner,
+        has_one = owner @ ConduitError::UnauthorizedOwner,
     )]
     pub mandate: Account<'info, Mandate>,
 

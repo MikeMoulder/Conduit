@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::constants::{BPS_DENOMINATOR, MAX_ASSETS};
-use crate::errors::StockpilotError;
+use crate::errors::ConduitError;
 
 /// Lifecycle of a mandate.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, InitSpace)]
@@ -54,15 +54,15 @@ impl MandateConstraints {
             self.max_position_bps <= BPS_DENOMINATOR
                 && self.min_cash_bps <= BPS_DENOMINATOR
                 && self.max_turnover_bps <= BPS_DENOMINATOR,
-            StockpilotError::InvalidBasisPoints
+            ConduitError::InvalidBasisPoints
         );
 
         require!(
             self.max_assets as usize <= MAX_ASSETS && self.max_assets > 0,
-            StockpilotError::TooManyAssets
+            ConduitError::TooManyAssets
         );
 
-        require!(self.max_position_bps > 0, StockpilotError::ContradictoryConstraints);
+        require!(self.max_position_bps > 0, ConduitError::ContradictoryConstraints);
 
         // Coherence check. The most the agent may ever deploy is
         // max_assets * max_position_bps. Add the cash the agent must always hold
@@ -71,15 +71,15 @@ impl MandateConstraints {
         // almost always means they mis-stated one of the limits.
         let max_deployable = (self.max_assets as u32)
             .checked_mul(self.max_position_bps as u32)
-            .ok_or(StockpilotError::ArithmeticOverflow)?;
+            .ok_or(ConduitError::ArithmeticOverflow)?;
 
         let reachable = max_deployable
             .checked_add(self.min_cash_bps as u32)
-            .ok_or(StockpilotError::ArithmeticOverflow)?;
+            .ok_or(ConduitError::ArithmeticOverflow)?;
 
         require!(
             reachable >= BPS_DENOMINATOR as u32,
-            StockpilotError::ContradictoryConstraints
+            ConduitError::ContradictoryConstraints
         );
 
         Ok(())

@@ -6,7 +6,7 @@ import {
 } from "@solana/web3.js";
 
 import { mandatePda, portfolioPda } from "./chain";
-import type { Stockpilot } from "./idl/stockpilot";
+import type { Conduit } from "./idl/conduit";
 import { toAllowedAssets } from "./mandate";
 
 /**
@@ -38,7 +38,7 @@ export interface MandateDraftInput {
  * refused second prompt strands the first.
  */
 export async function createMandateInstructions(
-  program: Program<Stockpilot>,
+  program: Program<Conduit>,
   owner: PublicKey,
   draft: MandateDraftInput,
 ): Promise<{
@@ -96,7 +96,7 @@ function statusArg(status: StatusName) {
 }
 
 export async function setStatusInstruction(
-  program: Program<Stockpilot>,
+  program: Program<Conduit>,
   owner: PublicKey,
   mandate: PublicKey,
   status: StatusName,

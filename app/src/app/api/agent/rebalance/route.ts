@@ -6,8 +6,8 @@ import { fetchMandate, fetchPortfolio } from "@/lib/accounts";
 import { getAgentKeypair, getAgentIdentity } from "@/lib/agent-identity";
 import { extractProgramError, portfolioPda } from "@/lib/chain";
 import { confirmSignature } from "@/lib/confirm";
-import idl from "@/lib/idl/stockpilot.json";
-import type { Stockpilot } from "@/lib/idl/stockpilot";
+import idl from "@/lib/idl/conduit.json";
+import type { Conduit } from "@/lib/idl/conduit";
 import { evaluateProposal } from "@/lib/proposal";
 import { getConnection } from "@/lib/rpc";
 
@@ -80,7 +80,7 @@ const requestSchema = z.object({
  * everywhere else and produces byte identical output, which an integration test
  * asserts.
  */
-const program = new Program<Stockpilot>(idl as Stockpilot, {
+const program = new Program<Conduit>(idl as Conduit, {
   connection: getConnection(),
 });
 

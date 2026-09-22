@@ -24,7 +24,7 @@ import {
   type MandateConstraintsInput,
   type Violation,
 } from "@/lib/mandate";
-import { useStockpilotProgram } from "@/hooks/use-program";
+import { useConduitProgram } from "@/hooks/use-conduit-program";
 
 /**
  * Authoring a mandate.
@@ -95,7 +95,7 @@ export function MandateForm() {
   const assets = useMemo(() => listAssets(), []);
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
-  const program = useStockpilotProgram();
+  const program = useConduitProgram();
 
   const [objective, setObjective] = useState("");
   const [mandateId, setMandateId] = useState(0);

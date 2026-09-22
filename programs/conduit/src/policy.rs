@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::constants::BPS_DENOMINATOR;
-use crate::errors::StockpilotError;
+use crate::errors::ConduitError;
 use crate::state::{AllowedAsset, MandateConstraints, Position};
 
 /// A target weight the agent is asking for.
@@ -40,11 +40,11 @@ pub fn evaluate_proposal(
     current: &[Position],
     proposed: &[ProposedPosition],
 ) -> Result<ProposalReport> {
-    require!(!allowed.is_empty(), StockpilotError::EmptyAssetUniverse);
+    require!(!allowed.is_empty(), ConduitError::EmptyAssetUniverse);
 
     require!(
         proposed.len() <= constraints.max_assets as usize,
-        StockpilotError::TooManyAssets
+        ConduitError::TooManyAssets
     );
 
     let mut allocated_bps: u32 = 0;
@@ -52,39 +52,39 @@ pub fn evaluate_proposal(
     for (i, position) in proposed.iter().enumerate() {
         require!(
             position.target_bps <= BPS_DENOMINATOR,
-            StockpilotError::InvalidBasisPoints
+            ConduitError::InvalidBasisPoints
         );
 
         // A zero weight is not an error, but it must not consume one of the
         // mandate's position slots, so it is rejected as malformed rather than
         // silently accepted and stored.
-        require!(position.target_bps > 0, StockpilotError::InvalidBasisPoints);
+        require!(position.target_bps > 0, ConduitError::InvalidBasisPoints);
 
         require!(
             position.target_bps <= constraints.max_position_bps,
-            StockpilotError::PositionExceedsMaxSize
+            ConduitError::PositionExceedsMaxSize
         );
 
         require!(
             allowed.iter().any(|a| a.mint == position.mint),
-            StockpilotError::AssetNotAllowed
+            ConduitError::AssetNotAllowed
         );
 
         // Quadratic, but bounded by MAX_ASSETS which is 8, so at most 28
         // comparisons. A hash set would allocate, which is worse here.
         require!(
             !proposed[..i].iter().any(|p| p.mint == position.mint),
-            StockpilotError::DuplicateAsset
+            ConduitError::DuplicateAsset
         );
 
         allocated_bps = allocated_bps
             .checked_add(position.target_bps as u32)
-            .ok_or(StockpilotError::ArithmeticOverflow)?;
+            .ok_or(ConduitError::ArithmeticOverflow)?;
     }
 
     require!(
         allocated_bps <= BPS_DENOMINATOR as u32,
-        StockpilotError::AllocationMustSumToFull
+        ConduitError::AllocationMustSumToFull
     );
 
     // Cash is the residual, never supplied by the agent. Deriving it removes a
@@ -93,14 +93,14 @@ pub fn evaluate_proposal(
 
     require!(
         cash_bps >= constraints.min_cash_bps,
-        StockpilotError::InsufficientCashReserve
+        ConduitError::InsufficientCashReserve
     );
 
     let turnover_bps = compute_turnover_bps(current, proposed, cash_bps)?;
 
     require!(
         turnover_bps <= constraints.max_turnover_bps,
-        StockpilotError::TurnoverExceeded
+        ConduitError::TurnoverExceeded
     );
 
     Ok(ProposalReport {
@@ -133,7 +133,7 @@ fn compute_turnover_bps(
 
         total_delta = total_delta
             .checked_add(position.target_bps.abs_diff(previous) as u32)
-            .ok_or(StockpilotError::ArithmeticOverflow)?;
+            .ok_or(ConduitError::ArithmeticOverflow)?;
     }
 
     // Positions being exited entirely do not appear in the proposal, so they are
@@ -142,7 +142,7 @@ fn compute_turnover_bps(
         if !proposed.iter().any(|p| p.mint == position.mint) {
             total_delta = total_delta
                 .checked_add(position.target_bps as u32)
-                .ok_or(StockpilotError::ArithmeticOverflow)?;
+                .ok_or(ConduitError::ArithmeticOverflow)?;
         }
     }
 
@@ -151,7 +151,7 @@ fn compute_turnover_bps(
 
     total_delta = total_delta
         .checked_add(proposed_cash_bps.abs_diff(current_cash) as u32)
-        .ok_or(StockpilotError::ArithmeticOverflow)?;
+        .ok_or(ConduitError::ArithmeticOverflow)?;
 
     Ok((total_delta / 2) as u16)
 }
@@ -170,7 +170,7 @@ mod tests {
         }
     }
 
-    fn expect_err<T: std::fmt::Debug>(res: Result<T>, expected: StockpilotError) {
+    fn expect_err<T: std::fmt::Debug>(res: Result<T>, expected: ConduitError) {
         let expected_code = expected as u32 + anchor_lang::error::ERROR_CODE_OFFSET;
         match res {
             Err(e) => assert_eq!(
@@ -261,7 +261,7 @@ mod tests {
         let a = Pubkey::new_unique();
         expect_err(
             evaluate_proposal(&constraints(), &universe(&[a]), &[], &want(&[(a, 2_501)])),
-            StockpilotError::PositionExceedsMaxSize,
+            ConduitError::PositionExceedsMaxSize,
         );
     }
 
@@ -281,7 +281,7 @@ mod tests {
         let a = Pubkey::new_unique();
         expect_err(
             evaluate_proposal(&c, &universe(&[a]), &[], &want(&[(a, 8_100)])),
-            StockpilotError::InsufficientCashReserve,
+            ConduitError::InsufficientCashReserve,
         );
     }
 
@@ -291,7 +291,7 @@ mod tests {
         let proposal: Vec<(Pubkey, u16)> = m.iter().map(|k| (*k, 1_000)).collect();
         expect_err(
             evaluate_proposal(&constraints(), &universe(&m), &[], &want(&proposal)),
-            StockpilotError::TooManyAssets,
+            ConduitError::TooManyAssets,
         );
     }
 
@@ -305,7 +305,7 @@ mod tests {
                 &[],
                 &want(&[(intruder, 1_000)]),
             ),
-            StockpilotError::AssetNotAllowed,
+            ConduitError::AssetNotAllowed,
         );
     }
 
@@ -319,7 +319,7 @@ mod tests {
                 &[],
                 &want(&[(a, 1_000), (a, 1_000)]),
             ),
-            StockpilotError::DuplicateAsset,
+            ConduitError::DuplicateAsset,
         );
     }
 
@@ -333,7 +333,7 @@ mod tests {
                 &[],
                 &want(&[(a, 6_000), (b, 5_000)]),
             ),
-            StockpilotError::AllocationMustSumToFull,
+            ConduitError::AllocationMustSumToFull,
         );
     }
 
@@ -342,7 +342,7 @@ mod tests {
         let a = Pubkey::new_unique();
         expect_err(
             evaluate_proposal(&constraints(), &universe(&[a]), &[], &want(&[(a, 0)])),
-            StockpilotError::InvalidBasisPoints,
+            ConduitError::InvalidBasisPoints,
         );
     }
 
@@ -350,7 +350,7 @@ mod tests {
     fn rejects_an_empty_asset_universe() {
         expect_err(
             evaluate_proposal(&constraints(), &[], &[], &[]),
-            StockpilotError::EmptyAssetUniverse,
+            ConduitError::EmptyAssetUniverse,
         );
     }
 
@@ -410,7 +410,7 @@ mod tests {
                 &held(&[(a, 8_000)]),
                 &want(&[(a, 2_000)]),
             ),
-            StockpilotError::TurnoverExceeded,
+            ConduitError::TurnoverExceeded,
         );
     }
 
@@ -427,20 +427,20 @@ mod tests {
         // them later.
         let mut c = permissive(10_000);
         c.max_position_bps = 1_000;
-        expect_err(c.validate(), StockpilotError::ContradictoryConstraints);
+        expect_err(c.validate(), ConduitError::ContradictoryConstraints);
     }
 
     #[test]
     fn rejects_constraints_with_out_of_range_basis_points() {
         let mut c = constraints();
         c.min_cash_bps = 10_001;
-        expect_err(c.validate(), StockpilotError::InvalidBasisPoints);
+        expect_err(c.validate(), ConduitError::InvalidBasisPoints);
     }
 
     #[test]
     fn rejects_constraints_allowing_more_assets_than_account_capacity() {
         let mut c = constraints();
         c.max_assets = 9;
-        expect_err(c.validate(), StockpilotError::TooManyAssets);
+        expect_err(c.validate(), ConduitError::TooManyAssets);
     }
 }

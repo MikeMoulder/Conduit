@@ -1,20 +1,14 @@
-/**
- * Program IDL in camelCase format in order to be used in JS/TS.
- *
- * Note that this is only a type helper and is not the actual IDL. The original
- * IDL can be found at `target/idl/stockpilot.json`.
- */
-export type Stockpilot = {
+{
   "address": "6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu",
   "metadata": {
-    "name": "stockpilot",
+    "name": "conduit",
     "version": "0.1.0",
     "spec": "0.1.0",
     "description": "On chain investment mandate enforcement for tokenized equity portfolios"
   },
   "instructions": [
     {
-      "name": "initializeMandate",
+      "name": "initialize_mandate",
       "docs": [
         "Creates a mandate: the constitution a portfolio will operate under.",
         "",
@@ -55,7 +49,7 @@ export type Stockpilot = {
               },
               {
                 "kind": "arg",
-                "path": "mandateId"
+                "path": "mandate_id"
               }
             ]
           }
@@ -66,29 +60,29 @@ export type Stockpilot = {
           "signer": true
         },
         {
-          "name": "systemProgram",
+          "name": "system_program",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "mandateId",
+          "name": "mandate_id",
           "type": "u64"
         },
         {
           "name": "constraints",
           "type": {
             "defined": {
-              "name": "mandateConstraints"
+              "name": "MandateConstraints"
             }
           }
         },
         {
-          "name": "allowedAssets",
+          "name": "allowed_assets",
           "type": {
             "vec": {
               "defined": {
-                "name": "allowedAsset"
+                "name": "AllowedAsset"
               }
             }
           }
@@ -100,7 +94,7 @@ export type Stockpilot = {
       ]
     },
     {
-      "name": "initializePortfolio",
+      "name": "initialize_portfolio",
       "docs": [
         "Opens the portfolio governed by a mandate.",
         "",
@@ -157,14 +151,14 @@ export type Stockpilot = {
           ]
         },
         {
-          "name": "systemProgram",
+          "name": "system_program",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
     },
     {
-      "name": "proposeRebalance",
+      "name": "propose_rebalance",
       "docs": [
         "The agent asks to move the portfolio to a new allocation.",
         "",
@@ -232,7 +226,7 @@ export type Stockpilot = {
           "type": {
             "vec": {
               "defined": {
-                "name": "proposedPosition"
+                "name": "ProposedPosition"
               }
             }
           }
@@ -240,7 +234,7 @@ export type Stockpilot = {
       ]
     },
     {
-      "name": "setMandateStatus",
+      "name": "set_mandate_status",
       "docs": [
         "Owner suspends or resumes the agent, or closes the mandate permanently.",
         "",
@@ -276,7 +270,7 @@ export type Stockpilot = {
           "name": "status",
           "type": {
             "defined": {
-              "name": "mandateStatus"
+              "name": "MandateStatus"
             }
           }
         }
@@ -285,7 +279,7 @@ export type Stockpilot = {
   ],
   "accounts": [
     {
-      "name": "mandate",
+      "name": "Mandate",
       "discriminator": [
         113,
         216,
@@ -298,7 +292,7 @@ export type Stockpilot = {
       ]
     },
     {
-      "name": "portfolio",
+      "name": "Portfolio",
       "discriminator": [
         94,
         158,
@@ -313,7 +307,7 @@ export type Stockpilot = {
   ],
   "events": [
     {
-      "name": "rebalanceExecuted",
+      "name": "RebalanceExecuted",
       "discriminator": [
         194,
         41,
@@ -329,78 +323,78 @@ export type Stockpilot = {
   "errors": [
     {
       "code": 6000,
-      "name": "mandateNotActive",
+      "name": "MandateNotActive",
       "msg": "Mandate is not active, so it cannot accept proposals"
     },
     {
       "code": 6001,
-      "name": "unauthorizedAgent",
+      "name": "UnauthorizedAgent",
       "msg": "Signer is not the agent delegated by this mandate"
     },
     {
       "code": 6002,
-      "name": "unauthorizedOwner",
+      "name": "UnauthorizedOwner",
       "msg": "Signer is not the owner of this mandate"
     },
     {
       "code": 6003,
-      "name": "tooManyAssets",
+      "name": "TooManyAssets",
       "msg": "Proposal references more assets than the mandate permits"
     },
     {
       "code": 6004,
-      "name": "assetNotAllowed",
+      "name": "AssetNotAllowed",
       "msg": "Proposal references an asset outside the mandate's permitted universe"
     },
     {
       "code": 6005,
-      "name": "duplicateAsset",
+      "name": "DuplicateAsset",
       "msg": "Proposal references the same asset more than once"
     },
     {
       "code": 6006,
-      "name": "positionExceedsMaxSize",
+      "name": "PositionExceedsMaxSize",
       "msg": "A single position exceeds the mandate's maximum position size"
     },
     {
       "code": 6007,
-      "name": "insufficientCashReserve",
+      "name": "InsufficientCashReserve",
       "msg": "Proposal leaves less cash than the mandate's minimum reserve"
     },
     {
       "code": 6008,
-      "name": "allocationMustSumToFull",
+      "name": "AllocationMustSumToFull",
       "msg": "Allocations and cash must sum to exactly 10000 basis points"
     },
     {
       "code": 6009,
-      "name": "turnoverExceeded",
+      "name": "TurnoverExceeded",
       "msg": "Proposal turnover exceeds the mandate's per rebalance limit"
     },
     {
       "code": 6010,
-      "name": "invalidBasisPoints",
+      "name": "InvalidBasisPoints",
       "msg": "A basis point value exceeds 10000"
     },
     {
       "code": 6011,
-      "name": "contradictoryConstraints",
+      "name": "ContradictoryConstraints",
       "msg": "Mandate constraints are internally contradictory and can never be satisfied"
     },
     {
       "code": 6012,
-      "name": "arithmeticOverflow",
+      "name": "ArithmeticOverflow",
       "msg": "Arithmetic overflow while evaluating the proposal"
     },
     {
       "code": 6013,
-      "name": "emptyAssetUniverse",
+      "name": "EmptyAssetUniverse",
       "msg": "The mandate's permitted asset universe is empty"
     }
   ],
   "types": [
     {
-      "name": "allowedAsset",
+      "name": "AllowedAsset",
       "docs": [
         "One asset the mandate permits the agent to hold.",
         "",
@@ -418,7 +412,7 @@ export type Stockpilot = {
             "type": "pubkey"
           },
           {
-            "name": "feedId",
+            "name": "feed_id",
             "type": {
               "array": [
                 "u8",
@@ -430,7 +424,7 @@ export type Stockpilot = {
       }
     },
     {
-      "name": "mandate",
+      "name": "Mandate",
       "docs": [
         "The constitution.",
         "",
@@ -444,7 +438,7 @@ export type Stockpilot = {
         "kind": "struct",
         "fields": [
           {
-            "name": "mandateId",
+            "name": "mandate_id",
             "docs": [
               "Caller supplied discriminator, part of this account's PDA seeds.",
               "",
@@ -476,19 +470,19 @@ export type Stockpilot = {
             ],
             "type": {
               "defined": {
-                "name": "mandateConstraints"
+                "name": "MandateConstraints"
               }
             }
           },
           {
-            "name": "allowedAssets",
+            "name": "allowed_assets",
             "docs": [
               "Universe of assets the agent may hold."
             ],
             "type": {
               "vec": {
                 "defined": {
-                  "name": "allowedAsset"
+                  "name": "AllowedAsset"
                 }
               }
             }
@@ -497,7 +491,7 @@ export type Stockpilot = {
             "name": "status",
             "type": {
               "defined": {
-                "name": "mandateStatus"
+                "name": "MandateStatus"
               }
             }
           },
@@ -513,22 +507,22 @@ export type Stockpilot = {
             "type": "u8"
           },
           {
-            "name": "createdAt",
+            "name": "created_at",
             "type": "i64"
           },
           {
-            "name": "rebalanceCount",
+            "name": "rebalance_count",
             "type": "u64"
           },
           {
-            "name": "lastRebalanceAt",
+            "name": "last_rebalance_at",
             "type": "i64"
           }
         ]
       }
     },
     {
-      "name": "mandateConstraints",
+      "name": "MandateConstraints",
       "docs": [
         "The numeric limits a proposal is checked against.",
         "",
@@ -539,28 +533,28 @@ export type Stockpilot = {
         "kind": "struct",
         "fields": [
           {
-            "name": "maxPositionBps",
+            "name": "max_position_bps",
             "docs": [
               "Largest share any single position may occupy."
             ],
             "type": "u16"
           },
           {
-            "name": "minCashBps",
+            "name": "min_cash_bps",
             "docs": [
               "Smallest share that must remain in cash."
             ],
             "type": "u16"
           },
           {
-            "name": "maxTurnoverBps",
+            "name": "max_turnover_bps",
             "docs": [
               "Largest share of the portfolio that may change hands in one rebalance."
             ],
             "type": "u16"
           },
           {
-            "name": "maxAssets",
+            "name": "max_assets",
             "docs": [
               "Largest number of simultaneous positions."
             ],
@@ -570,7 +564,7 @@ export type Stockpilot = {
       }
     },
     {
-      "name": "mandateStatus",
+      "name": "MandateStatus",
       "docs": [
         "Lifecycle of a mandate."
       ],
@@ -578,19 +572,19 @@ export type Stockpilot = {
         "kind": "enum",
         "variants": [
           {
-            "name": "active"
+            "name": "Active"
           },
           {
-            "name": "paused"
+            "name": "Paused"
           },
           {
-            "name": "closed"
+            "name": "Closed"
           }
         ]
       }
     },
     {
-      "name": "portfolio",
+      "name": "Portfolio",
       "docs": [
         "The live allocation operating under a mandate."
       ],
@@ -613,13 +607,13 @@ export type Stockpilot = {
             "type": {
               "vec": {
                 "defined": {
-                  "name": "position"
+                  "name": "Position"
                 }
               }
             }
           },
           {
-            "name": "cashBps",
+            "name": "cash_bps",
             "docs": [
               "Share currently held in cash. Positions plus cash always total 10000 bps."
             ],
@@ -630,18 +624,18 @@ export type Stockpilot = {
             "type": "u8"
           },
           {
-            "name": "createdAt",
+            "name": "created_at",
             "type": "i64"
           },
           {
-            "name": "updatedAt",
+            "name": "updated_at",
             "type": "i64"
           }
         ]
       }
     },
     {
-      "name": "position",
+      "name": "Position",
       "docs": [
         "A single holding, expressed as a target share of the portfolio.",
         "",
@@ -657,14 +651,14 @@ export type Stockpilot = {
             "type": "pubkey"
           },
           {
-            "name": "targetBps",
+            "name": "target_bps",
             "type": "u16"
           }
         ]
       }
     },
     {
-      "name": "proposedPosition",
+      "name": "ProposedPosition",
       "docs": [
         "A target weight the agent is asking for."
       ],
@@ -676,14 +670,14 @@ export type Stockpilot = {
             "type": "pubkey"
           },
           {
-            "name": "targetBps",
+            "name": "target_bps",
             "type": "u16"
           }
         ]
       }
     },
     {
-      "name": "rebalanceExecuted",
+      "name": "RebalanceExecuted",
       "docs": [
         "Emitted on every accepted rebalance.",
         "",
@@ -707,15 +701,15 @@ export type Stockpilot = {
             "type": "pubkey"
           },
           {
-            "name": "turnoverBps",
+            "name": "turnover_bps",
             "type": "u16"
           },
           {
-            "name": "cashBps",
+            "name": "cash_bps",
             "type": "u16"
           },
           {
-            "name": "positionCount",
+            "name": "position_count",
             "type": "u8"
           },
           {
@@ -730,4 +724,4 @@ export type Stockpilot = {
       }
     }
   ]
-};
+}
