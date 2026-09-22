@@ -7,6 +7,7 @@ import type { Step, Turn } from "@/lib/copilot/store";
 import { clearAction } from "@/lib/copilot/store";
 import { ActionCard } from "./actions";
 import { CardView } from "./cards";
+import { Markdown } from "./markdown";
 
 /**
  * The conversation.
@@ -85,16 +86,7 @@ function AssistantTurn({
         <CardView key={i} card={card} />
       ))}
 
-      {turn.text ? (
-        <div className="flex flex-col gap-2.5 text-[15px] leading-relaxed text-zinc-200">
-          {turn.text
-            .split(/\n{2,}/)
-            .filter((p) => p.trim())
-            .map((paragraph, i) => (
-              <p key={i}>{paragraph.trim()}</p>
-            ))}
-        </div>
-      ) : null}
+      {turn.text ? <Markdown text={turn.text} /> : null}
 
       {turn.actions.map((action, i) => (
         <ActionCard
