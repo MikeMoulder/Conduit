@@ -17,10 +17,11 @@ import type { MandateView } from "./accounts";
  * portfolio states what it targets, but a token account simply is what it is.
  *
  * Not every mandate can have holdings. Settlement needs a price the program can
- * verify on chain, which exists for the crypto sleeve on devnet and not for the
- * tokenized equities or the pre IPO names. A mandate permitting any of those is
- * policy only, and saying so plainly is better than implying custody that does
- * not exist.
+ * verify on chain, and there are two ways an asset gets one: a Pyth account,
+ * which covers the crypto sleeve, or a price this project publishes itself,
+ * which covers the equities Pyth will not serve without a commercial grant and
+ * the pre IPO names nobody prices at all. An asset with neither cannot settle,
+ * and a mandate containing one is policy only.
  */
 
 export interface DeskAsset {
@@ -30,6 +31,16 @@ export interface DeskAsset {
   feedId: string;
   priceAccount: string;
   deskTokenAccount: string;
+  /**
+   * Which of the two price sources the program reads this asset from.
+   *
+   * Not cosmetic. A Pyth price means many independent publishers observed a
+   * market and agreed. A published one means a single key asserted a number,
+   * and anyone relying on a settlement priced that way is trusting whoever
+   * holds it. The interface should be able to say which, so it is carried
+   * rather than inferred.
+   */
+  source: "pyth" | "published";
 }
 
 export interface DeskConfig {

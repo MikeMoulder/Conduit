@@ -9,7 +9,8 @@
     "test": "npm run build:ts && mocha",
     "assets:devnet": "npm run build:ts && node .test-build/scripts/create-devnet-assets.js",
     "desk": "npm run build:ts && node .test-build/scripts/setup-desk.js",
-    "demo:mandate": "npm run build:ts && node .test-build/scripts/demo-mandate.js"
+    "demo:mandate": "npm run build:ts && node .test-build/scripts/demo-mandate.js",
+    "publish:prices": "npm run build:ts && node .test-build/scripts/publish-prices.js"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",

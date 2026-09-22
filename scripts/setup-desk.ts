@@ -56,6 +56,10 @@ import {
 } from "@solana/spl-token";
 
 import type { Conduit } from "../app/src/lib/idl/conduit";
+import {
+  priceSourceFor,
+  publishedFeedIdHex,
+} from "../app/src/lib/published-feeds";
 
 const CASH_DECIMALS = 6;
 
@@ -93,6 +97,8 @@ interface DeskConfig {
     feedId: string;
     priceAccount: string;
     deskTokenAccount: string;
+    /** Which price source the program will read this asset from. */
+    source: "pyth" | "published";
   }[];
 }
 
@@ -126,16 +132,56 @@ async function main(): Promise<void> {
     assets: RegistryAsset[];
   };
 
-  // An asset with no live price account cannot be settled, because the program
-  // refuses to value anything it cannot verify.
-  const settleable = registry.assets.filter((a) => a.priceAccount && a.feeds);
+  /**
+   * Every asset the program can price, by whichever of the two routes applies.
+   *
+   * Crypto has a live Pyth account on devnet and uses it. Everything else is
+   * priced by this project's own publisher, because Pyth will not serve the
+   * equities without a commercial grant and nobody at all prices the pre IPO
+   * names. The account address is derived here rather than looked up: a
+   * published price lives at a PDA of its feed id, so it can be addressed
+   * before it has ever been written.
+   */
+  const [publisherPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("publisher")],
+    program.programId,
+  );
+
+  const settleable = registry.assets
+    .map((asset) => {
+      const source = priceSourceFor(asset.assetClass);
+
+      if (source === "pyth") {
+        // A recorded feed id is not the same as an available price, so an
+        // asset without a live account is skipped rather than assumed.
+        if (!asset.priceAccount || !asset.feeds) return null;
+        return {
+          asset,
+          source,
+          feedId: asset.feeds.primary,
+          priceAccount: asset.priceAccount,
+        };
+      }
+
+      const feedId = publishedFeedIdHex(asset.symbol);
+      const [priceAccount] = PublicKey.findProgramAddressSync(
+        [Buffer.from("price"), Buffer.from(feedId, "hex")],
+        program.programId,
+      );
+      return { asset, source, feedId, priceAccount: priceAccount.toBase58() };
+    })
+    .filter((e): e is NonNullable<typeof e> => e !== null);
 
   if (settleable.length === 0) {
-    console.error("No asset in the registry has a price account. Nothing can settle.");
+    console.error("No asset in the registry can be priced. Nothing can settle.");
     process.exit(1);
   }
 
-  console.log(`settleable assets: ${settleable.map((a) => a.symbol).join(", ")}`);
+  const byPyth = settleable.filter((e) => e.source === "pyth");
+  const byUs = settleable.filter((e) => e.source === "published");
+  console.log(`priced by pyth      ${byPyth.map((e) => e.asset.symbol).join(", ")}`);
+  console.log(`priced by publisher ${byUs.map((e) => e.asset.symbol).join(", ")}`);
+  console.log(`publisher account   ${publisherPda.toBase58()}`);
 
   const existing = force ? null : readConfig();
 
@@ -245,7 +291,8 @@ async function main(): Promise<void> {
   const deskCash = await stock(cashMint, CASH_DECIMALS, DESK_CASH_FLOAT, "desk cash");
 
   const stocked: DeskConfig["settleable"] = [];
-  for (const asset of settleable) {
+  for (const entry of settleable) {
+    const { asset } = entry;
     const ata = await stock(
       new PublicKey(asset.mint),
       asset.decimals,
@@ -256,9 +303,10 @@ async function main(): Promise<void> {
       symbol: asset.symbol,
       mint: asset.mint,
       decimals: asset.decimals,
-      feedId: asset.feeds!.primary,
-      priceAccount: asset.priceAccount!,
+      feedId: entry.feedId,
+      priceAccount: entry.priceAccount,
       deskTokenAccount: ata.toBase58(),
+      source: entry.source,
     });
   }
 
@@ -275,6 +323,9 @@ async function main(): Promise<void> {
   fs.writeFileSync(CONFIG, `${JSON.stringify(config, null, 2)}\n`);
   console.log(`\nwrote ${path.relative(process.cwd(), CONFIG)}`);
   console.log(`the desk can settle: ${stocked.map((s) => s.symbol).join(", ")}`);
+  console.log(
+    "a published price must be written before those assets will settle: npm run publish:prices",
+  );
 }
 
 main().catch((error) => {

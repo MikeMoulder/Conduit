@@ -14,7 +14,15 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+# anchor-spl's IDL pass names crate::token_interface unconditionally, which only
+# exists with the token_2022 feature. Enabling it here rather than in the
+# dependency keeps it out of the deployed binary: the IDL is produced by a
+# separate host side pass, so this costs nothing on chain.
+idl-build = [
+    "anchor-lang/idl-build",
+    "anchor-spl/idl-build",
+    "anchor-spl/token_2022",
+]
 
 [dependencies]
 # init-if-needed is required by publish_price, which writes to a per feed
