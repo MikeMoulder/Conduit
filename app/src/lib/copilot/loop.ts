@@ -1,0 +1,285 @@
+import "server-only";
+
+import { PublicKey } from "@solana/web3.js";
+
+import { GeminiError, generateWithTools, type GeminiContent } from "../gemini";
+import { MAX_ASSETS } from "../chain";
+import type { CopilotEvent } from "./events";
+import { TOOLS, TOOL_DECLARATIONS, ToolError, type ToolContext } from "./tools";
+
+/**
+ * The conversation loop.
+ *
+ * The model is asked what to do, its tool calls are run, the results go back,
+ * and it is asked again, until it stops calling tools or the budget runs out.
+ * Everything it does along the way is streamed out as it happens, because a
+ * twenty second silence is indistinguishable from a broken product.
+ *
+ * Two limits are deliberate.
+ *
+ * A turn budget, because a model that has misunderstood something can call the
+ * same tool forever, and doing that quietly against a paid API is worse than
+ * stopping with a partial answer.
+ *
+ * No tool here moves anything. The ones that write return a prepared action and
+ * the person approves it in the interface. That is not a policy layer wrapped
+ * around a capable agent, it is the shape of the system: the agent key signs
+ * rebalances, the owner signs everything else, and neither of those keys is
+ * reachable from this loop.
+ */
+
+/** How many times the model may call tools before it has to answer. */
+const MAX_TURNS = 6;
+
+/** How many tool calls in total, across all turns. */
+const MAX_TOOL_CALLS = 10;
+
+const SYSTEM = `You are STOCKPILOT, a portfolio copilot for tokenized equities on Solana.
+
+What this system is
+The owner writes a mandate into a Solana account: a cap on any single position,
+a floor on cash, a ceiling on turnover per rebalance, a maximum number of
+positions, and a fixed list of permitted assets. An agent is delegated exactly
+one power, to propose an allocation. Before anything moves, the program
+re-derives every constraint and refuses the transaction by name if one is
+breached. The agent cannot amend the mandate, widen its universe, replace itself
+or withdraw. Those are not promises, they are instructions it has no way to
+reach. Basis points are used throughout: 10000 is the whole portfolio, 2500 is
+25 percent. A mandate permits at most ${MAX_ASSETS} assets.
+
+How you answer
+Every number you state must come from a tool in this conversation. If you did
+not fetch it, you do not know it, and you say so instead of estimating. This
+matters more here than in most places: a plausible invented price is worse than
+no price, because someone might act on it.
+
+Explaining is different from asserting. You may explain what turnover means, why
+a clause exists, how to read a discount, or what would happen if a limit were
+set differently, from your own understanding. You may not invent a figure.
+
+Call tools rather than guessing, and call several at once when they do not
+depend on each other. Do not call run_analysis unless an allocation is actually
+wanted, since it takes around twenty seconds.
+
+Anything that writes to the chain returns a prepared action for the person to
+approve. You never submit. When you prepare one, say plainly that it is waiting
+on them and what will happen if they agree.
+
+When someone asks for an allocation the mandate would refuse, say which clause
+refuses it and why, and do not recommend it. But if they want to send it anyway,
+prepare it. Watching the program refuse a transaction is the clearest possible
+demonstration that the mandate is enforced rather than merely described, and
+refusing to let someone see that would be protecting them from the truth. The
+refusal costs a fee and is recorded on chain where anyone can check it.
+
+If a price is unavailable, say which asset and why, and carry on with what you
+do have. Pyth does not serve every equity feed to this key, and that is a real
+limitation worth stating rather than hiding.
+
+How you write
+Short. Plain words. No bullet lists unless you are genuinely enumerating
+something. The interface already draws tables, prices, holdings and verdicts as
+cards, so do not repeat their contents in prose. Say what it means instead.
+Never open with a restatement of the question.
+
+You are not a licensed adviser and this is devnet. Say so if asked for advice on
+real money, then answer the analytical part of the question anyway.`;
+
+export interface CopilotRequest {
+  /** The whole thread, oldest first. */
+  messages: { role: "user" | "assistant"; content: string }[];
+  /** Base58 of the connected wallet, or null. */
+  owner: string | null;
+}
+
+export type Emit = (event: CopilotEvent) => void;
+
+/** Random enough to key a step in the UI, short enough to read in a log. */
+let counter = 0;
+const nextId = () => `t${(counter += 1)}`;
+
+export async function runCopilot(
+  request: CopilotRequest,
+  emit: Emit,
+  signal?: AbortSignal,
+): Promise<void> {
+  const startedAt = Date.now();
+
+  let owner: PublicKey | null = null;
+  if (request.owner) {
+    try {
+      owner = new PublicKey(request.owner);
+    } catch {
+      emit({
+        type: "error",
+        message: "The connected wallet address is not valid.",
+      });
+      return;
+    }
+  }
+
+  const contents: GeminiContent[] = request.messages.map((m) => ({
+    role: m.role === "user" ? "user" : "model",
+    parts: [{ text: m.content }],
+  }));
+
+  let toolCalls = 0;
+  let model = "unknown";
+  let totalTokens: number | null = null;
+
+  emit({ type: "status", label: "Reading the question" });
+
+  for (let turn = 0; turn < MAX_TURNS; turn += 1) {
+    if (signal?.aborted) return;
+
+    let reply;
+    try {
+      reply = await generateWithTools({
+        systemInstruction: SYSTEM,
+        contents,
+        tools: TOOL_DECLARATIONS,
+      });
+    } catch (error) {
+      emit({
+        type: "error",
+        message:
+          error instanceof GeminiError
+            ? "No model was available to answer."
+            : "The copilot failed.",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
+    model = reply.model;
+    totalTokens = reply.totalTokens ?? totalTokens;
+
+    const calls = reply.parts.filter((p) => p.functionCall);
+    const prose = reply.parts
+      .map((p) => p.text)
+      .filter((t): t is string => Boolean(t))
+      .join("");
+
+    // Prose that arrives alongside tool calls is the model narrating what it is
+    // about to do. The step list already says that, so it is dropped rather
+    // than shown twice.
+    if (prose && calls.length === 0) {
+      emit({ type: "text", delta: prose });
+    }
+
+    if (calls.length === 0) {
+      emit({
+        type: "done",
+        model,
+        totalMs: Date.now() - startedAt,
+        toolCalls,
+        totalTokens,
+      });
+      return;
+    }
+
+    contents.push({ role: "model", parts: reply.parts });
+
+    const responseParts = [];
+
+    for (const part of calls) {
+      const call = part.functionCall!;
+
+      if (toolCalls >= MAX_TOOL_CALLS) {
+        responseParts.push({
+          functionResponse: {
+            name: call.name,
+            response: {
+              error:
+                "Tool budget for this question is spent. Answer with what you already have.",
+            },
+          },
+        });
+        continue;
+      }
+
+      toolCalls += 1;
+      const tool = TOOLS[call.name];
+
+      if (!tool) {
+        responseParts.push({
+          functionResponse: {
+            name: call.name,
+            response: { error: `There is no tool called ${call.name}.` },
+          },
+        });
+        continue;
+      }
+
+      const id = nextId();
+      emit({ type: "tool_start", id, name: call.name, label: tool.label });
+
+      const began = Date.now();
+      const ctx: ToolContext = {
+        owner,
+        onProgress: (label, detail) => emit({ type: "status", label, detail }),
+      };
+
+      try {
+        const outcome = await tool.run(call.args ?? {}, ctx);
+
+        emit({
+          type: "tool_end",
+          id,
+          name: call.name,
+          ok: true,
+          durationMs: Date.now() - began,
+          summary: outcome.summary,
+          card: outcome.card,
+          sources: outcome.sources,
+        });
+
+        if (outcome.action) emit({ type: "action", action: outcome.action });
+
+        responseParts.push({
+          functionResponse: { name: call.name, response: outcome.result },
+        });
+      } catch (error) {
+        // A tool failing is information, not a crash. The model is told what
+        // went wrong so it can correct itself or explain the limitation, which
+        // is how a missing price or an incoherent set of limits gets handled
+        // gracefully instead of ending the turn.
+        const message =
+          error instanceof ToolError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : String(error);
+
+        emit({
+          type: "tool_end",
+          id,
+          name: call.name,
+          ok: false,
+          durationMs: Date.now() - began,
+          summary: "could not complete",
+          error: message,
+        });
+
+        responseParts.push({
+          functionResponse: { name: call.name, response: { error: message } },
+        });
+      }
+    }
+
+    contents.push({ role: "user", parts: responseParts });
+  }
+
+  emit({
+    type: "text",
+    delta:
+      "I stopped after several rounds of tool calls without settling on an answer. Ask me something narrower and I will get further.",
+  });
+  emit({
+    type: "done",
+    model,
+    totalMs: Date.now() - startedAt,
+    toolCalls,
+    totalTokens,
+  });
+}
