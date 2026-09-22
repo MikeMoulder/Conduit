@@ -1,0 +1,34 @@
+{
+  "cluster": "devnet",
+  "generatedAt": "2026-09-22T12:10:47.772Z",
+  "cashMint": "D5gVdhUopCoGntZgFvUuQRiCky2bLFfqhTRaYE8qbk1G",
+  "cashDecimals": 6,
+  "desk": "GwXgM9gmJ7kX9qGfkCkPYdbyuw7syzMu4Zynzq992bNo",
+  "deskCash": "CshF6krXduYrv5CzTQPoabcgsj295yfjyoKy5D3v4Ydd",
+  "settleable": [
+    {
+      "symbol": "BTC",
+      "mint": "9u3ByGuiEpGypu9DCQjEnNzxoCUK9K7MsRzcN4v7e7mj",
+      "decimals": 8,
+      "feedId": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "priceAccount": "GTVariqAiscXLkyNWCVhssZxeZPbFhAi12aAM811WvvG",
+      "deskTokenAccount": "A3f8NwRDy7v1FqPumQnNnPfqbFjpQNVBaemRpt6JxSqz"
+    },
+    {
+      "symbol": "ETH",
+      "mint": "DHoYCyFS9tKmozuU8WAAKmkdeM7ePWS5xuARBFFFpbWJ",
+      "decimals": 8,
+      "feedId": "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "priceAccount": "GsZE13nr9acPWUHvpwnajtMzpctFyxfgquNsCnR2P52i",
+      "deskTokenAccount": "BnF7LXAg4hCWSj9SiJCczTC3nwGZxrYwWYWX354xvgWT"
+    },
+    {
+      "symbol": "SOL",
+      "mint": "7nYbxQdjwwacNvwod8SDZ7n17kZ3WeLCZYH8hyTGN998",
+      "decimals": 8,
+      "feedId": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+      "priceAccount": "6F7n5SQru3LE72ovrzTgAuMRNdm727fdUvsZdhRBmSPu",
+      "deskTokenAccount": "C9522a3pveL4CGTrWZ7wcBHoRKSVWe68aqQ6ULh2g5RH"
+    }
+  ]
+}

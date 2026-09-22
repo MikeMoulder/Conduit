@@ -7,10 +7,12 @@
   "scripts": {
     "build:ts": "tsc -p tsconfig.json",
     "test": "npm run build:ts && mocha",
-    "assets:devnet": "npm run build:ts && node .test-build/scripts/create-devnet-assets.js"
+    "assets:devnet": "npm run build:ts && node .test-build/scripts/create-devnet-assets.js",
+    "desk": "npm run build:ts && node .test-build/scripts/setup-desk.js"
   },
   "dependencies": {
-    "@coral-xyz/anchor": "^0.31.1"
+    "@coral-xyz/anchor": "^0.31.1",
+    "@solana/spl-token": "^0.4.9"
   },
   "devDependencies": {
     "@types/chai": "^4.3.20",

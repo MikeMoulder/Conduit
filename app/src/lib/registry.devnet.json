@@ -124,7 +124,8 @@
       },
       "mint": "9u3ByGuiEpGypu9DCQjEnNzxoCUK9K7MsRzcN4v7e7mj",
       "issuer": "conduit-devnet",
-      "logo": "/assets/btc.png"
+      "logo": "/assets/btc.png",
+      "priceAccount": "GTVariqAiscXLkyNWCVhssZxeZPbFhAi12aAM811WvvG"
     },
     {
       "symbol": "ETH",
@@ -137,7 +138,8 @@
       },
       "mint": "DHoYCyFS9tKmozuU8WAAKmkdeM7ePWS5xuARBFFFpbWJ",
       "issuer": "conduit-devnet",
-      "logo": "/assets/eth.png"
+      "logo": "/assets/eth.png",
+      "priceAccount": "GsZE13nr9acPWUHvpwnajtMzpctFyxfgquNsCnR2P52i"
     },
     {
       "symbol": "SOL",
@@ -150,7 +152,8 @@
       },
       "mint": "7nYbxQdjwwacNvwod8SDZ7n17kZ3WeLCZYH8hyTGN998",
       "issuer": "conduit-devnet",
-      "logo": "/assets/sol.png"
+      "logo": "/assets/sol.png",
+      "priceAccount": "6F7n5SQru3LE72ovrzTgAuMRNdm727fdUvsZdhRBmSPu"
     },
     {
       "symbol": "ANDURIL",

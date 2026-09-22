@@ -14,6 +14,59 @@ export type Conduit = {
   },
   "instructions": [
     {
+      "name": "initializeDesk",
+      "docs": [
+        "Opens the desk that settlements trade against.",
+        "",
+        "Called once. The desk is funded afterwards by ordinary transfers into",
+        "its token accounts, which is deliberate: funding it is not a privileged",
+        "operation this program needs to model, it is somebody sending tokens to",
+        "an address."
+      ],
+      "discriminator": [
+        154,
+        108,
+        165,
+        208,
+        97,
+        238,
+        48,
+        246
+      ],
+      "accounts": [
+        {
+          "name": "desk",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  115,
+                  107
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "cashMint"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "initializeMandate",
       "docs": [
         "Creates a mandate: the constitution a portfolio will operate under.",
@@ -281,9 +334,128 @@ export type Conduit = {
           }
         }
       ]
+    },
+    {
+      "name": "settle",
+      "docs": [
+        "Moves tokens until the portfolio actually holds what it says it targets.",
+        "",
+        "Everything up to this point has been policy. `propose_rebalance` decides",
+        "what the weights should be and refuses anything the mandate forbids, but",
+        "it moves nothing: a position was a number in an account. This is where",
+        "value changes hands.",
+        "",
+        "The prices come from Pyth accounts on chain, each one checked against the",
+        "feed id the mandate bound to that asset when it was created. The",
+        "portfolio is valued from its actual token balances rather than from",
+        "anything it claims about itself, because the balances are the only thing",
+        "here that cannot be wrong.",
+        "",
+        "Signed by the agent, which is consistent rather than a new power. The",
+        "agent chooses nothing here: every quantity is derived from targets the",
+        "program already accepted and prices it did not supply. It is the same",
+        "authority to execute an approved allocation, carried through to the point",
+        "where the allocation becomes real.",
+        "",
+        "Assets are passed as four accounts each, in the order the mandate",
+        "permits them: the price update, the mint, the portfolio token account and",
+        "the desk token account."
+      ],
+      "discriminator": [
+        175,
+        42,
+        185,
+        87,
+        144,
+        131,
+        102,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "mandate"
+        },
+        {
+          "name": "portfolio",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  114,
+                  116,
+                  102,
+                  111,
+                  108,
+                  105,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mandate"
+              }
+            ]
+          }
+        },
+        {
+          "name": "desk",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  115,
+                  107
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "agent",
+          "docs": [
+            "The agent executes, and chooses nothing while doing so."
+          ],
+          "signer": true
+        },
+        {
+          "name": "cashMint"
+        },
+        {
+          "name": "portfolioCash",
+          "writable": true
+        },
+        {
+          "name": "deskCash",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
+    {
+      "name": "desk",
+      "discriminator": [
+        33,
+        28,
+        147,
+        6,
+        226,
+        158,
+        166,
+        73
+      ]
+    },
     {
       "name": "mandate",
       "discriminator": [
@@ -312,6 +484,19 @@ export type Conduit = {
     }
   ],
   "events": [
+    {
+      "name": "portfolioSettled",
+      "discriminator": [
+        55,
+        239,
+        208,
+        16,
+        138,
+        72,
+        145,
+        108
+      ]
+    },
     {
       "name": "rebalanceExecuted",
       "discriminator": [
@@ -396,6 +581,31 @@ export type Conduit = {
       "code": 6013,
       "name": "emptyAssetUniverse",
       "msg": "The mandate's permitted asset universe is empty"
+    },
+    {
+      "code": 6014,
+      "name": "priceFeedMismatch",
+      "msg": "The price account does not carry the feed this mandate bound to that asset"
+    },
+    {
+      "code": 6015,
+      "name": "priceUnusable",
+      "msg": "The price is stale, zero, or reported in a form this program will not use"
+    },
+    {
+      "code": 6016,
+      "name": "mandateNotSettleable",
+      "msg": "This mandate permits an asset with no on chain price, so it cannot be settled"
+    },
+    {
+      "code": 6017,
+      "name": "settlementAccountsMismatch",
+      "msg": "The accounts supplied do not match the assets this mandate permits"
+    },
+    {
+      "code": 6018,
+      "name": "nothingToSettle",
+      "msg": "The portfolio holds nothing, so there is nothing to settle"
     }
   ],
   "types": [
@@ -425,6 +635,49 @@ export type Conduit = {
                 32
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "desk",
+      "docs": [
+        "The counterparty.",
+        "",
+        "A purchase needs someone on the other side of it. Our devnet mints have no",
+        "pools and no order books, so there is nobody to trade with unless one is",
+        "provided, and minting on demand would look like trading while actually being",
+        "printing.",
+        "",
+        "So the desk holds inventory. It is funded once, up front, with a finite",
+        "amount of each asset and of cash, and it swaps at the oracle price. That is",
+        "not a workaround for the absence of a venue, it is how tokenized equities",
+        "genuinely work in the primary market: you do not find a seller, you create",
+        "and redeem with the issuer at net asset value.",
+        "",
+        "Its inventory lives in ordinary token accounts owned by this PDA, so what it",
+        "holds is visible to anyone who looks, and it cannot pay out more than it has."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "May fund the desk and withdraw from it. Never signs a settlement."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "cashMint",
+            "docs": [
+              "The settlement currency every trade is priced in."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
@@ -635,6 +888,55 @@ export type Conduit = {
           },
           {
             "name": "updatedAt",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "portfolioSettled",
+      "docs": [
+        "Emitted when a settlement actually moves tokens.",
+        "",
+        "Separate from RebalanceExecuted on purpose. That one records a decision, this",
+        "one records value changing hands, and conflating the two would make a",
+        "portfolio look settled because somebody approved a target."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mandate",
+            "type": "pubkey"
+          },
+          {
+            "name": "portfolio",
+            "type": "pubkey"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "nav",
+            "docs": [
+              "Portfolio value in cash base units, after settling."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "cashBps",
+            "type": "u16"
+          },
+          {
+            "name": "legs",
+            "docs": [
+              "How many assets actually traded. Zero means it was already in line."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
             "type": "i64"
           }
         ]

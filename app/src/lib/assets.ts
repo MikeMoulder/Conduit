@@ -72,6 +72,16 @@ export interface RegisteredAsset {
    */
   feeds?: AssetFeeds;
   /**
+   * The Pyth price account on this cluster, where one is actively published.
+   *
+   * Present only on assets that can be settled on chain, which is what makes a
+   * mandate settleable. Finding these took a scan of every account the receiver
+   * owns: the same feed appears in many shards, most of them abandoned, and the
+   * first match for the Bitcoin feed was one hundred and ninety two days stale.
+   * Freshness is the selector, not the address.
+   */
+  priceAccount?: string;
+  /**
    * Local path to the issuer's logo, under `public/assets`.
    *
    * Downloaded rather than hotlinked by `npm run logos`. Eighteen external
