@@ -8,7 +8,8 @@
     "build:ts": "tsc -p tsconfig.json",
     "test": "npm run build:ts && mocha",
     "assets:devnet": "npm run build:ts && node .test-build/scripts/create-devnet-assets.js",
-    "desk": "npm run build:ts && node .test-build/scripts/setup-desk.js"
+    "desk": "npm run build:ts && node .test-build/scripts/setup-desk.js",
+    "demo:mandate": "npm run build:ts && node .test-build/scripts/demo-mandate.js"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
