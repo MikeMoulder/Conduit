@@ -8,3 +8,9 @@
 
 # Treat lockfiles as generated in diffs
 package-lock.json linguist-generated=true -diff
+Cargo.lock linguist-generated=true -diff
+
+# Cargo writes LF and the host that builds the program is Linux, so keeping
+# the checkout LF avoids a file that differs between the two machines that
+# compile it.
+Cargo.lock text eol=lf
