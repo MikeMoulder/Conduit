@@ -2,7 +2,13 @@ import "server-only";
 
 import { PublicKey } from "@solana/web3.js";
 
-import { GeminiError, generateWithTools, type GeminiContent } from "../gemini";
+import {
+  GeminiError,
+  generateWithTools,
+  type GeminiContent,
+  type ToolTurnRequest,
+  type ToolTurnResult,
+} from "../gemini";
 import { MAX_ASSETS } from "../chain";
 import type { CopilotEvent } from "./events";
 import { TOOLS, TOOL_DECLARATIONS, ToolError, type ToolContext } from "./tools";
@@ -29,10 +35,10 @@ import { TOOLS, TOOL_DECLARATIONS, ToolError, type ToolContext } from "./tools";
  */
 
 /** How many times the model may call tools before it has to answer. */
-const MAX_TURNS = 6;
+export const MAX_TURNS = 6;
 
 /** How many tool calls in total, across all turns. */
-const MAX_TOOL_CALLS = 10;
+export const MAX_TOOL_CALLS = 10;
 
 const SYSTEM = `You are CONDUIT, a portfolio copilot for tokenized equities on Solana.
 
@@ -94,6 +100,17 @@ export interface CopilotRequest {
 
 export type Emit = (event: CopilotEvent) => void;
 
+/**
+ * How a turn is obtained from the model.
+ *
+ * Injectable so the loop can be tested without the network. The budgets, the
+ * way a failing tool is fed back, and the point at which an answer is
+ * considered finished are all decisions this file makes, and none of them
+ * should need a live model or a working API key to check. The default is the
+ * real thing, so nothing at a call site changes.
+ */
+export type TurnGenerator = (request: ToolTurnRequest) => Promise<ToolTurnResult>;
+
 /** Random enough to key a step in the UI, short enough to read in a log. */
 let counter = 0;
 const nextId = () => `t${(counter += 1)}`;
@@ -102,6 +119,7 @@ export async function runCopilot(
   request: CopilotRequest,
   emit: Emit,
   signal?: AbortSignal,
+  generate: TurnGenerator = generateWithTools,
 ): Promise<void> {
   const startedAt = Date.now();
 
@@ -134,7 +152,7 @@ export async function runCopilot(
 
     let reply;
     try {
-      reply = await generateWithTools({
+      reply = await generate({
         systemInstruction: SYSTEM,
         contents,
         tools: TOOL_DECLARATIONS,
