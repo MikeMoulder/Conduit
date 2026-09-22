@@ -1,6 +1,7 @@
 import "server-only";
 
 import { generateStructured } from "../gemini";
+import { turnoverBetween } from "../proposal";
 import {
   argumentGeminiSchema,
   argumentSchema,
@@ -38,6 +39,14 @@ export interface MandateSpec {
   maxTurnoverBps: number;
   maxAssets: number;
   allowedSymbols: string[];
+  /**
+   * What the portfolio holds right now, by symbol.
+   *
+   * Absent or empty means fully in cash, which is not the same as unknown and
+   * matters: turnover is measured against this, so without it the manager can
+   * propose a sensible book that the chain refuses for moving too fast.
+   */
+  currentPositions?: { symbol: string; targetBps: number }[];
 }
 
 export interface MarketSnapshot {
@@ -69,6 +78,8 @@ export interface Violation {
 }
 
 export interface ComplianceReport {
+  /** How much of the book changes hands, counting the cash leg. */
+  turnoverBps: number;
   compliant: boolean;
   cashBps: number;
   allocatedBps: number;
@@ -164,6 +175,38 @@ async function runStage<T>(
  * they would see. Where the two ever disagree, the chain is right and this is a
  * bug.
  */
+/**
+ * What the turnover limit means for this particular rebalance.
+ *
+ * Stated concretely rather than as a rule, because the rule cannot be applied
+ * without the current book, and the consequence surprises people too. Moving
+ * from all cash costs turnover equal to the amount deployed, so a mandate
+ * capped at 4000 bps cannot reach an 8000 bps book in one step however sensible
+ * that book is. It has to arrive over several rebalances, and the manager needs
+ * to know that before it allocates rather than after the chain refuses it.
+ */
+function turnoverBrief(mandate: MandateSpec): string {
+  const current = mandate.currentPositions ?? [];
+
+  if (current.length === 0) {
+    return (
+      `- The portfolio is entirely in cash. Buying costs turnover equal to what ` +
+      `you deploy, and this mandate allows at most ${mandate.maxTurnoverBps} bps ` +
+      `of turnover per rebalance, so your allocations must total no more than ` +
+      `${mandate.maxTurnoverBps} bps this time. Build toward a fuller book over ` +
+      `later rebalances rather than trying to arrive in one.`
+    );
+  }
+
+  const held = current.map((p) => `${p.symbol} at ${p.targetBps} bps`).join(", ");
+
+  return (
+    `- Currently held: ${held}. Turnover is half the total of every change you ` +
+    `make, counting moves into and out of cash, and must not exceed ` +
+    `${mandate.maxTurnoverBps} bps. Changing little is always permitted.`
+  );
+}
+
 export function checkCompliance(
   proposal: Proposal,
   mandate: MandateSpec,
@@ -237,10 +280,34 @@ export function checkCompliance(
     });
   }
 
+  // Turnover was missing here until a proposal that passed this check was
+  // refused on chain with TurnoverExceeded. A compliance report that cannot see
+  // every clause is worse than none, because it is believed.
+  const turnoverBps = turnoverBetween(
+    (mandate.currentPositions ?? []).map((p) => ({
+      id: p.symbol,
+      targetBps: p.targetBps,
+    })),
+    proposal.positions.map((p) => ({
+      id: p.symbol,
+      targetBps: p.targetBps,
+    })),
+    cashBps,
+  );
+
+  if (turnoverBps > mandate.maxTurnoverBps) {
+    violations.push({
+      rule: "turnover",
+      detail: `${turnoverBps} bps would change hands, above the ${mandate.maxTurnoverBps} bps limit for one rebalance`,
+      onChainError: "TurnoverExceeded",
+    });
+  }
+
   return {
     compliant: violations.length === 0,
     cashBps,
     allocatedBps,
+    turnoverBps,
     violations,
   };
 }
@@ -312,7 +379,7 @@ export async function runPipeline(
   const proposal = await runStage<Proposal>(
     "manager",
     `${HOUSE_RULES}\n\nYou are the Portfolio Manager. You decide. Weigh the bull case against the bear case, respect the risk ceilings, and stay inside the mandate. Every position needs a thesis and the specific conditions that would break it.`,
-    `${decision}\n\nProduce the final allocation.\n\nHard constraints, which will be enforced on chain and will cause the transaction to fail if breached:\n- No position above ${mandate.maxPositionBps} bps.\n- At most ${mandate.maxAssets} positions.\n- Allocations must leave at least ${mandate.minCashBps} bps in cash, so they must total no more than ${10_000 - mandate.minCashBps} bps.\n- Only permitted symbols.\n\nOmit any asset you do not want rather than giving it a zero weight.`,
+    `${decision}\n\nProduce the final allocation.\n\nHard constraints, which will be enforced on chain and will cause the transaction to fail if breached:\n- No position above ${mandate.maxPositionBps} bps.\n- At most ${mandate.maxAssets} positions.\n- Allocations must leave at least ${mandate.minCashBps} bps in cash, so they must total no more than ${10_000 - mandate.minCashBps} bps.\n- Only permitted symbols.\n${turnoverBrief(mandate)}\n\nOmit any asset you do not want rather than giving it a zero weight.`,
     proposalGeminiSchema,
     proposalSchema,
     stages,
