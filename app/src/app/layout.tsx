@@ -47,6 +47,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 >
                   Author a mandate
                 </Link>
+                <Link
+                  href="/portfolio"
+                  className="transition-colors hover:text-zinc-100"
+                >
+                  Portfolio
+                </Link>
               </nav>
               <ConnectWallet />
             </div>
