@@ -131,7 +131,8 @@ Rules that are not negotiable:
 - Use only the figures supplied. Never invent a price, a spread or a statistic.
 - An asset whose price is unavailable cannot be assessed on price. Say so rather than guessing.
 - A spread is the premium or discount of the held instrument against its underlying. A negative spread means it trades below the thing it represents.
-- Basis points, always. 2500 bps is 25 percent.
+- Weights you return are basis points, because that is what the program stores. 2500 is 25 percent.
+- Anything you write in prose is a percentage. Say a 22 percent discount, not a 2210 bps discount. A thesis is read by a person and the arithmetic should already be done for them.
 `.trim();
 
 async function runStage<T>(
