@@ -152,7 +152,7 @@ const getPrices: CopilotTool = {
   declaration: {
     name: "get_prices",
     description:
-      "Live prices for registry symbols. Pyth covers listed equities and crypto, PreStocks covers pre IPO names. Returns the traded price, the underlying where one exists, and the spread between them in basis points. Call this for any question involving a price, a valuation or a discount. Never state a price you did not get from here.",
+      "Live prices for registry symbols. Jupiter prices the tokenized equities from what they actually trade at on Solana, Pyth covers crypto, and PreStocks covers pre IPO names. Returns the traded price, the underlying share or mark where one exists, and the spread between them in basis points. A token above its underlying is at a premium, below it is at a discount. Call this for any question involving a price, a valuation or a discount. Never state a price you did not get from here.",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -191,7 +191,9 @@ const getPrices: CopilotTool = {
         s.price === null
           ? s.priceSource === "pyth"
             ? "Pyth does not serve this feed to our key"
-            : "the provider returned no record"
+            : s.priceSource === "jupiter"
+              ? "Jupiter has no price for this mint right now"
+              : "the provider returned no record"
           : null,
     }));
 
@@ -203,6 +205,15 @@ const getPrices: CopilotTool = {
         provider: "pyth",
         detail: `${rows.filter((r) => r.priceSource === "pyth" && r.price !== null).length} of ${rows.filter((r) => r.priceSource === "pyth").length} feeds served`,
         ok: !rows.some((r) => r.priceSource === "pyth" && r.price === null),
+      });
+    }
+    if (snapshot.some((s) => s.priceSource === "jupiter")) {
+      const all = rows.filter((r) => r.priceSource === "jupiter");
+      const served = all.filter((r) => r.price !== null);
+      sources.push({
+        provider: "jupiter",
+        detail: `${served.length} of ${all.length} tokenized equities priced from mainnet trading`,
+        ok: served.length === all.length,
       });
     }
     if (snapshot.some((s) => s.priceSource === "prestocks")) {

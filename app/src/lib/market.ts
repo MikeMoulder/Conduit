@@ -1,17 +1,27 @@
 import "server-only";
 
-import { feedsOf, getAssetBySymbol, listAssets, type RegisteredAsset } from "./assets";
+import {
+  feedsOf,
+  getAssetBySymbol,
+  listAssets,
+  type RegisteredAsset,
+} from "./assets";
+import { fetchJupiterPrices, jupiterSpread, type JupiterResult } from "./jupiter";
 import { fetchPreStocks, preStockSpread } from "./prestocks";
 import { computeSpread, fetchQuotes, type FeedResult } from "./pyth";
 import type { MarketSnapshot } from "./agents/pipeline";
 
 /**
- * Flattens both price providers into the one shape the agent reasons over.
+ * Flattens every price provider into the one shape the agent reasons over.
  *
  * The agent must not know or care which provider answered. What it needs is a
  * price, an underlying where one exists, and the spread between them. Anything
- * unavailable arrives as null rather than as a stale or invented number, because
- * a model handed a plausible looking figure will use it.
+ * unavailable arrives as null rather than as a stale or invented number,
+ * because a model handed a plausible looking figure will use it.
+ *
+ * All three providers are asked at once. They are independent, two of them are
+ * on the far side of the internet, and doing them in sequence would make the
+ * slowest one set the pace for the whole snapshot.
  */
 export async function snapshotMarket(
   symbols?: string[],
@@ -24,15 +34,33 @@ export async function snapshotMarket(
 
   const feedIds = new Set<string>();
   for (const asset of assets) {
+    if (asset.priceSource !== "pyth") continue;
     for (const id of feedsOf(asset)) feedIds.add(id);
   }
 
+  /**
+   * Jupiter prices the real mint on mainnet. An equity with no `mainnetMint`
+   * recorded cannot be priced there, which is a registry gap rather than a
+   * provider failure, and is reported as such below.
+   */
+  const jupiterMints = assets
+    .filter((a) => a.priceSource === "jupiter")
+    .map((a) => a.mainnetMint)
+    .filter((m): m is string => Boolean(m));
+
   const needsPreStocks = assets.some((a) => a.priceSource === "prestocks");
 
-  const [quotes, preStocks] = await Promise.all([
+  const [quotes, jupiter, preStocks] = await Promise.all([
     feedIds.size > 0
       ? fetchQuotes([...feedIds])
       : Promise.resolve(new Map<string, FeedResult>()),
+    jupiterMints.length > 0
+      ? fetchJupiterPrices(jupiterMints)
+      : Promise.resolve({
+          status: "ok" as const,
+          quotes: new Map(),
+          fetchedAt: Date.now(),
+        } satisfies JupiterResult),
     needsPreStocks
       ? fetchPreStocks()
       : Promise.resolve({ status: "unavailable" as const, reason: "not requested" }),
@@ -45,14 +73,28 @@ export async function snapshotMarket(
       assetClass: asset.assetClass,
       priceSource: asset.priceSource,
     };
+    const nothing = { ...base, price: null, referencePrice: null, spreadBps: null };
+
+    if (asset.priceSource === "jupiter") {
+      if (!asset.mainnetMint) return nothing;
+
+      const quote =
+        jupiter.status === "ok" ? jupiter.quotes.get(asset.mainnetMint) : undefined;
+      if (!quote) return nothing;
+
+      const spread = jupiterSpread(quote);
+      return {
+        ...base,
+        price: quote.price,
+        referencePrice: quote.underlyingPrice,
+        spreadBps: spread?.basisPoints ?? null,
+      };
+    }
 
     if (asset.priceSource === "prestocks") {
       const record =
         preStocks.status === "ok" ? preStocks.assets.get(asset.symbol) : undefined;
-
-      if (!record) {
-        return { ...base, price: null, referencePrice: null, spreadBps: null };
-      }
+      if (!record) return nothing;
 
       return {
         ...base,
@@ -62,9 +104,7 @@ export async function snapshotMarket(
       };
     }
 
-    if (!asset.feeds) {
-      return { ...base, price: null, referencePrice: null, spreadBps: null };
-    }
+    if (!asset.feeds) return nothing;
 
     const primary = quotes.get(asset.feeds.primary);
     const reference = asset.feeds.reference

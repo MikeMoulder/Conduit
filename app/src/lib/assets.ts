@@ -29,11 +29,21 @@ export type AssetClass = "equity" | "crypto" | "preipo";
 /**
  * Which provider prices an asset.
  *
- * Pyth covers listed equities and crypto. PreStocks prices its own pre IPO
- * tokens and is the only source for them, because a private company has no
- * public market for an oracle to observe.
+ * Three, because no one of them covers the whole registry.
+ *
+ * Pyth covers crypto, where it is served to everyone. It also publishes the
+ * equity feeds, and refuses almost all of them to our key on tier grounds, so
+ * the equity sleeve does not rely on it.
+ *
+ * Jupiter covers the tokenized equities by pricing the real xStock mints on
+ * mainnet, and returns the underlying share alongside the token in the same
+ * response. No credential, and the price is what the token actually traded at
+ * rather than an oracle's view of it.
+ *
+ * PreStocks prices its own pre IPO tokens and is the only source that can: a
+ * private company has no public market for anyone to observe.
  */
-export type PriceSource = "pyth" | "prestocks";
+export type PriceSource = "pyth" | "jupiter" | "prestocks";
 
 export interface RegisteredAsset {
   symbol: string;
@@ -53,7 +63,13 @@ export interface RegisteredAsset {
    * opinion about provenance. Moving to mainnet is a registry change.
    */
   issuer: string;
-  /** Pyth feeds. Absent for assets priced by another provider. */
+  /**
+   * Pyth feeds, where the instrument has them.
+   *
+   * Kept on the equities even though they are priced by Jupiter. They cost
+   * nothing, they record what the instrument actually is, and they become
+   * usable the day the entitlement position changes.
+   */
   feeds?: AssetFeeds;
   /**
    * The issuer's mint on mainnet, where one exists.

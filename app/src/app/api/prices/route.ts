@@ -12,14 +12,21 @@ import {
   type PreStock,
   type PreStocksResult,
 } from "@/lib/prestocks";
+import {
+  fetchJupiterPrices,
+  jupiterSpread,
+  type JupiterResult,
+} from "@/lib/jupiter";
 
 /**
  * Live prices for the registry.
  *
- * Two providers sit behind this one route. Pyth prices listed equities and
- * crypto. PreStocks prices its own pre IPO tokens, which no oracle covers
- * because a private company has no public market to observe. Callers are given
- * one uniform shape and do not need to know which provider answered.
+ * Three providers sit behind this one route. Jupiter prices the tokenized
+ * equities from what they actually trade at on Solana. Pyth prices crypto, and
+ * publishes the equity feeds it will not serve to our key. PreStocks prices its
+ * own pre IPO tokens, which no oracle covers because a private company has no
+ * public market to observe. Callers are given one uniform shape and do not need
+ * to know which provider answered.
  *
  * The route also exists so no market data credential reaches a browser. Both
  * provider modules are marked server only, so a client component reaching for
@@ -89,6 +96,7 @@ function unavailable(ref: string, reason: string): LegPayload {
 function describeAsset(
   asset: RegisteredAsset,
   quotes: Map<string, FeedResult>,
+  jupiter: JupiterResult,
   preStocks: PreStocksResult,
 ) {
   const base = {
@@ -140,6 +148,59 @@ function describeAsset(
         mark: record.markValuation,
         supply: record.supply,
       },
+    };
+  }
+
+  if (asset.priceSource === "jupiter") {
+    const ref = asset.mainnetMint;
+
+    if (!ref) {
+      const reason = "no mainnet mint recorded, so there is nothing to price";
+      return {
+        ...base,
+        primary: unavailable(asset.symbol, reason),
+        reference: null,
+        alternate: null,
+        spread: null,
+      };
+    }
+
+    if (jupiter.status !== "ok") {
+      return {
+        ...base,
+        primary: unavailable(ref, jupiter.reason),
+        reference: null,
+        alternate: null,
+        spread: null,
+      };
+    }
+
+    const quote = jupiter.quotes.get(ref);
+    if (!quote) {
+      return {
+        ...base,
+        primary: unavailable(ref, "jupiter returned no price for this mint"),
+        reference: null,
+        alternate: null,
+        spread: null,
+      };
+    }
+
+    const age = Math.max(0, Math.floor((Date.now() - jupiter.fetchedAt) / 1000));
+
+    return {
+      ...base,
+      // The token is what a portfolio holds, so it is the primary leg. The share
+      // it represents is the reference. Same shape as the pre IPO sleeve.
+      primary: priced(ref, quote.price, age),
+      reference:
+        quote.underlyingPrice !== null
+          ? priced(`${asset.symbol} underlying`, quote.underlyingPrice, age)
+          : null,
+      alternate: null,
+      spread: jupiterSpread(quote),
+      liquidity: quote.liquidity,
+      blockId: quote.blockId,
     };
   }
 
@@ -209,18 +270,34 @@ export async function GET(request: Request): Promise<Response> {
 
   const feedIds = new Set<string>();
   for (const asset of assets) {
+    // The equities keep their Pyth feeds recorded but are priced by Jupiter.
+    // Requesting them anyway would spend a round trip collecting the same
+    // entitlement refusals every time.
+    if (asset.priceSource !== "pyth") continue;
     for (const id of feedsOf(asset)) feedIds.add(id);
   }
+
+  const jupiterMints = assets
+    .filter((a) => a.priceSource === "jupiter")
+    .map((a) => a.mainnetMint)
+    .filter((m): m is string => Boolean(m));
 
   const needsPreStocks = assets.some((a) => a.priceSource === "prestocks");
 
   // Providers are independent, so one slow or unreachable provider should not
   // serialise behind the other. Neither call rejects: both report failure in
   // their return value.
-  const [quotes, preStocks] = await Promise.all([
+  const [quotes, jupiter, preStocks] = await Promise.all([
     feedIds.size > 0
       ? fetchQuotes([...feedIds])
       : Promise.resolve(new Map<string, FeedResult>()),
+    jupiterMints.length > 0
+      ? fetchJupiterPrices(jupiterMints)
+      : Promise.resolve({
+          status: "ok",
+          quotes: new Map(),
+          fetchedAt: Date.now(),
+        } as JupiterResult),
     needsPreStocks
       ? fetchPreStocks()
       : Promise.resolve({
@@ -229,7 +306,9 @@ export async function GET(request: Request): Promise<Response> {
         } as PreStocksResult),
   ]);
 
-  const payload = assets.map((asset) => describeAsset(asset, quotes, preStocks));
+  const payload = assets.map((asset) =>
+    describeAsset(asset, quotes, jupiter, preStocks),
+  );
   const live = payload.filter((a) => a.primary.available).length;
 
   return Response.json({
@@ -242,6 +321,7 @@ export async function GET(request: Request): Promise<Response> {
       unpriced: payload.length - live,
       pythFeedsRequested: feedIds.size,
       pythFeedsLive: [...quotes.values()].filter((q) => q.status === "ok").length,
+      jupiter: jupiter.status,
       preStocks: preStocks.status,
     },
   });
