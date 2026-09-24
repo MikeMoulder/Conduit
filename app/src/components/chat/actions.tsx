@@ -54,7 +54,9 @@ export function ActionCard({
   if (phase.state === "done") return <CardView card={phase.card} />;
 
   const agentSigns =
-    action.kind === "submit-rebalance" || action.kind === "settle";
+    action.kind === "submit-rebalance" ||
+    action.kind === "settle" ||
+    action.kind === "order";
   // The faucet is a third key, and naming it keeps the card honest: this is
   // paid for by the demo, not by the person and not by the agent.
   const signer =
@@ -95,6 +97,75 @@ export function ActionCard({
               slot: data.slot ?? null,
               programError: data.programError ?? null,
               detail: data.detail ?? data.error ?? null,
+            },
+          },
+        });
+        onSettled();
+        return;
+      }
+
+      if (action.kind === "order") {
+        // Two transactions behind one approval, in order. The target has to
+        // be accepted before there is anything to settle into, and if the
+        // program refuses it the settlement is never attempted: the refusal
+        // is the result, and it is shown as one.
+        setPhase({ state: "working", note: "Setting the target" });
+
+        const proposed = await fetch("/api/agent/rebalance", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mandate: action.mandate,
+            positions: action.positions.map((p) => ({
+              mint: p.mint,
+              targetBps: p.targetBps,
+            })),
+          }),
+        }).then((r) => r.json());
+
+        if (!proposed.accepted) {
+          setPhase({
+            state: "done",
+            card: {
+              kind: "submission",
+              submission: {
+                accepted: false,
+                signature: proposed.signature ?? null,
+                slot: proposed.slot ?? null,
+                programError: proposed.programError ?? null,
+                detail: proposed.detail ?? proposed.error ?? null,
+              },
+            },
+          });
+          onSettled();
+          return;
+        }
+
+        setPhase({
+          state: "working",
+          note: action.side === "buy" ? "Buying" : "Selling",
+        });
+
+        const settled = await fetch("/api/agent/settle", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mandate: action.mandate }),
+        }).then((r) => r.json());
+
+        setPhase({
+          state: "done",
+          card: {
+            kind: "settlement",
+            settlement: {
+              settled: Boolean(settled.settled),
+              signature: settled.signature ?? null,
+              slot: settled.slot ?? null,
+              before: settled.before ?? null,
+              after: settled.after ?? null,
+              programError: settled.programError ?? null,
+              detail: settled.settled
+                ? null
+                : `The target was accepted but the settlement was not. ${settled.detail ?? settled.error ?? ""}`.trim(),
             },
           },
         });
@@ -256,6 +327,8 @@ export function ActionCard({
                 ? "Settle this portfolio"
                 : action.kind === "fund"
                   ? "Add demo cash"
+                  : action.kind === "order"
+                    ? `${action.side === "buy" ? "Buy" : "Sell"} ${usd(action.executedDollars)} of ${action.symbol}`
                 : `Set the mandate to ${action.status}`}
         </span>
         <span className="font-mono text-[11px] text-zinc-500">
@@ -290,6 +363,8 @@ export function ActionCard({
         </div>
       ) : null}
 
+      {action.kind === "order" ? <OrderDetail action={action} /> : null}
+
       {phase.state === "failed" ? (
         <p className="border-t border-white/5 px-4 py-2.5 text-sm text-red-300">
           {phase.message}
@@ -317,6 +392,10 @@ export function ActionCard({
                   ? "Settle"
                   : action.kind === "fund"
                     ? "Add demo cash"
+                    : action.kind === "order"
+                      ? action.side === "buy"
+                        ? "Buy"
+                        : "Sell"
                   : "Approve"}
         </button>
         <button
@@ -331,6 +410,63 @@ export function ActionCard({
           Not now
         </button>
       </div>
+    </div>
+  );
+}
+
+function usd(n: number): string {
+  return `$${n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+/**
+ * What the order will do, in the terms it was asked in.
+ *
+ * Dollars first, because that is how it was asked, with the share of the
+ * portfolio beside it, because that is what the mandate limits. The price line
+ * names where the number came from and how old it is, since the settlement
+ * will run at that account and the person approving should know what they are
+ * trusting.
+ */
+function OrderDetail({
+  action,
+}: {
+  action: Extract<PendingAction, { kind: "order" }>;
+}) {
+  const minutes = Math.max(1, Math.round(action.priceAgeSeconds / 60));
+  const rounded =
+    Math.abs(action.executedDollars - action.requestedDollars) >= 0.01;
+
+  return (
+    <div className="border-t border-white/5 px-4 py-2.5">
+      <div className="flex items-center justify-between gap-3 py-1">
+        <AssetBadge symbol={action.symbol} />
+        <span className="flex items-baseline gap-2 font-mono text-sm">
+          <span className="text-[11px] text-zinc-600">
+            {usd(action.valueBefore)} to
+          </span>
+          <span className="text-zinc-100">{usd(action.valueAfter)}</span>
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-3 py-1 text-[11px] text-zinc-500">
+        <span>share of the portfolio</span>
+        <span className="font-mono">
+          {bpsToPercent(action.bpsBefore)} to {bpsToPercent(action.bpsAfter)}
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-3 py-1 text-[11px] text-zinc-500">
+        <span>cash after</span>
+        <span className="font-mono">{usd(action.cashAfter)}</span>
+      </div>
+      <p className="pt-1 text-[11px] leading-relaxed text-zinc-600">
+        At {usd(action.price)}, published {minutes} min ago from{" "}
+        {action.priceSource}. Every other holding keeps its current value.
+        {rounded
+          ? ` Targets are whole basis points, so this trades ${usd(action.executedDollars)} rather than exactly ${usd(action.requestedDollars)}.`
+          : ""}
+      </p>
     </div>
   );
 }

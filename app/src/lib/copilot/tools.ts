@@ -15,6 +15,8 @@ import { evaluateProposal } from "../proposal";
 import { getConnection } from "../rpc";
 import { fetchHoldings, isSettleable, settleableAsset } from "../holdings";
 import { FUND_UNITS } from "../faucet";
+import { bookFrom, checkOrder, largestOrder, valueOf, type Side } from "../orders";
+import { readSettlementPrices } from "../settlement-prices";
 import { getAgentIdentity } from "../agent-identity";
 import type {
   Card,
@@ -853,6 +855,161 @@ const setStatus: CopilotTool = {
   },
 };
 
+const placeOrder: CopilotTool = {
+  label: "Pricing the order",
+  declaration: {
+    name: "place_order",
+    description:
+      "Prepares a dollar order: buy or sell a dollar amount of one asset, for example buy $10,000 of NVDA. Use this whenever the person names an amount of money rather than a percentage. The conversion from dollars to a share of the portfolio is done in code from real balances and the prices settlement will use; never work it out yourself. Only the named asset moves; everything else keeps its current value. If the mandate would refuse it, the result says which rule and the largest amount that fits, and no card is produced; offer that amount instead. When it fits, it returns one approval card that sets the target and settles into real tokens.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        mandateId: { type: "INTEGER", description: "Which mandate. Defaults to 0." },
+        side: { type: "STRING", description: "BUY or SELL." },
+        symbol: { type: "STRING", description: "The asset, for example NVDA." },
+        dollars: { type: "NUMBER", description: "The amount in US dollars." },
+      },
+      required: ["side", "symbol", "dollars"],
+    },
+  },
+  async run(args, ctx) {
+    const parsed = z
+      .object({
+        mandateId: mandateIdArg,
+        side: z.string(),
+        symbol: z.string().min(1),
+        dollars: z.number(),
+      })
+      .parse(args);
+
+    const side: Side = parsed.side.toLowerCase() === "sell" ? "sell" : "buy";
+    const mandateId = parsed.mandateId ?? 0;
+    const { mandate, address } = await loadMandate(ctx, mandateId);
+
+    const asset = getAssetBySymbol(parsed.symbol.toUpperCase());
+    if (!asset || !mandate.allowedAssets.some((a) => a.mint === asset.mint)) {
+      const allowed = mandate.allowedAssets
+        .map((a) => getAssetByMint(a.mint)?.symbol ?? a.mint)
+        .join(", ");
+      throw new ToolError(
+        `This mandate does not permit ${parsed.symbol.toUpperCase()}. It permits ${allowed}.`,
+      );
+    }
+
+    const connection = getConnection();
+    const { portfolio: portfolioAddress } = addresses(ctx, mandateId);
+    const [portfolio, holdings, priceRead] = await Promise.all([
+      fetchPortfolio(connection, portfolioAddress),
+      fetchHoldings(connection, portfolioAddress, mandate),
+      readSettlementPrices(connection, mandate),
+    ]);
+
+    if (!holdings.funded || !holdings.cash) {
+      throw new ToolError(
+        "The portfolio has no cash yet, so there is nothing to buy with. Offer to top it up with devnet demo cash using fund_portfolio.",
+      );
+    }
+    if (!priceRead.ok) throw new ToolError(priceRead.reason);
+
+    const book = bookFrom(
+      holdings.cash.uiAmount,
+      holdings.assets.map((h) => ({
+        mint: h.mint,
+        units: h.uiAmount,
+        price: priceRead.prices.get(h.mint)!.price,
+      })),
+    );
+
+    const context = {
+      constraints: mandate.constraints,
+      allowedMints: mandate.allowedAssets.map((a) => a.mint),
+      current: portfolio?.positions ?? [],
+    };
+
+    const checked = checkOrder(book, asset.mint, side, parsed.dollars, context);
+    if ("error" in checked) throw new ToolError(checked.error);
+
+    const { plan, evaluation } = checked;
+    const price = priceRead.prices.get(asset.mint)!;
+    const valueBefore = valueOf(book, asset.mint);
+    const verb = side === "buy" ? "Buy" : "Sell";
+    const usd = (n: number) =>
+      `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+
+    if (!evaluation.compliant) {
+      const largest = largestOrder(book, asset.mint, side, context);
+      const rule = evaluation.violations[0];
+      return {
+        result: {
+          prepared: false,
+          wouldReturn: evaluation.firstRefusal,
+          rule: rule?.rule ?? null,
+          detail: rule?.detail ?? null,
+          largestThatFits: largest,
+          note:
+            largest > 0
+              ? `The mandate would refuse this. The largest ${side} that fits is ${usd(largest)}. Offer that amount.`
+              : `The mandate would refuse any ${side} of ${asset.symbol} right now.`,
+        },
+        summary: `refused by ${evaluation.firstRefusal}, largest that fits ${usd(largest)}`,
+      };
+    }
+
+    const current = new Map(context.current.map((p) => [p.mint, p.targetBps]));
+    const rows = plan.positions.map((p) => ({
+      symbol: getAssetByMint(p.mint)?.symbol ?? p.mint,
+      mint: p.mint,
+      targetBps: p.targetBps,
+      currentBps: current.get(p.mint) ?? 0,
+    }));
+
+    const valueAfter =
+      side === "buy"
+        ? valueBefore + plan.executedDollars
+        : valueBefore - plan.executedDollars;
+    const cashAfter =
+      side === "buy"
+        ? book.cash - plan.executedDollars
+        : book.cash + plan.executedDollars;
+
+    return {
+      result: {
+        prepared: true,
+        side,
+        symbol: asset.symbol,
+        requested: parsed.dollars,
+        willTrade: plan.executedDollars,
+        price: price.price,
+        shareBefore: bpsToPercent(plan.orderedBpsBefore),
+        shareAfter: bpsToPercent(plan.orderedBps),
+        cashAfter,
+        note: "Waiting for the person to approve. Nothing has been sent.",
+      },
+      summary: `${side} ${usd(plan.executedDollars)} of ${asset.symbol}, awaiting approval`,
+      action: {
+        kind: "order",
+        mandate: address.toBase58(),
+        side,
+        symbol: asset.symbol,
+        mint: asset.mint,
+        requestedDollars: parsed.dollars,
+        executedDollars: plan.executedDollars,
+        price: price.price,
+        priceSource: price.source,
+        priceAgeSeconds: price.ageSeconds,
+        valueBefore,
+        valueAfter,
+        bpsBefore: plan.orderedBpsBefore,
+        bpsAfter: plan.orderedBps,
+        cashAfter,
+        positions: rows,
+        evaluation,
+        summary: `${verb} ${usd(plan.executedDollars)} of ${asset.symbol} at ${usd(price.price)}. Every other holding keeps its current value. One approval sets the target and settles into real tokens.`,
+      },
+    };
+  },
+};
+
 const fundPortfolio: CopilotTool = {
   label: "Preparing demo cash",
   declaration: {
@@ -978,6 +1135,7 @@ export const TOOLS: Record<string, CopilotTool> = {
   propose_rebalance: proposeRebalance,
   prepare_mandate: prepareMandate,
   set_mandate_status: setStatus,
+  place_order: placeOrder,
   fund_portfolio: fundPortfolio,
   settle_portfolio: settlePortfolio,
 };

@@ -181,6 +181,30 @@ export type PendingAction =
       summary: string;
     }
   | {
+      kind: "order";
+      /** Signed by the agent on approval: the target, then the settlement. */
+      mandate: string;
+      side: "buy" | "sell";
+      symbol: string;
+      mint: string;
+      requestedDollars: number;
+      /** What rounding to whole basis points will actually trade. */
+      executedDollars: number;
+      /** The settlement price used for the preview, dollars per token. */
+      price: number;
+      priceSource: string;
+      priceAgeSeconds: number;
+      valueBefore: number;
+      valueAfter: number;
+      bpsBefore: number;
+      bpsAfter: number;
+      cashAfter: number;
+      /** The full target vector proposed, every other holding at its weight. */
+      positions: WeightRow[];
+      evaluation: ProposalEvaluation;
+      summary: string;
+    }
+  | {
       kind: "fund";
       /** Paid by the devnet faucet key on the server once approved. */
       mandate: string;
