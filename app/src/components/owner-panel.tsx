@@ -95,7 +95,7 @@ export function OwnerPanel() {
               : "not created yet"
         }
       />
-      <Row label="Portfolio" value={portfolio.toBase58()} last />
+      <Row label="Portfolio" value={portfolio.toBase58()} />
     </div>
   );
 }
@@ -104,19 +104,13 @@ function Row({
   label,
   value,
   note,
-  last,
 }: {
   label: string;
   value: string;
   note?: string;
-  last?: boolean;
 }) {
   return (
-    <div
-      className={`flex flex-wrap items-baseline justify-between gap-2 px-5 py-3 ${
-        last ? "" : "border-b border-zinc-900"
-      }`}
-    >
+    <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 py-3">
       <span className="text-xs uppercase tracking-wide text-zinc-500">
         {label}
       </span>

@@ -251,7 +251,7 @@ function Targets({ portfolio }: { portfolio: PortfolioView | null }) {
             return (
               <div
                 key={position.mint}
-                className="flex items-baseline justify-between border-b border-zinc-900 px-4 py-2.5 last:border-b-0"
+                className="flex items-baseline justify-between px-4 py-2.5"
               >
                 <span className="text-sm text-zinc-200">
                   {asset?.symbol ?? `${position.mint.slice(0, 8)}..`}

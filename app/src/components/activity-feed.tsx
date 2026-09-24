@@ -84,11 +84,11 @@ export function ActivityFeed({
           Nothing yet.
         </p>
       ) : (
-        <ol className="overflow-hidden rounded-lg border border-zinc-800">
+        <ol className="flex flex-col gap-1 overflow-hidden rounded-lg border border-zinc-800 py-1">
           {fresh.records?.map((record) => (
             <li
               key={record.signature}
-              className="flex flex-col gap-1.5 border-b border-zinc-900 px-4 py-3 last:border-b-0"
+              className="flex flex-col gap-1.5 px-4 py-3"
             >
               <Entry record={record} />
             </li>

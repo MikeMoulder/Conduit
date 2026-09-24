@@ -72,7 +72,7 @@ export function Copilot() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-zinc-900 px-4 py-3 lg:hidden">
+        <header className="flex items-center gap-3 px-4 py-3 lg:hidden">
           <button
             type="button"
             aria-label="Open the sidebar"

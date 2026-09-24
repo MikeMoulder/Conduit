@@ -239,7 +239,7 @@ export function ProposalReview({
                 return (
                   <div
                     key={asset.mint}
-                    className="flex flex-col gap-2 border-b border-zinc-900 px-4 py-3 last:border-b-0"
+                    className="flex flex-col gap-2 px-4 py-3"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <span className="flex items-baseline gap-2">

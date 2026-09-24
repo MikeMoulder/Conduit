@@ -489,7 +489,7 @@ export function MandateForm() {
 
       <aside className="flex flex-col gap-4 lg:sticky lg:top-24">
         <div className="rounded-lg border border-zinc-800">
-          <h3 className="border-b border-zinc-900 px-4 py-2.5 text-xs uppercase tracking-wide text-zinc-500">
+          <h3 className="px-4 pb-1 pt-3 text-xs uppercase tracking-wide text-zinc-500">
             What the chain will enforce
           </h3>
           <dl className="flex flex-col">
@@ -506,18 +506,17 @@ export function MandateForm() {
               label="status"
               value="Active"
               note="set by the program, not by you"
-              last
             />
           </dl>
         </div>
 
         {mandate && portfolio ? (
           <div className="rounded-lg border border-zinc-800">
-            <h3 className="border-b border-zinc-900 px-4 py-2.5 text-xs uppercase tracking-wide text-zinc-500">
+            <h3 className="px-4 pb-1 pt-3 text-xs uppercase tracking-wide text-zinc-500">
               Addresses
             </h3>
             <Fact label="mandate" value={short(mandate.toBase58())} />
-            <Fact label="portfolio" value={short(portfolio.toBase58())} last />
+            <Fact label="portfolio" value={short(portfolio.toBase58())} />
           </div>
         ) : null}
 
@@ -654,19 +653,13 @@ function Fact({
   label,
   value,
   note,
-  last,
 }: {
   label: string;
   value: string;
   note?: string;
-  last?: boolean;
 }) {
   return (
-    <div
-      className={`flex items-baseline justify-between gap-3 px-4 py-2 ${
-        last ? "" : "border-b border-zinc-900"
-      }`}
-    >
+    <div className="flex items-baseline justify-between gap-3 px-4 py-2">
       <dt className="font-mono text-[11px] text-zinc-500">{label}</dt>
       <dd className="text-right">
         <span className="font-mono text-sm text-zinc-200">{value}</span>
