@@ -1,7 +1,16 @@
 "use client";
 
+import { useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import {
+  Briefcase,
+  PanelLeftClose,
+  Plus,
+  Search,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 
 import type { Conversation } from "@/lib/copilot/store";
 
@@ -13,6 +22,10 @@ import type { Conversation } from "@/lib/copilot/store";
  * better as a screen: picking eight assets out of eighteen with checkboxes
  * beats describing them in a sentence. The conversation is the front door, not
  * the only door.
+ *
+ * Collapsed, the sidebar becomes an icon rail rather than disappearing, so a
+ * new chat, search and the workspaces stay one click away. The logo in the
+ * rail is the way back out: clicking it expands the panel again.
  */
 
 function group(conversations: Conversation[]) {
@@ -24,11 +37,29 @@ function group(conversations: Conversation[]) {
   };
 }
 
+/** Every row is the same pill, so the column reads as one list. */
+function rowClass(rail: boolean, active = false) {
+  return [
+    "flex items-center gap-3 rounded-full text-sm transition-colors duration-150",
+    rail ? "mx-auto size-10 justify-center" : "w-full px-3 py-2",
+    active
+      ? "bg-raised text-ink"
+      : "text-ink-muted hover:bg-raised hover:text-ink",
+  ].join(" ");
+}
+
+const WORKSPACES = [
+  { href: "/portfolio", label: "Portfolio", icon: Briefcase },
+  { href: "/mandate", label: "Author a mandate", icon: ShieldCheck },
+] as const;
+
 export function Sidebar({
   conversations,
   currentId,
   open,
+  rail,
   onClose,
+  onToggle,
   onNew,
   onSelect,
   onDelete,
@@ -36,14 +67,28 @@ export function Sidebar({
 }: {
   conversations: Conversation[];
   currentId: string | null;
+  /** The drawer on narrow screens. */
   open: boolean;
+  /** Docked and folded into icons. Never true for the drawer. */
+  rail: boolean;
   onClose: () => void;
+  /** Folds or unfolds the docked sidebar. */
+  onToggle: () => void;
   onNew: () => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   footer: React.ReactNode;
 }) {
-  const { today, earlier } = group(conversations);
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return conversations;
+    return conversations.filter((c) => c.title.toLowerCase().includes(q));
+  }, [conversations, query]);
+
+  const { today, earlier } = group(filtered);
 
   return (
     <>
@@ -57,54 +102,112 @@ export function Sidebar({
       ) : null}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-64 shrink-0 flex-col border-r border-zinc-900 bg-zinc-950 transition-transform lg:static lg:translate-x-0 ${
+        aria-label="Sidebar"
+        className={`fixed inset-y-0 left-0 z-30 flex w-[272px] shrink-0 flex-col bg-surface transition-[transform,width] duration-200 ease-[var(--ease-out-quick)] lg:static lg:translate-x-0 lg:bg-transparent ${
           open ? "translate-x-0" : "-translate-x-full"
-        }`}
+        } ${rail ? "lg:w-[68px]" : "lg:w-[272px]"}`}
       >
-        <div className="flex items-center gap-2.5 px-4 py-4">
-          <Image
-            src="/logo-mark.png"
-            alt=""
-            width={28}
-            height={28}
-          />
-          <span className="text-sm font-semibold tracking-tight text-zinc-100">
-            CONDUIT
-          </span>
+        <div
+          className={`flex h-16 shrink-0 items-center gap-2.5 ${
+            rail ? "justify-center" : "px-4"
+          }`}
+        >
+          {rail ? (
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-label="Expand the sidebar"
+              title="Expand the sidebar"
+              className="grid size-11 place-items-center rounded-full transition-colors hover:bg-raised"
+            >
+              <Logo />
+            </button>
+          ) : (
+            <Logo />
+          )}
+          {!rail ? (
+            <span className="flex-1 select-none truncate text-[17px] font-semibold tracking-tight text-ink">
+              Conduit
+            </span>
+          ) : null}
+          {!rail ? (
+            <button
+              type="button"
+              onClick={open ? onClose : onToggle}
+              aria-label={open ? "Close the sidebar" : "Collapse the sidebar"}
+              title={open ? "Close the sidebar" : "Collapse the sidebar (Ctrl+B)"}
+              className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink"
+            >
+              {open ? (
+                <X className="size-4" aria-hidden="true" />
+              ) : (
+                <PanelLeftClose className="size-4" aria-hidden="true" />
+              )}
+            </button>
+          ) : null}
         </div>
 
-        <div className="px-3">
+        <nav
+          className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-1 ${
+            rail ? "px-0" : "px-2"
+          }`}
+        >
           <button
             type="button"
             onClick={() => {
               onNew();
               onClose();
             }}
-            className="flex w-full items-center gap-2 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
+            title="New chat"
+            className={rowClass(rail, true)}
           >
-            <span className="text-base leading-none">+</span>
-            New chat
+            <Plus className="size-[18px] shrink-0" aria-hidden="true" />
+            {!rail ? <span>New chat</span> : null}
           </button>
-        </div>
 
-        <nav className="mt-6 flex-1 overflow-y-auto px-3 pb-4">
-          <p className="px-2 pb-1.5 text-[10px] uppercase tracking-wider text-zinc-600">
-            Workspaces
-          </p>
-          <Link
-            href="/portfolio"
-            className="block rounded-md px-2 py-1.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-100"
-          >
-            Portfolio
-          </Link>
-          <Link
-            href="/mandate"
-            className="block rounded-md px-2 py-1.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-100"
-          >
-            Author a mandate
-          </Link>
+          {rail ? (
+            <button
+              type="button"
+              onClick={() => {
+                onToggle();
+                requestAnimationFrame(() => searchRef.current?.focus());
+              }}
+              aria-label="Search conversations"
+              title="Search conversations"
+              className={`mt-1 ${rowClass(true)}`}
+            >
+              <Search className="size-[18px] shrink-0" aria-hidden="true" />
+            </button>
+          ) : (
+            <label className="mt-1 flex w-full cursor-text items-center gap-3 rounded-full px-3 py-2 text-sm text-ink-muted transition-colors focus-within:bg-raised">
+              <Search
+                className="size-[18px] shrink-0 text-ink-faint"
+                aria-hidden="true"
+              />
+              <input
+                ref={searchRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search conversations"
+                aria-label="Search conversations"
+                className="min-w-0 flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-muted focus:outline-none"
+              />
+            </label>
+          )}
 
-          {conversations.length > 0 ? (
+          {!rail ? <SectionLabel>Workspaces</SectionLabel> : null}
+          <ul className={rail ? "mt-3 flex flex-col gap-1" : ""}>
+            {WORKSPACES.map(({ href, label, icon: Icon }) => (
+              <li key={href}>
+                <Link href={href} title={label} className={rowClass(rail)}>
+                  <Icon className="size-[18px] shrink-0" aria-hidden="true" />
+                  {!rail ? <span className="truncate">{label}</span> : null}
+                </Link>
+              </li>
+            ))}
+          </ul>
+
+          {rail ? null : filtered.length > 0 ? (
             <>
               <Section
                 title="Today"
@@ -124,16 +227,38 @@ export function Sidebar({
               />
             </>
           ) : (
-            <p className="mt-6 px-2 text-[11px] leading-relaxed text-zinc-600">
-              Your conversations will appear here. They stay in this browser and
-              are never sent anywhere.
+            <p className="px-3 py-6 text-[12px] leading-relaxed text-ink-faint">
+              {query.trim()
+                ? "No conversations match that search."
+                : "Your conversations will appear here. They stay in this browser and are never sent anywhere."}
             </p>
           )}
         </nav>
 
-        <div className="border-t border-zinc-900 px-3 py-3">{footer}</div>
+        <div className={`shrink-0 pb-3 pt-2 ${rail ? "px-0" : "px-2"}`}>
+          {footer}
+        </div>
       </aside>
     </>
+  );
+}
+
+function Logo() {
+  return (
+    <Image
+      src="/logo.png"
+      alt="Conduit"
+      width={512}
+      height={512}
+      priority
+      className="size-8 shrink-0 select-none"
+    />
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="px-3 pb-1 pt-5 text-[12px] text-ink-faint">{children}</h3>
   );
 }
 
@@ -156,38 +281,39 @@ function Section({
 
   return (
     <>
-      <p className="mt-6 px-2 pb-1.5 text-[10px] uppercase tracking-wider text-zinc-600">
-        {title}
-      </p>
-      {conversations.map((conversation) => (
-        <div
-          key={conversation.id}
-          className={`group flex items-center gap-1 rounded-md pr-1 transition-colors ${
-            conversation.id === currentId
-              ? "bg-zinc-900 text-zinc-100"
-              : "text-zinc-400 hover:bg-zinc-900/60"
-          }`}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              onSelect(conversation.id);
-              onClose();
-            }}
-            className="flex-1 truncate px-2 py-1.5 text-left text-sm"
+      <SectionLabel>{title}</SectionLabel>
+      <ul className="flex flex-col gap-0.5">
+        {conversations.map((conversation) => (
+          <li
+            key={conversation.id}
+            className={`group flex items-center gap-1 rounded-full pr-1.5 transition-colors ${
+              conversation.id === currentId
+                ? "bg-raised text-ink"
+                : "text-ink-muted hover:bg-raised hover:text-ink"
+            }`}
           >
-            {conversation.title}
-          </button>
-          <button
-            type="button"
-            aria-label="Delete this conversation"
-            onClick={() => onDelete(conversation.id)}
-            className="hidden px-1.5 text-zinc-600 transition-colors hover:text-zinc-300 group-hover:block"
-          >
-            ×
-          </button>
-        </div>
-      ))}
+            <button
+              type="button"
+              onClick={() => {
+                onSelect(conversation.id);
+                onClose();
+              }}
+              className="min-w-0 flex-1 truncate px-3 py-2 text-left text-[13px]"
+            >
+              {conversation.title}
+            </button>
+            <button
+              type="button"
+              aria-label="Delete this conversation"
+              title="Delete this conversation"
+              onClick={() => onDelete(conversation.id)}
+              className="grid size-6 shrink-0 place-items-center rounded-full text-ink-faint opacity-0 transition-opacity hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <X className="size-3.5" aria-hidden="true" />
+            </button>
+          </li>
+        ))}
+      </ul>
     </>
   );
 }

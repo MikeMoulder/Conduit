@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletReadyState } from "@solana/wallet-adapter-base";
 import type { WalletName } from "@solana/wallet-adapter-base";
+import { ExternalLink, LogOut, Wallet } from "lucide-react";
 
 import { CLUSTER } from "@/lib/cluster";
 import { explorerUrl } from "@/lib/chain";
@@ -39,10 +40,24 @@ const MENU_POSITION: Record<MenuPlacement, string> = {
   "above-start": "left-0 bottom-full mb-2",
 };
 
+/**
+ * The same control drawn two ways.
+ *
+ * In the workspace header there is room for the address, the balance and a
+ * disconnect button side by side. In the sidebar there is one row, and in the
+ * rail a single icon, so the details move into a menu that opens upward.
+ */
+export type WalletVariant = "header" | "sidebar";
+
 export function ConnectWallet({
   placement = "below-end",
+  variant = "header",
+  rail = false,
 }: {
   placement?: MenuPlacement;
+  variant?: WalletVariant;
+  /** Sidebar only: draw the icon alone, for the collapsed rail. */
+  rail?: boolean;
 } = {}) {
   const { connection } = useConnection();
   const {
@@ -56,6 +71,7 @@ export function ConnectWallet({
   } = useWallet();
 
   const [open, setOpen] = useState(false);
+  const [details, setDetails] = useState(false);
   const [balance, setBalance] = useState<{ address: string; sol: number } | null>(
     null,
   );
@@ -66,14 +82,22 @@ export function ConnectWallet({
     (w) => w.readyState === WalletReadyState.Installed,
   );
 
+  const anyOpen = open || details;
+
   useEffect(() => {
-    if (!open) return;
+    if (!anyOpen) return;
 
     function onPointerDown(event: MouseEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+        setDetails(false);
+      }
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        setDetails(false);
+      }
     }
 
     document.addEventListener("mousedown", onPointerDown);
@@ -82,7 +106,7 @@ export function ConnectWallet({
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open]);
+  }, [anyOpen]);
 
   useEffect(() => {
     if (!publicKey) return;
@@ -125,6 +149,79 @@ export function ConnectWallet({
     setOpen(false);
   }
 
+  const sidebar = variant === "sidebar";
+  const position = MENU_POSITION[sidebar ? "above-start" : placement];
+  const balanceLabel = `${sol === null ? "balance unavailable" : `${sol.toFixed(3)} SOL`} on ${CLUSTER}`;
+
+  if (connected && publicKey && sidebar) {
+    const address = publicKey.toBase58();
+    return (
+      <div ref={containerRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setDetails((v) => !v)}
+          aria-expanded={details}
+          aria-haspopup="dialog"
+          title={`Wallet ${address}`}
+          className={`flex items-center gap-3 rounded-full text-left transition-colors hover:bg-raised ${
+            rail ? "mx-auto size-10 justify-center" : "w-full px-2 py-1.5"
+          }`}
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-raised text-emerald-400">
+            <Wallet className="size-4" aria-hidden="true" />
+          </span>
+          {!rail ? (
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-mono text-[13px] text-ink">
+                {shorten(address)}
+              </span>
+              <span className="block truncate text-[11px] text-ink-faint">
+                {balanceLabel}
+              </span>
+            </span>
+          ) : null}
+        </button>
+
+        {details ? (
+          <div
+            role="dialog"
+            aria-label="Connected wallet"
+            className={`absolute ${position} z-50 w-72 overflow-hidden rounded-2xl border border-line bg-overlay shadow-[0_2px_4px_rgb(0_0_0/0.3),0_12px_32px_-8px_rgb(0_0_0/0.6)]`}
+          >
+            <div className="px-4 pb-2 pt-3.5">
+              <p className="text-[11px] text-ink-faint">
+                Connected with {wallet?.adapter.name ?? "a wallet"}
+              </p>
+              <a
+                href={explorerUrl(address, "address", CLUSTER)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 flex items-start gap-1.5 break-all font-mono text-[12px] leading-relaxed text-ink-muted transition-colors hover:text-ink"
+              >
+                {address}
+                <ExternalLink className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+              </a>
+              <p className="mt-2 text-[12px] text-ink-muted">{balanceLabel}</p>
+            </div>
+            <div className="p-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setDetails(false);
+                  void disconnect();
+                }}
+                className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+              >
+                <LogOut className="size-4" aria-hidden="true" />
+                Disconnect
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   if (connected && publicKey) {
     return (
       <div className="flex items-center gap-3">
@@ -154,23 +251,45 @@ export function ConnectWallet({
     );
   }
 
+  const connectLabel = connecting
+    ? `Connecting to ${wallet?.adapter.name ?? "wallet"}`
+    : "Connect wallet";
+
   return (
     <div ref={containerRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        disabled={connecting}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
-      >
-        {connecting ? `Connecting to ${wallet?.adapter.name ?? "wallet"}` : "Connect wallet"}
-      </button>
+      {sidebar ? (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          disabled={connecting}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          aria-label={connectLabel}
+          title={connectLabel}
+          className={`flex items-center justify-center gap-2 rounded-full bg-ink text-sm font-medium text-canvas transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-60 ${
+            rail ? "mx-auto size-10" : "w-full px-4 py-2.5"
+          }`}
+        >
+          <Wallet className="size-4 shrink-0" aria-hidden="true" />
+          {!rail ? <span className="truncate">{connectLabel}</span> : null}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          disabled={connecting}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
+        >
+          {connectLabel}
+        </button>
+      )}
 
       {open ? (
         <div
           role="menu"
-          className={`absolute ${MENU_POSITION[placement]} z-20 w-64 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl`}
+          className={`absolute ${position} z-50 w-64 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl`}
         >
           {installed.length === 0 ? (
             <p className="px-4 py-3 text-sm leading-relaxed text-zinc-400">

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { Menu } from "lucide-react";
 
 import { ConnectWallet } from "@/components/connect-wallet";
 import { CLUSTER } from "@/lib/cluster";
 import { useCopilot } from "@/hooks/use-copilot";
+import { useIsDesktop, useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { Composer } from "./composer";
 import { Sidebar } from "./sidebar";
 import { Thread } from "./thread";
@@ -34,18 +36,39 @@ export function Copilot() {
   const { connected } = useWallet();
   const [open, setOpen] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [collapsed, setCollapsed] = useSidebarCollapsed();
+  const isDesktop = useIsDesktop();
+
+  const rail = collapsed && isDesktop;
+  const drawer = open && !isDesktop;
+
+  // Ctrl or Cmd with B folds the sidebar, the shortcut editors and most other
+  // chat clients already taught people.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        if (isDesktop) setCollapsed(!collapsed);
+        else setOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [collapsed, isDesktop, setCollapsed]);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-canvas text-ink">
       <Sidebar
         conversations={conversations}
         currentId={conversation?.id ?? null}
-        open={open}
+        open={drawer}
+        rail={rail}
         onClose={() => setOpen(false)}
+        onToggle={() => setCollapsed(!collapsed)}
         onNew={newChat}
         onSelect={select}
         onDelete={remove}
-        footer={<ConnectWallet placement="above-start" />}
+        footer={<ConnectWallet variant="sidebar" rail={rail} />}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -56,14 +79,7 @@ export function Copilot() {
             onClick={() => setOpen(true)}
             className="text-zinc-400 hover:text-zinc-100"
           >
-            <svg viewBox="0 0 16 16" className="h-5 w-5" aria-hidden="true">
-              <path
-                d="M2 4h12M2 8h12M2 12h12"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
+            <Menu className="size-5" aria-hidden="true" />
           </button>
           <span className="text-sm font-semibold tracking-tight">
             CONDUIT
