@@ -1,39 +1,32 @@
 import "server-only";
 
-import {
-  Keypair,
-  PublicKey,
-  SystemProgram,
-  TransactionInstruction,
-} from "@solana/web3.js";
+import type { Keypair, PublicKey, TransactionInstruction } from "@solana/web3.js";
 
 import { parseSecret } from "./agent-identity";
+import { associatedTokenAddress } from "./holdings";
+import { createAssociatedTokenAccountIdempotent } from "./token-instructions";
 
 /**
- * The devnet faucet: how somebody who is not us finishes the flow.
+ * The devnet faucet, and the key that pays for token accounts.
  *
- * A browser wallet can create a mandate and a portfolio, but the portfolio
- * starts empty and only the cash mint authority can create cash. That
- * authority is the build host wallet, and it stays off this server on purpose:
- * a key that can mint without limit does not belong behind an HTTP route.
+ * Demo cash goes to the person's own wallet, not into Conduit. That keeps the
+ * deposit a real step, taken by the person, the way it would be with money
+ * that mattered: they hold cash in Phantom and choose how much of it their main
+ * wallet or a mandate should get.
  *
- * So the faucet is a separate key holding a finite float of demo cash. It can
- * hand out what it has and nothing more, which makes the worst case of any bug
- * in the route an empty float rather than unlimited money. It is also not the
- * agent key. The agent has exactly one power and paying people is not it.
+ * The same key pays rent for the token accounts the agent's transactions need.
+ * A main wallet or a mandate wallet holds each asset in its own token account,
+ * those accounts have to exist before anything can land in them, and asking the
+ * person to sign for each one would undo the point of not signing every trade.
  *
- * It does two jobs, because a fresh portfolio needs both before it can settle:
- * it creates the portfolio's token accounts, one for cash and one per asset the
- * mandate permits, and it tops the cash account up to a fixed amount.
+ * It is a third key, separate from the agent and from the mint authority. It
+ * holds a finite float and a little SOL, so its worst case is running dry. The
+ * mint authority stays off the web server: a key that can mint without limit
+ * does not belong behind an HTTP route.
  */
 
-/** Whole units of demo cash a portfolio is topped up to. */
-export const FUND_UNITS = 10_000;
-
-const TOKEN_PROGRAM = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-const ASSOCIATED_TOKEN_PROGRAM = new PublicKey(
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-);
+/** Whole units of demo cash a person's own wallet is topped up to. */
+export const FUND_UNITS = 50_000;
 
 let cached: Keypair | null = null;
 
@@ -52,61 +45,34 @@ export function getFaucetKeypair(): Keypair | null {
  * How much to send so a balance reaches the target, never more.
  *
  * Topped up rather than added to, which is what makes pressing the button
- * twice harmless. A portfolio that already holds the target gets nothing, and
- * one that has spent part of its cash on a settlement gets back to the target
- * rather than doubling.
+ * twice harmless. A wallet that already holds the target gets nothing, and one
+ * that has deposited part of its cash gets back to the target rather than
+ * doubling.
  */
 export function topUpAmount(held: bigint, target: bigint): bigint {
   return held >= target ? BigInt(0) : target - held;
 }
 
 /**
- * Creates an associated token account if it does not already exist.
- *
- * Built by hand for the same reason `holdings.ts` derives addresses by hand:
- * the instruction is one byte of data and six accounts, which is less than the
- * dependency that would otherwise provide it. The idempotent variant (tag 1)
- * succeeds when the account is already there, so the whole set can be sent on
- * every request without reading first.
+ * Instructions opening a token account per mint for one holder, paid by the
+ * faucet. Idempotent, so they can be sent every time without reading first.
  */
-export function createAssociatedTokenAccountIdempotent(
+export function openTokenAccounts(
   payer: PublicKey,
-  ata: PublicKey,
-  owner: PublicKey,
-  mint: PublicKey,
-): TransactionInstruction {
-  return new TransactionInstruction({
-    programId: ASSOCIATED_TOKEN_PROGRAM,
-    keys: [
-      { pubkey: payer, isSigner: true, isWritable: true },
-      { pubkey: ata, isSigner: false, isWritable: true },
-      { pubkey: owner, isSigner: false, isWritable: false },
-      { pubkey: mint, isSigner: false, isWritable: false },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
-    ],
-    data: Buffer.from([1]),
-  });
+  holder: PublicKey,
+  mints: PublicKey[],
+): TransactionInstruction[] {
+  return mints.map((mint) =>
+    createAssociatedTokenAccountIdempotent(
+      payer,
+      associatedTokenAddress(holder, mint),
+      holder,
+      mint,
+    ),
+  );
 }
 
-/** An SPL token transfer: tag 3, then the amount as a little endian u64. */
-export function transferTokens(
-  source: PublicKey,
-  destination: PublicKey,
-  owner: PublicKey,
-  amount: bigint,
-): TransactionInstruction {
-  const data = Buffer.alloc(9);
-  data.writeUInt8(3, 0);
-  data.writeBigUInt64LE(amount, 1);
-
-  return new TransactionInstruction({
-    programId: TOKEN_PROGRAM,
-    keys: [
-      { pubkey: source, isSigner: false, isWritable: true },
-      { pubkey: destination, isSigner: false, isWritable: true },
-      { pubkey: owner, isSigner: true, isWritable: false },
-    ],
-    data,
-  });
-}
+export {
+  createAssociatedTokenAccountIdempotent,
+  transferTokens,
+} from "./token-instructions";

@@ -15,6 +15,7 @@ import {
 } from "@/lib/holdings";
 import idl from "@/lib/idl/conduit.json";
 import type { Conduit } from "@/lib/idl/conduit";
+import { getFaucetKeypair, openTokenAccounts } from "@/lib/faucet";
 import { getConnection } from "@/lib/rpc";
 
 /**
@@ -119,22 +120,49 @@ export async function POST(request: Request): Promise<Response> {
 
   const before = await fetchHoldings(connection, portfolioAddress, mandate);
 
-  // Refused here with a reason rather than sent and left to fail. A fresh
-  // portfolio has no token accounts at all, and the program's account checks
-  // reject that with a simulation dump that says nothing useful to a person.
-  const accountsOpen =
-    Boolean(before.cash?.exists) && before.assets.every((a) => a.exists);
-
-  if (!accountsOpen || !before.funded) {
+  // Nothing to settle with is a reason to stop. Missing token accounts are not:
+  // a portfolio funded by a direct deposit has its cash account and nothing
+  // else, and settle needs one per permitted asset. They are opened here, paid
+  // by the faucet, rather than handing the person a refusal about housekeeping.
+  if (!before.funded) {
     return Response.json(
       {
         settled: false,
         error: "this portfolio has nothing to settle with yet",
-        detail:
-          "It has no cash, or the token accounts settlement needs are not open. On devnet, add demo cash first; that opens the accounts too.",
+        detail: "It holds no cash. Move money in from the main wallet, or deposit directly.",
       },
       { status: 409 },
     );
+  }
+
+  const accountsOpen =
+    Boolean(before.cash?.exists) && before.assets.every((a) => a.exists);
+
+  if (!accountsOpen) {
+    const faucet = getFaucetKeypair();
+    if (!faucet) {
+      return Response.json(
+        { settled: false, error: "token accounts are missing and no faucet is configured to open them" },
+        { status: 409 },
+      );
+    }
+    const latest = await connection.getLatestBlockhash("confirmed");
+    const opening = new Transaction({
+      feePayer: faucet.publicKey,
+      blockhash: latest.blockhash,
+      lastValidBlockHeight: latest.lastValidBlockHeight,
+    }).add(
+      ...openTokenAccounts(faucet.publicKey, portfolioAddress, [
+        new PublicKey(desk.cashMint),
+        ...mandate.allowedAssets.map((a) => new PublicKey(a.mint)),
+      ]),
+    );
+    opening.sign(faucet);
+    const openSig = await connection.sendRawTransaction(opening.serialize());
+    await confirmSignature(connection, openSig, {
+      lastValidBlockHeight: latest.lastValidBlockHeight,
+      timeoutMs: 60_000,
+    });
   }
 
   /**

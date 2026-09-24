@@ -242,6 +242,37 @@ async function main(): Promise<void> {
     console.log(`desk           created ${desk.toBase58()}`);
   }
 
+  /* ---- price bindings for main wallet trades ---- */
+
+  async function bindFeeds(entries: DeskConfig["settleable"]): Promise<void> {
+
+    // A main wallet has no mandate to bind its assets to feeds, so the desk
+    // states the binding itself, once per mint. Without it a trade could pair
+    // one asset's mint with another asset's price.
+    for (const entry of entries) {
+      const mint = new PublicKey(entry.mint);
+      const [deskAsset] = PublicKey.findProgramAddressSync(
+        [Buffer.from("desk_asset"), mint.toBuffer()],
+        program.programId,
+      );
+      if (await connection.getAccountInfo(deskAsset)) {
+        console.log(`bound  ${entry.symbol.padEnd(10)} already`);
+        continue;
+      }
+      await program.methods
+        .registerDeskAsset(Array.from(Buffer.from(entry.feedId, "hex")))
+        .accountsStrict({
+          desk,
+          deskAsset,
+          mint,
+          authority: payer.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      console.log(`bound  ${entry.symbol.padEnd(10)} to its ${entry.source} feed`);
+    }
+  }
+
   /* ---- inventory ---- */
 
   /** Creates the token account if absent, then tops it up to `units`. */
@@ -290,6 +321,19 @@ async function main(): Promise<void> {
     return ata;
   }
 
+  // --bind-only reuses the config already written and only states the price
+  // bindings. Stocking reads every token account, around forty requests, and
+  // on the public devnet RPC that alone is enough to be rate limited.
+  if (process.argv.includes("--bind-only")) {
+    const current = readConfig();
+    if (!current) {
+      console.error("no desk config yet; run without --bind-only first");
+      process.exit(1);
+    }
+    await bindFeeds(current.settleable);
+    return;
+  }
+
   const deskCash = await stock(cashMint, CASH_DECIMALS, DESK_CASH_FLOAT, "desk cash");
 
   const stocked: DeskConfig["settleable"] = [];
@@ -311,6 +355,8 @@ async function main(): Promise<void> {
       source: entry.source,
     });
   }
+
+  await bindFeeds(stocked);
 
   const config: DeskConfig = {
     cluster: "devnet",

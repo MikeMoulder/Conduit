@@ -3,7 +3,7 @@ import "server-only";
 import { Connection, PublicKey } from "@solana/web3.js";
 
 import type { MandateView } from "./accounts";
-import { settleableAsset } from "./holdings";
+import { settleableAsset, type DeskAsset } from "./holdings";
 import { codecProgram } from "./program-client";
 
 /**
@@ -107,4 +107,50 @@ export async function readSettlementPrices(
   }
 
   return { ok: true, prices };
+}
+
+/**
+ * One asset's settlement price, for a main wallet trade.
+ *
+ * The same account and the same staleness rule as a mandate settlement, so a
+ * trade previewed here runs at the price the program will read.
+ */
+export async function readAssetPrice(
+  connection: Connection,
+  asset: DeskAsset,
+): Promise<{ ok: true; price: SettlementPrice } | { ok: false; reason: string }> {
+  if (asset.source !== "published") {
+    return { ok: false, reason: `${asset.symbol} is priced from Pyth, which wallet trades do not read yet.` };
+  }
+
+  const info = await connection.getAccountInfo(new PublicKey(asset.priceAccount));
+  if (!info) return { ok: false, reason: `No price has been published for ${asset.symbol} yet.` };
+
+  const decoded = codecProgram.coder.accounts.decode("publishedPrice", info.data) as {
+    price: { toString(): string };
+    exponent: number;
+    publishTime: { toNumber(): number };
+    source: string;
+  };
+
+  const publishTime = decoded.publishTime.toNumber();
+  const ageSeconds = Math.floor(Date.now() / 1000) - publishTime;
+
+  if (ageSeconds > MAX_PRICE_AGE_SECONDS) {
+    return {
+      ok: false,
+      reason: `The ${asset.symbol} price is ${Math.round(ageSeconds / 60)} minutes old, past the ten minutes the program accepts. The price publisher has likely stopped.`,
+    };
+  }
+
+  return {
+    ok: true,
+    price: {
+      mint: asset.mint,
+      price: Number(decoded.price.toString()) * 10 ** decoded.exponent,
+      publishTime,
+      source: decoded.source,
+      ageSeconds,
+    },
+  };
 }

@@ -149,14 +149,27 @@ export async function fetchHoldings(
     return { settleable: false, cash: null, assets: [], funded: false };
   }
 
-  const cashMint = new PublicKey(desk.cashMint);
   const wanted = mandate.allowedAssets
     .map((a) => settleableAsset(a.mint))
     .filter((a): a is DeskAsset => Boolean(a));
 
+  return { settleable: true, ...(await fetchBalances(connection, portfolio, wanted)) };
+}
+
+/**
+ * Cash and asset balances for any holder: a mandate wallet, a main wallet or a
+ * person's own wallet. One read for all of them.
+ */
+export async function fetchBalances(
+  connection: Connection,
+  holder: PublicKey,
+  wanted: DeskAsset[],
+): Promise<{ cash: AssetHolding; assets: AssetHolding[]; funded: boolean }> {
+  const cashMint = new PublicKey(desk.cashMint);
+
   const addresses = [
-    associatedTokenAddress(portfolio, cashMint),
-    ...wanted.map((a) => associatedTokenAddress(portfolio, new PublicKey(a.mint))),
+    associatedTokenAddress(holder, cashMint),
+    ...wanted.map((a) => associatedTokenAddress(holder, new PublicKey(a.mint))),
   ];
 
   const accounts = await connection.getMultipleAccountsInfo(addresses);
@@ -190,7 +203,6 @@ export async function fetchHoldings(
   });
 
   return {
-    settleable: true,
     cash,
     assets,
     funded:
