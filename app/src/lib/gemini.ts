@@ -134,6 +134,17 @@ interface RawResponse {
   error?: { message?: string; status?: string };
 }
 
+/**
+ * The longest one model call may take before it is abandoned.
+ *
+ * A call with no limit is how a turn sat on "Reading the question" for good:
+ * the provider accepted the request under load and never answered, and nothing
+ * was timing it. Thirty seconds is well past a normal tool turn, which answers
+ * in under ten, so a slow answer is left alone and a hung one is not waited on.
+ * A timeout counts as unavailable, so the next model on the ladder takes over.
+ */
+const MODEL_TIMEOUT_MS = 30_000;
+
 async function callModel(
   model: string,
   body: unknown,
@@ -141,7 +152,11 @@ async function callModel(
   const env = getEnv();
 
   let response: Response;
+  let text: string;
   try {
+    // One signal covers the request and reading the body, since either can
+    // be where a stalled connection stops.
+    const signal = AbortSignal.timeout(MODEL_TIMEOUT_MS);
     response = await fetch(`${API_ROOT}/${model}:generateContent`, {
       method: "POST",
       headers: {
@@ -150,12 +165,18 @@ async function callModel(
       },
       body: JSON.stringify(body),
       cache: "no-store",
+      signal,
     });
+    text = await response.text();
   } catch (error) {
-    return { ok: false, status: 0, detail: String(error) };
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
+    // 408 for a timeout, kept apart from 0 for a dropped connection. A model
+    // that hung is moved past, not waited on again: retrying it would multiply
+    // the wait by the length of the ladder.
+    return timedOut
+      ? { ok: false, status: 408, detail: `no answer within ${MODEL_TIMEOUT_MS / 1000}s` }
+      : { ok: false, status: 0, detail: String(error) };
   }
-
-  const text = await response.text();
 
   if (!response.ok) {
     let detail = text.slice(0, 200);
@@ -257,7 +278,7 @@ export async function generateWithTools(
       const response = await callModel(model, body);
 
       if (!response.ok) {
-        if ([404, 429, 503, 500, 0].includes(response.status)) {
+        if ([404, 408, 429, 503, 500, 0].includes(response.status)) {
           unavailableUntil.set(model, Date.now() + COOLDOWN_MS);
         }
         failures.push(`${model}: http ${response.status} ${response.detail}`);
@@ -339,7 +360,7 @@ export async function generateStructured<T>(
       if (!response.ok) {
         // Availability problems are a property of the model, not the prompt, so
         // repairing would be pointless. Move on.
-        if ([404, 429, 503, 500, 0].includes(response.status)) {
+        if ([404, 408, 429, 503, 500, 0].includes(response.status)) {
           unavailableUntil.set(model, Date.now() + COOLDOWN_MS);
           failures.push(`${model}: http ${response.status} ${response.detail}`);
           break;
