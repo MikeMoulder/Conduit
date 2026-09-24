@@ -103,9 +103,10 @@ export class GeminiError extends Error {
   }
 }
 
-function availableModels(preferred: string): string[] {
+function availableModels(preferred: string, ignoreCooldowns = false): string[] {
   const now = Date.now();
   const ordered = [preferred, ...MODEL_LADDER.filter((m) => m !== preferred)];
+  if (ignoreCooldowns) return ordered;
   const usable = ordered.filter((m) => (unavailableUntil.get(m) ?? 0) <= now);
 
   // If everything is cooling down, try the whole ladder anyway. A stale cooldown
@@ -233,35 +234,55 @@ export async function generateWithTools(
     },
   };
 
-  for (const model of models) {
-    const response = await callModel(model, body);
+  /*
+   * Rounds rather than one pass. On a free key the whole ladder shares a per
+   * minute budget, so a burst, such as a card result arriving straight after an
+   * answer, can find every model rate limited at once. Those limits clear in
+   * seconds. Waiting briefly and trying again turns "no model was available"
+   * into a slower answer, which is the better failure for someone mid flow.
+   */
+  const retryDelays = [0, 3_000, 8_000];
 
-    if (!response.ok) {
-      if ([404, 429, 503, 500, 0].includes(response.status)) {
-        unavailableUntil.set(model, Date.now() + COOLDOWN_MS);
+  for (let round = 0; round < retryDelays.length; round += 1) {
+    if (retryDelays[round] > 0) {
+      const onlyBusy = failures.every((f) => /http (429|503|500|0) /.test(f));
+      if (!onlyBusy) break;
+      await new Promise((resolve) => setTimeout(resolve, retryDelays[round]));
+    }
+
+    // Later rounds try every model: the cooldowns were set by this same burst.
+    const pass = round === 0 ? models : availableModels(env.GEMINI_MODEL, true);
+
+    for (const model of pass) {
+      const response = await callModel(model, body);
+
+      if (!response.ok) {
+        if ([404, 429, 503, 500, 0].includes(response.status)) {
+          unavailableUntil.set(model, Date.now() + COOLDOWN_MS);
+        }
+        failures.push(`${model}: http ${response.status} ${response.detail}`);
+        continue;
       }
-      failures.push(`${model}: http ${response.status} ${response.detail}`);
-      continue;
+
+      const candidate = response.data.candidates?.[0];
+      const parts = candidate?.content?.parts ?? [];
+
+      // An empty reply is not usable and is not the prompt's fault, so try the
+      // next model rather than reporting silence to the caller as an answer.
+      if (parts.length === 0) {
+        failures.push(
+          `${model}: empty reply, finishReason=${candidate?.finishReason ?? "unknown"}`,
+        );
+        continue;
+      }
+
+      return {
+        parts,
+        model,
+        totalTokens: response.data.usageMetadata?.totalTokenCount ?? null,
+        finishReason: candidate?.finishReason ?? null,
+      };
     }
-
-    const candidate = response.data.candidates?.[0];
-    const parts = candidate?.content?.parts ?? [];
-
-    // An empty reply is not usable and is not the prompt's fault, so try the
-    // next model rather than reporting silence to the caller as an answer.
-    if (parts.length === 0) {
-      failures.push(
-        `${model}: empty reply, finishReason=${candidate?.finishReason ?? "unknown"}`,
-      );
-      continue;
-    }
-
-    return {
-      parts,
-      model,
-      totalTokens: response.data.usageMetadata?.totalTokenCount ?? null,
-      finishReason: candidate?.finishReason ?? null,
-    };
   }
 
   throw new GeminiError(
