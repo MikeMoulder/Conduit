@@ -28,7 +28,7 @@ let cachedKeypair: Keypair | null = null;
  * not agree: the CLI writes a JSON array of bytes, most libraries and every
  * copy and paste path use base58.
  */
-function parseSecret(raw: string): Keypair {
+export function parseSecret(raw: string): Keypair {
   const trimmed = raw.trim();
 
   if (trimmed.startsWith("[")) {
