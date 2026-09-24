@@ -113,6 +113,8 @@ function readConfig(): DeskConfig | null {
 
 async function main(): Promise<void> {
   const force = process.argv.includes("--force");
+  // Off by default. See priceSourceFor for why the safe default is ours.
+  const preferPyth = process.argv.includes("--pyth-crypto");
 
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
@@ -149,7 +151,7 @@ async function main(): Promise<void> {
 
   const settleable = registry.assets
     .map((asset) => {
-      const source = priceSourceFor(asset.assetClass);
+      const source = priceSourceFor(asset.assetClass, preferPyth);
 
       if (source === "pyth") {
         // A recorded feed id is not the same as an available price, so an

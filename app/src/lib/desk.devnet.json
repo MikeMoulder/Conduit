@@ -1,18 +1,82 @@
 {
   "cluster": "devnet",
-  "generatedAt": "2026-09-22T12:10:47.772Z",
+  "generatedAt": "2026-09-22T13:48:50.693Z",
   "cashMint": "D5gVdhUopCoGntZgFvUuQRiCky2bLFfqhTRaYE8qbk1G",
   "cashDecimals": 6,
   "desk": "GwXgM9gmJ7kX9qGfkCkPYdbyuw7syzMu4Zynzq992bNo",
   "deskCash": "CshF6krXduYrv5CzTQPoabcgsj295yfjyoKy5D3v4Ydd",
   "settleable": [
     {
+      "symbol": "AAPL",
+      "mint": "haugTrskYNkNwjMLsStNxxWPouZRgpNS6VGJXxeut32",
+      "decimals": 8,
+      "feedId": "69de786a3ddec8faa385bd00f903f5a1f5b33b8fdd1d7d10af82f059ae246599",
+      "priceAccount": "DgzRvNdfpFBgxh3w62aubtbExmJJ7bAGD4CjJnFTY2Ex",
+      "deskTokenAccount": "83rLje2FyTTB25w2JPAYZfjav4CRR4SGHFDDGoRsSoFS",
+      "source": "published"
+    },
+    {
+      "symbol": "NVDA",
+      "mint": "EwRtqnrKMojfxq18VAVh9bVooDNPmcS6YR4zByhfScKy",
+      "decimals": 8,
+      "feedId": "4291a1b4f3fef364adae45a788e1daef5d0af73fb366cd629fe8a320a8a5ad56",
+      "priceAccount": "mtg5EVZ3supvpUgbU1JAQTWL1MqXcxzgZgDDv3FHAzU",
+      "deskTokenAccount": "JDqb9wgMQgYL8ovZXe9KztYnFavc1cJQtsppoWTTS8DY",
+      "source": "published"
+    },
+    {
+      "symbol": "MSFT",
+      "mint": "EznVA5oK5YBdduSqn35PtTMjgNqoGvyW51Hoe9M9gu5L",
+      "decimals": 8,
+      "feedId": "ab161d9e73f21e9ae5dfb223bf0694cfb14785ac7b0db3d77be589e7104366c5",
+      "priceAccount": "GqxsxxXHY6b2oL6rYKRDNuu7hKQ7ux1Wt9oz2Eef78y8",
+      "deskTokenAccount": "CrtE2BaeBTLcR1DywHkbaE9Khp5yfemQ5TW8bJwt5Hbd",
+      "source": "published"
+    },
+    {
+      "symbol": "TSLA",
+      "mint": "Hr9kUtqkYqfFe6YcLUqNKcAdMWy9vVagwydBSwT4DKfW",
+      "decimals": 8,
+      "feedId": "35ef0130ffe1c047b9c91631171db895cd54c686821c449c350b82f87e1bb263",
+      "priceAccount": "8aB1rd5bLyb1fBKpBGtMRHEF2Cta1rqDspG7rAtHsZkH",
+      "deskTokenAccount": "DgRWPhpnyNu9vBm6fWGvwDpXQDtm1oxzv3f3yqCVpgXp",
+      "source": "published"
+    },
+    {
+      "symbol": "GOOGL",
+      "mint": "At36ZtEQwYAJayjX4Jz6t1AEvZnmg1rSm3xfcZxvfyWQ",
+      "decimals": 8,
+      "feedId": "486068a3c8efd6afe2678abd0b9dd2ecffba51b8b9632e17be0a300d78f9f921",
+      "priceAccount": "2yshvKBEFL8VAnAzkRm9avYQL86eKp42aXxXfGRSNZeY",
+      "deskTokenAccount": "CA82dqmmLa9VenrbbBiXgjZPjj28JCxKyZ9AbR4PqwTx",
+      "source": "published"
+    },
+    {
+      "symbol": "AMZN",
+      "mint": "Drj3fKgCdsJ3wSEV8MHyUFh3wRdNafSVuWQ2meY3ec24",
+      "decimals": 8,
+      "feedId": "58e52bcabc2d345a1b69c7ea5659ef8f6d73056ba565451d911e2b5ad2871918",
+      "priceAccount": "3Xhw4qPki3dTcPTaBuPTV5PVY7ZMkQVHmTcERZUi8dAU",
+      "deskTokenAccount": "CArK9Y6JtM2CdUYvG2YqykrXfgHN8SFEKRdgF1LzLhLa",
+      "source": "published"
+    },
+    {
+      "symbol": "SPY",
+      "mint": "CMV3qNCEa5xuVS4v9wV4U3p9wbtCrAsS6XD5Uwao92KK",
+      "decimals": 8,
+      "feedId": "ea7dc9f34ba0fe22618d9455cb1f4e97e0702c8ad901b8c7e7ea664a98c7ebc3",
+      "priceAccount": "8moJ13eygaDajxNRiQuc8BXb9MbvcHHVLYFSiAPs5f4a",
+      "deskTokenAccount": "3FxHT7wu1AodqysdrMHnQQKoJdesdwng73LF7vSi2T7f",
+      "source": "published"
+    },
+    {
       "symbol": "BTC",
       "mint": "9u3ByGuiEpGypu9DCQjEnNzxoCUK9K7MsRzcN4v7e7mj",
       "decimals": 8,
       "feedId": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
       "priceAccount": "GTVariqAiscXLkyNWCVhssZxeZPbFhAi12aAM811WvvG",
-      "deskTokenAccount": "A3f8NwRDy7v1FqPumQnNnPfqbFjpQNVBaemRpt6JxSqz"
+      "deskTokenAccount": "A3f8NwRDy7v1FqPumQnNnPfqbFjpQNVBaemRpt6JxSqz",
+      "source": "pyth"
     },
     {
       "symbol": "ETH",
@@ -20,7 +84,8 @@
       "decimals": 8,
       "feedId": "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
       "priceAccount": "GsZE13nr9acPWUHvpwnajtMzpctFyxfgquNsCnR2P52i",
-      "deskTokenAccount": "BnF7LXAg4hCWSj9SiJCczTC3nwGZxrYwWYWX354xvgWT"
+      "deskTokenAccount": "BnF7LXAg4hCWSj9SiJCczTC3nwGZxrYwWYWX354xvgWT",
+      "source": "pyth"
     },
     {
       "symbol": "SOL",
@@ -28,7 +93,80 @@
       "decimals": 8,
       "feedId": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
       "priceAccount": "6F7n5SQru3LE72ovrzTgAuMRNdm727fdUvsZdhRBmSPu",
-      "deskTokenAccount": "C9522a3pveL4CGTrWZ7wcBHoRKSVWe68aqQ6ULh2g5RH"
+      "deskTokenAccount": "C9522a3pveL4CGTrWZ7wcBHoRKSVWe68aqQ6ULh2g5RH",
+      "source": "pyth"
+    },
+    {
+      "symbol": "ANDURIL",
+      "mint": "G2pa2J4gTrbDBAsnhqew9dUaAnqrUr5ctS48BbrkXA2A",
+      "decimals": 9,
+      "feedId": "c17c9e232021fcaf1385293392d3cc0e0f3417d6255ce74f51b547911c65d671",
+      "priceAccount": "8WFGo9nWJrvhm9xiVChxz8M5Y9fHwGAvU6zgwQpYM5QW",
+      "deskTokenAccount": "FmxSwhNRzw5eQaEWqWp7kDYyfkvfmgSQqDppX5UKazKj",
+      "source": "published"
+    },
+    {
+      "symbol": "ANTHROPIC",
+      "mint": "FSy3J9wjSL4VbwDdF1U1GUzmYagHY4rvSQY1D5d1hr97",
+      "decimals": 9,
+      "feedId": "4dd2f33243ea27a422c5bcafdbbef04ec51c32defb730ee096861ab929290038",
+      "priceAccount": "5gSH3pQvhaDAhbp3aJkN9he4HUEbZnz1yf1JUhGVKfjm",
+      "deskTokenAccount": "EK6VjekmgtJWbAq4Duz6157GPWamm77444beAsh4gqzo",
+      "source": "published"
+    },
+    {
+      "symbol": "FIGUREAI",
+      "mint": "GjaBe4DMat57JBXJwx1tP53AkR7TTzJCBz7R4X3QJWVp",
+      "decimals": 9,
+      "feedId": "ae3081a7eedba27a7a11aef58a81d52cfc249ea2d5c4585c2d7c6e64e992ed84",
+      "priceAccount": "BN3H3mdXd5mVVxia49Z3PTTkxCa5sFYZjkcidAwb7oHM",
+      "deskTokenAccount": "DU4iGhcg6tdwP8RxFMKetthhN5bMtbqez4HDUQcSBLtG",
+      "source": "published"
+    },
+    {
+      "symbol": "KALSHI",
+      "mint": "8Ldz77EVH64o6Y1xYRskDLxNUvY3Z1pbw3RDk1E6Acgz",
+      "decimals": 9,
+      "feedId": "ea1932a2a8a9bf130c407bd04cb5a7152856325b5beb653c4db7c9788f76bfa0",
+      "priceAccount": "CJTRpTGv14JrmnXvDkSWvVqhbYp5zwJDUNUy5iDvpf6d",
+      "deskTokenAccount": "DPDS8JcPN3vE4b8Thux87tydejyEwiCFZh7MRu9rQR1Z",
+      "source": "published"
+    },
+    {
+      "symbol": "NEURALINK",
+      "mint": "8K9DYkrtJxy96KDaLr2qx461anQZ3iUyQ3csybyNGuFh",
+      "decimals": 9,
+      "feedId": "a5f376bd346dcdb83e61e838d2278b3cfb4515380f9459301cd5890f120b68c1",
+      "priceAccount": "8NByxNKtVDWLFmKHJ79AbsVCfaWK2PAirHMy6GYSGa2Y",
+      "deskTokenAccount": "35UzF42QN5g6iUwzkANp2bJ5CA81cF4xvYkaHzxLXY1L",
+      "source": "published"
+    },
+    {
+      "symbol": "OPENAI",
+      "mint": "HUipJetryssZrkP6hJPZV7i9CiYDhSPePvd9FFYL4Z3W",
+      "decimals": 9,
+      "feedId": "f4f4a136317bd087f3eaac7368e8adf3adf28f78f313449934cdf189d8d28ae1",
+      "priceAccount": "HRcB8aHWzSrfad5A1o8sNMPNDhYbipocmRRTpF82Chnf",
+      "deskTokenAccount": "6gXVeD6EqrDuXhCJvdZwJmpph3hpNkRHUU3qwMPn4F42",
+      "source": "published"
+    },
+    {
+      "symbol": "POLYMARKET",
+      "mint": "9dwbkn8JjpwFQz8g8XN6evieJcEyhnAjMceXdUTBCb3q",
+      "decimals": 9,
+      "feedId": "3443d3af23daaf1f3e7d17b9609727d20ce78b83c515a04c2c17e401f8411681",
+      "priceAccount": "9TweweMDrJ99YBhUKAB76tno1x8hLRnwHt55gzMjnZcv",
+      "deskTokenAccount": "6VMkXuhKhhWqjFZdWk8a9xSphHh4SsLBvKgpsSc9nZmb",
+      "source": "published"
+    },
+    {
+      "symbol": "SPACEX",
+      "mint": "CV3BauS2PhTtGJvRLszPXyySY3oSADYPN3bg7dPkjbNj",
+      "decimals": 9,
+      "feedId": "ddb67b8d1725c324ecc474874523972fe2a8adb5b0ed4d64c8167e7baede6719",
+      "priceAccount": "DJYTfwAsLr8ngNHPBeRrnuC9hmY76ZFFGhVwrdvHJUY3",
+      "deskTokenAccount": "DbHxk8AWDgaf7HKfXDN3pdCvsn3e1SR1Zgk82muNBPSf",
+      "source": "published"
     }
   ]
 }

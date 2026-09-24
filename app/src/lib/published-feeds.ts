@@ -42,11 +42,27 @@ export function publishedFeedIdHex(symbol: string): string {
 /**
  * Where a symbol's price comes from.
  *
- * Crypto is the only class with a Pyth feed this project can actually read. The
- * equities have Pyth feed ids recorded in the registry and Pyth refuses to
- * serve them without a commercial grant, so a recorded id is not the same as an
- * available price. The pre IPO names have no feed anywhere.
+ * Only crypto is a question. The equities have Pyth feed ids recorded in the
+ * registry and Pyth refuses to serve them without a commercial grant, so a
+ * recorded id is not an available price. The pre IPO names have no feed
+ * anywhere. Both are published by this project or they do not settle.
+ *
+ * Crypto could go either way, and the default is not the one you would expect.
+ * Pyth on Solana is a pull oracle: nothing is on chain until somebody pays to
+ * put it there, and the devnet BTC, ETH and SOL accounts were being kept fresh
+ * by a party unrelated to this project. Mid build they went from eight seconds
+ * old to thirteen minutes, past the limit the program enforces, and every
+ * crypto settlement began failing for reasons nothing here could fix.
+ *
+ * So the default is the source this project controls. Passing `preferPyth`
+ * switches crypto back, which is worth doing whenever those accounts are being
+ * maintained, because a Pyth price carries a genuinely stronger claim than one
+ * of ours. The program reads both and has always read both. This only decides
+ * which account the desk points at.
  */
-export function priceSourceFor(assetClass: string): PriceSource {
-  return assetClass === "crypto" ? "pyth" : "published";
+export function priceSourceFor(
+  assetClass: string,
+  preferPyth = false,
+): PriceSource {
+  return assetClass === "crypto" && preferPyth ? "pyth" : "published";
 }

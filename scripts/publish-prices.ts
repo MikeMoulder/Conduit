@@ -58,6 +58,21 @@ import { publishedFeedId } from "../app/src/lib/published-feeds";
 const WATCH_INTERVAL_MS = 4 * 60 * 1000;
 
 /**
+ * Pause between writes, because the public devnet RPC rate limits hard.
+ *
+ * Eighteen prices sent as fast as the client will send them earns a 429 partway
+ * through, which leaves half the universe priced and half not. Slower and
+ * complete beats fast and partial, and the whole round still finishes inside
+ * the ten minute window the program allows.
+ */
+const PACE_MS = 2_500;
+
+/** How many times a single price is retried before it is given up on. */
+const ATTEMPTS = 3;
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
  * Exponent every published price uses.
  *
  * Fixed rather than derived from each source, because a price is a decimal
@@ -71,6 +86,7 @@ const REGISTRY = path.resolve(process.cwd(), "app/src/lib/registry.devnet.json")
 
 const JUPITER = "https://lite-api.jup.ag/price/v3";
 const PRESTOCKS = "https://prestocks.com/api/prestocks";
+const COINBASE = "https://api.coinbase.com/v2/prices";
 
 interface RegistryAsset {
   symbol: string;
@@ -186,10 +202,59 @@ async function fromPreStocks(assets: RegistryAsset[]): Promise<Quote[]> {
   return quotes;
 }
 
+/**
+ * Prices the crypto sleeve by symbol.
+ *
+ * Jupiter cannot help here. Its price API is keyed by mint and these three have
+ * no mainnet mint recorded, because unlike the equities they are not wrappers
+ * around something trading elsewhere: the devnet mints stand in for BTC, ETH
+ * and SOL themselves.
+ *
+ * Coinbase because it needs no key, quotes the spot pairs directly, and is a
+ * venue rather than an aggregator, so the number means something specific.
+ * These exist as a fallback for when the devnet Pyth accounts are not being
+ * maintained by whoever has been maintaining them, which is most of the time.
+ */
+async function fromCoinbase(assets: RegistryAsset[]): Promise<Quote[]> {
+  const quotes: Quote[] = [];
+
+  for (const asset of assets) {
+    try {
+      const response = await fetch(`${COINBASE}/${asset.symbol}-USD/spot`);
+      if (!response.ok) {
+        console.error(
+          `  ${asset.symbol.padEnd(10)} coinbase responded http ${response.status}`,
+        );
+        continue;
+      }
+
+      const body = (await response.json()) as { data?: { amount?: string } };
+      const amount = Number(body.data?.amount);
+
+      if (!Number.isFinite(amount)) {
+        console.error(`  ${asset.symbol.padEnd(10)} no price from coinbase`);
+        continue;
+      }
+
+      quotes.push({ symbol: asset.symbol, price: amount, source: "coinbase" });
+    } catch (error) {
+      console.error(
+        `  ${asset.symbol.padEnd(10)} coinbase failed: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  return quotes;
+}
+
 /* -------------------------------------------------------------------------- */
 
 async function main(): Promise<void> {
-  const provider = anchor.AnchorProvider.env();
+  const base = anchor.AnchorProvider.env();
+  const provider = new anchor.AnchorProvider(base.connection, base.wallet, {
+    commitment: "confirmed",
+    preflightCommitment: "confirmed",
+  });
   anchor.setProvider(provider);
 
   const idl = JSON.parse(
@@ -201,9 +266,14 @@ async function main(): Promise<void> {
     assets: RegistryAsset[];
   };
 
-  // Everything Pyth will not serve, which is everything that is not crypto.
+  // Everything Jupiter can quote by mint, which is the equities and, now, the
+  // crypto sleeve as well. Crypto is included because the devnet Pyth accounts
+  // are maintained by somebody else and went stale mid build, taking every
+  // crypto settlement with them. Publishing them costs little and removes a
+  // dependency on a stranger's uptime.
   const equities = registry.assets.filter((a) => a.assetClass === "equity");
   const preipo = registry.assets.filter((a) => a.assetClass === "preipo");
+  const crypto = registry.assets.filter((a) => a.assetClass === "crypto");
 
   const [publisher] = PublicKey.findProgramAddressSync(
     [Buffer.from("publisher")],
@@ -250,11 +320,12 @@ async function main(): Promise<void> {
     const stamp = new Date().toISOString().slice(11, 19);
     console.log(`\n[${stamp}] fetching`);
 
-    const [jup, pre] = await Promise.all([
+    const [jup, pre, cb] = await Promise.all([
       fromJupiter(equities),
       fromPreStocks(preipo),
+      fromCoinbase(crypto),
     ]);
-    const quotes = [...jup, ...pre];
+    const quotes = [...jup, ...pre, ...cb];
 
     if (quotes.length === 0) {
       console.error("  nothing to publish this round");
@@ -272,34 +343,52 @@ async function main(): Promise<void> {
         program.programId,
       );
 
-      try {
-        const value = toFixedPoint(quote.price);
+      // Retried rather than abandoned. The public devnet RPC returns 429 under
+      // no particular load, and a price that fails to land leaves the program
+      // valuing that asset on a stale account, which it will refuse. Giving a
+      // transient limit three chances costs seconds and saves the round.
+      let landed = false;
 
-        await program.methods
-          .publishPrice(
-            Array.from(feedId),
-            new BN(value.toString()),
-            EXPONENT,
-            new BN(Math.floor(Date.now() / 1000)),
-            quote.source,
-          )
-          .accountsStrict({
-            publisher,
-            price: priceAccount,
-            authority,
-            systemProgram: SystemProgram.programId,
-          })
-          .rpc();
+      for (let attempt = 1; attempt <= ATTEMPTS && !landed; attempt += 1) {
+        try {
+          const value = toFixedPoint(quote.price);
 
-        console.log(
-          `  ${quote.symbol.padEnd(10)} ${quote.price.toFixed(4).padStart(12)}  ${quote.source.padEnd(9)} ${priceAccount.toBase58()}`,
-        );
-        written += 1;
-      } catch (error) {
-        console.error(
-          `  ${quote.symbol.padEnd(10)} FAILED  ${error instanceof Error ? error.message.split("\n")[0] : error}`,
-        );
+          await program.methods
+            .publishPrice(
+              Array.from(feedId),
+              new BN(value.toString()),
+              EXPONENT,
+              new BN(Math.floor(Date.now() / 1000)),
+              quote.source,
+            )
+            .accountsStrict({
+              publisher,
+              price: priceAccount,
+              authority,
+              systemProgram: SystemProgram.programId,
+            })
+            .rpc();
+
+          console.log(
+            `  ${quote.symbol.padEnd(10)} ${quote.price.toFixed(4).padStart(12)}  ${quote.source.padEnd(9)} ${priceAccount.toBase58()}`,
+          );
+          written += 1;
+          landed = true;
+        } catch (error) {
+          const detail =
+            error instanceof Error
+              ? error.message.split("\n")[0]
+              : String(error);
+
+          if (attempt === ATTEMPTS) {
+            console.error(`  ${quote.symbol.padEnd(10)} FAILED  ${detail}`);
+          } else {
+            await pause(PACE_MS * attempt * 2);
+          }
+        }
       }
+
+      await pause(PACE_MS);
     }
 
     console.log(`  ${written} of ${quotes.length} published`);
@@ -316,6 +405,16 @@ async function main(): Promise<void> {
     }, WATCH_INTERVAL_MS);
   }
 }
+
+// The RPC client rejects from its own websocket and retry paths, outside any
+// await this code owns. Without this a single 429 from the public endpoint
+// takes down a watch loop that was otherwise healthy.
+process.on("unhandledRejection", (reason) => {
+  console.error(
+    "  ignored background rejection:",
+    reason instanceof Error ? reason.message.split("\n")[0] : reason,
+  );
+});
 
 main().catch((error) => {
   console.error("FAILED:", error instanceof Error ? error.message : error);

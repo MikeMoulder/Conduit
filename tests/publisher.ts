@@ -23,7 +23,12 @@ import * as crypto from "crypto";
 
 import * as anchor from "@coral-xyz/anchor";
 import { BN, Program } from "@coral-xyz/anchor";
-import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
 import { assert } from "chai";
 
 import type { Conduit } from "../app/src/lib/idl/conduit";
@@ -193,10 +198,18 @@ describe("the price publisher", () => {
     // The property the whole design depends on. If another key could write
     // here, an agent holding it could choose the price its own settlement runs
     // at, and every mandate limit would become decorative.
+    // Funded by transfer rather than airdrop. The devnet faucet rate limits
+    // to the point of being unavailable for long stretches, and a test that
+    // fails because a faucet is busy reports nothing about this program.
     const stranger = Keypair.generate();
-    await connection.confirmTransaction(
-      await connection.requestAirdrop(stranger.publicKey, 20_000_000),
-      "confirmed",
+    await provider.sendAndConfirm(
+      new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: authority.publicKey,
+          toPubkey: stranger.publicKey,
+          lamports: 20_000_000,
+        }),
+      ),
     );
 
     try {

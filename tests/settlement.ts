@@ -79,6 +79,7 @@ interface DeskConfig {
     feedId: string;
     priceAccount: string;
     deskTokenAccount: string;
+    source: "pyth" | "published";
   }[];
 }
 
@@ -92,6 +93,27 @@ const desk = JSON.parse(
 const CASH_MINT = new PublicKey(desk.cashMint);
 const DESK = new PublicKey(desk.desk);
 const DESK_CASH = new PublicKey(desk.deskCash);
+
+/**
+ * The assets these tests settle.
+ *
+ * A deliberate subset, not the whole desk. The desk now carries eighteen
+ * assets and a mandate may permit at most eight, so building one over
+ * everything the desk stocks stopped being possible the moment the equities
+ * were added. It used to work only because the desk happened to hold exactly
+ * three things, which is the kind of assumption that silently becomes wrong.
+ *
+ * Whatever the desk actually carries, capped at three. Not filtered by price
+ * source: these tests are about settlement arithmetic and the refusals around
+ * it, and the program reads both sources through the same path by design. A
+ * test that only ran against one of them would stop covering the configuration
+ * the demo actually uses the moment that configuration changed.
+ */
+const SETTLED = desk.settleable.slice(0, 3);
+
+if (SETTLED.length === 0) {
+  throw new Error("no settleable assets in the desk config");
+}
 
 let nextId = Date.now() + 2_000_000;
 const freshId = () => new BN(nextId++);
@@ -130,7 +152,7 @@ async function open(constraints: {
     .initializeMandate(
       mandateId,
       constraints,
-      desk.settleable.map((a) => ({
+      SETTLED.map((a) => ({
         mint: new PublicKey(a.mint),
         feedId: hex(a.feedId),
       })),
@@ -156,7 +178,7 @@ async function open(constraints: {
 
   // Token accounts for the portfolio, owned by the PDA.
   const cash = getAssociatedTokenAddressSync(CASH_MINT, portfolio, true);
-  const assets = desk.settleable.map((a) => ({
+  const assets = SETTLED.map((a) => ({
     symbol: a.symbol,
     mint: new PublicKey(a.mint),
     ata: getAssociatedTokenAddressSync(new PublicKey(a.mint), portfolio, true),
@@ -191,7 +213,7 @@ async function open(constraints: {
 
 /** The four accounts `settle` expects per asset, in mandate order. */
 function settlementAccounts(opened: Opened) {
-  return desk.settleable.flatMap((a, i) => [
+  return SETTLED.flatMap((a, i) => [
     { pubkey: new PublicKey(a.priceAccount), isSigner: false, isWritable: false },
     { pubkey: new PublicKey(a.mint), isSigner: false, isWritable: false },
     { pubkey: opened.assets[i].ata, isSigner: false, isWritable: true },
@@ -386,7 +408,7 @@ describe("settlement moves real tokens", () => {
     // one of them wrong here, which is the whole point of storing a feed id.
     const swapped = settlementAccounts(opened);
     swapped[4] = {
-      pubkey: new PublicKey(desk.settleable[0].priceAccount),
+      pubkey: new PublicKey(SETTLED[0].priceAccount),
       isSigner: false,
       isWritable: false,
     };

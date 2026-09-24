@@ -211,6 +211,61 @@
       "args": []
     },
     {
+      "name": "initialize_publisher",
+      "docs": [
+        "Names the one key allowed to publish prices.",
+        "",
+        "Called once, by whoever deploys. Deliberately a different key from the",
+        "agent and from any mandate owner, because the entire value of this",
+        "account is that it is not the agent: an agent able to write its own",
+        "marks could satisfy any mandate while doing anything at all."
+      ],
+      "discriminator": [
+        66,
+        1,
+        62,
+        232,
+        118,
+        238,
+        23,
+        25
+      ],
+      "accounts": [
+        {
+          "name": "publisher",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  117,
+                  98,
+                  108,
+                  105,
+                  115,
+                  104,
+                  101,
+                  114
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "propose_rebalance",
       "docs": [
         "The agent asks to move the portfolio to a new allocation.",
@@ -283,6 +338,119 @@
               }
             }
           }
+        }
+      ]
+    },
+    {
+      "name": "publish_price",
+      "docs": [
+        "Writes a price for an asset no oracle will price.",
+        "",
+        "Used for the tokenized equities, which Pyth gates behind a commercial",
+        "grant, and for the pre IPO names, which have no market price anywhere",
+        "because there is no market to observe. For those the issuer's mark is",
+        "the price of record, and this is where that mark is recorded on chain.",
+        "",
+        "The checks here are the ones that can be made without trusting the",
+        "caller's judgement. A price must be positive, its exponent must be",
+        "negative or zero, its timestamp must be close to the cluster's own",
+        "clock, and it must be newer than whatever is already stored. None of",
+        "that makes the number true. It makes the account behave like a feed",
+        "rather than a mutable variable, so that a stale or replayed write cannot",
+        "quietly become the price a settlement runs at."
+      ],
+      "discriminator": [
+        117,
+        13,
+        6,
+        171,
+        29,
+        204,
+        11,
+        1
+      ],
+      "accounts": [
+        {
+          "name": "publisher",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  117,
+                  98,
+                  108,
+                  105,
+                  115,
+                  104,
+                  101,
+                  114
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "price",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "feed_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "publisher"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "feed_id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        },
+        {
+          "name": "exponent",
+          "type": "i32"
+        },
+        {
+          "name": "publish_time",
+          "type": "i64"
+        },
+        {
+          "name": "source",
+          "type": "string"
         }
       ]
     },
@@ -475,6 +643,32 @@
         110,
         225
       ]
+    },
+    {
+      "name": "PublishedPrice",
+      "discriminator": [
+        5,
+        237,
+        50,
+        31,
+        250,
+        96,
+        58,
+        31
+      ]
+    },
+    {
+      "name": "Publisher",
+      "discriminator": [
+        86,
+        152,
+        93,
+        215,
+        234,
+        89,
+        232,
+        104
+      ]
     }
   ],
   "events": [
@@ -489,6 +683,19 @@
         72,
         145,
         108
+      ]
+    },
+    {
+      "name": "PricePublished",
+      "discriminator": [
+        161,
+        182,
+        51,
+        133,
+        25,
+        192,
+        179,
+        140
       ]
     },
     {
@@ -600,6 +807,21 @@
       "code": 6018,
       "name": "NothingToSettle",
       "msg": "The portfolio holds nothing, so there is nothing to settle"
+    },
+    {
+      "code": 6019,
+      "name": "UnauthorizedPublisher",
+      "msg": "Only the publishing authority may write a price"
+    },
+    {
+      "code": 6020,
+      "name": "PriceNotNewer",
+      "msg": "A published price may not move backwards in time"
+    },
+    {
+      "code": 6021,
+      "name": "UnknownPriceSource",
+      "msg": "The price account is owned by neither Pyth nor this program"
     }
   ],
   "types": [
@@ -960,6 +1182,44 @@
       }
     },
     {
+      "name": "PricePublished",
+      "docs": [
+        "Emitted on every accepted rebalance.",
+        "",
+        "The client reads these to build the agent activity feed, so the history shown",
+        "to the user is reconstructed from chain state rather than from an application",
+        "database that could disagree with it.",
+        "A price entering the chain, so the history of what a settlement could have",
+        "run at is recoverable without watching every account."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "exponent",
+            "type": "i32"
+          },
+          {
+            "name": "publish_time",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "ProposedPosition",
       "docs": [
         "A target weight the agent is asking for."
@@ -979,14 +1239,125 @@
       }
     },
     {
-      "name": "RebalanceExecuted",
+      "name": "PublishedPrice",
       "docs": [
-        "Emitted on every accepted rebalance.",
+        "One published price, in the same shape the program reads from Pyth.",
         "",
-        "The client reads these to build the agent activity feed, so the history shown",
-        "to the user is reconstructed from chain state rather than from an application",
-        "database that could disagree with it."
+        "Deliberately the same fields Pyth carries, so that valuation does not care",
+        "where a price came from. Everything downstream of reading takes a value and",
+        "an exponent, and it should stay that way: the difference between sources",
+        "belongs at the boundary where trust is decided, not spread through the",
+        "arithmetic.",
+        "",
+        "Stored per feed at a PDA of the feed id, so the address is derivable by",
+        "anyone and cannot be substituted. A caller who passes a different account",
+        "passes one whose recorded feed id does not match what the mandate named, and",
+        "that is checked before the number is used."
       ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "feed_id",
+            "docs": [
+              "What this prices. Matched against the feed id the mandate recorded."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "price",
+            "docs": [
+              "Always positive. A non positive price is refused at publication."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "exponent",
+            "docs": [
+              "Base ten exponent, negative for a USD price."
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "publish_time",
+            "docs": [
+              "When the publisher observed it, not when the transaction landed."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "source",
+            "docs": [
+              "Where it came from, recorded so a reader can see what it is trusting."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Publisher",
+      "docs": [
+        "The price source for everything no oracle will price.",
+        "",
+        "Why this exists",
+        "---------------",
+        "Settlement needs a price the program can verify itself, and for most of this",
+        "universe none is available. Pyth prices crypto and gates equities behind a",
+        "commercial grant. Switchboard is shutting down. RedStone carries the",
+        "equities but reaches Solana through a path we cannot stand up in the time we",
+        "have.",
+        "",
+        "And for the pre IPO names the problem is not procurement, it is that the",
+        "price does not exist. OPENAI and SPACEX have no market. No oracle anywhere",
+        "publishes them, because there is nothing to observe. The issuer marks them,",
+        "and that mark is the price of record.",
+        "",
+        "So for those assets a trusted publisher is not a shortcut around a",
+        "decentralised oracle. It is the same thing the real instrument does.",
+        "",
+        "What it does and does not claim",
+        "-------------------------------",
+        "This is weaker than an oracle network and the difference should be stated",
+        "rather than blurred. An oracle means many parties independently observed a",
+        "market and agreed. This means one key asserted a number. Anyone reading a",
+        "settlement priced this way is trusting whoever holds that key.",
+        "",
+        "What it does preserve is the property the whole design rests on: the agent",
+        "cannot choose the price. The publishing authority is a different key from",
+        "the agent key, the agent cannot reach this instruction, and a settlement is",
+        "valued from accounts the agent does not write. An agent that could pick its",
+        "own marks could satisfy any mandate while doing anything at all, and that",
+        "remains impossible."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "The only key that may write a price. Never the agent, never the owner."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RebalanceExecuted",
       "type": {
         "kind": "struct",
         "fields": [
