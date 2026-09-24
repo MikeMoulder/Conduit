@@ -1,4 +1,4 @@
-import type { Card, PendingAction, Source } from "./events";
+import { actionTitle, type Card, type PendingAction, type Source } from "./events";
 
 /**
  * Conversation state, kept outside React.
@@ -36,6 +36,20 @@ export interface Step {
 export interface Turn {
   id: string;
   role: "user" | "assistant";
+  /**
+   * Set on a user turn the interface sent rather than the person: the outcome
+   * of an approval card, so the copilot can say what happened and what is next.
+   * Shown as a status line, never as a bubble the person appears to have typed.
+   */
+  event?: boolean;
+  /**
+   * Approval cards that were never answered before the page reloaded. Kept as
+   * titles so the text around them, which still says "approve this", is not
+   * left pointing at nothing.
+   */
+  expired?: string[];
+  /** Results of approval cards, drawn where the card was. */
+  outcomes?: Card[];
   text: string;
   steps: Step[];
   cards: Card[];
@@ -84,7 +98,12 @@ function persist() {
   try {
     const stored = state.conversations.slice(0, MAX_STORED).map((c) => ({
       ...c,
-      turns: c.turns.map((t) => ({ ...t, actions: [], streaming: false })),
+      turns: c.turns.map((t) => ({
+        ...t,
+        actions: [],
+        expired: [...(t.expired ?? []), ...t.actions.map(actionTitle)],
+        streaming: false,
+      })),
     }));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   } catch {
@@ -173,12 +192,16 @@ function titleFrom(question: string): string {
 }
 
 /** Opens a turn for the question and an empty one for the answer. */
-export function beginTurn(question: string): { turnId: string } {
+export function beginTurn(
+  question: string,
+  options: { event?: boolean } = {},
+): { turnId: string } {
   const turnId = id();
 
   const userTurn: Turn = {
     id: id(),
     role: "user",
+    event: options.event,
     text: question,
     steps: [],
     cards: [],
@@ -250,11 +273,23 @@ export function finishTurn(turnId: string): void {
   }));
 }
 
-/** Drops an action once it has been approved or dismissed. */
-export function clearAction(turnId: string, index: number): void {
+/**
+ * Resolves an action: it leaves the pending list, and its outcome, when there
+ * is one, is kept on the turn.
+ *
+ * The outcome used to live only inside the card component, so removing the
+ * action unmounted the card and the result vanished with it. On the turn it is
+ * part of the transcript, and survives a reload like everything else there.
+ */
+export function resolveAction(
+  turnId: string,
+  action: PendingAction,
+  outcome: Card | null,
+): void {
   patchTurn(turnId, (turn) => ({
     ...turn,
-    actions: turn.actions.filter((_, i) => i !== index),
+    actions: turn.actions.filter((a) => a !== action),
+    outcomes: outcome ? [...(turn.outcomes ?? []), outcome] : turn.outcomes,
   }));
 }
 

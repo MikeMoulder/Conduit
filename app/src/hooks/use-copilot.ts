@@ -46,12 +46,28 @@ export function useCopilot() {
     abort.current = null;
   }, []);
 
-  const send = useCallback(
-    async (question: string) => {
-      const trimmed = question.trim();
-      if (trimmed.length === 0 || getSnapshot().busy) return;
+  /**
+   * Card outcomes waiting for the copilot to be free.
+   *
+   * A card can finish while an answer is still streaming. Dropping its outcome
+   * would break the promise that every approval gets a reply, so it waits here
+   * and goes as soon as the current answer ends.
+   */
+  const queued = useRef<string[]>([]);
+  const sendRef = useRef<(question: string, options?: { event?: boolean }) => Promise<void>>(
+    async () => {},
+  );
 
-      const { turnId } = beginTurn(trimmed);
+  const send = useCallback(
+    async (question: string, options: { event?: boolean } = {}) => {
+      const trimmed = question.trim();
+      if (trimmed.length === 0) return;
+      if (getSnapshot().busy) {
+        if (options.event) queued.current.push(trimmed);
+        return;
+      }
+
+      const { turnId } = beginTurn(trimmed, { event: options.event });
 
       // Read back after opening the turn, so the question just asked is part of
       // what the model is given rather than arriving a turn late.
@@ -199,10 +215,21 @@ export function useCopilot() {
       } finally {
         finishTurn(turnId);
         if (abort.current === controller) abort.current = null;
+
+        const next = queued.current.shift();
+        if (next) {
+          // After this turn has fully closed, so the queued outcome opens a
+          // turn of its own rather than landing inside this one.
+          setTimeout(() => void sendRef.current(next, { event: true }), 0);
+        }
       }
     },
     [publicKey],
   );
+
+  useEffect(() => {
+    sendRef.current = send;
+  }, [send]);
 
   return {
     conversations: state.conversations,

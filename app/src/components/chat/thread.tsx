@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { Source } from "@/lib/copilot/events";
 import type { Step, Turn } from "@/lib/copilot/store";
-import { clearAction } from "@/lib/copilot/store";
+import { resolveAction } from "@/lib/copilot/store";
 import { ActionCard } from "./actions";
 import { CardView } from "./cards";
 import { Markdown } from "./markdown";
@@ -23,9 +23,12 @@ import { Markdown } from "./markdown";
 export function Thread({
   turns,
   onRefresh,
+  onEvent,
 }: {
   turns: Turn[];
   onRefresh: () => void;
+  /** Sends a card's outcome to the copilot, so it can say what is next. */
+  onEvent: (message: string) => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -51,14 +54,21 @@ export function Thread({
     >
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6">
         {turns.map((turn) =>
-          turn.role === "user" ? (
+          turn.role === "user" && turn.event ? (
+            <EventLine key={turn.id} text={turn.text} />
+          ) : turn.role === "user" ? (
             <div key={turn.id} className="flex justify-end">
               <p className="max-w-[85%] rounded-2xl rounded-br-sm bg-zinc-800/80 px-4 py-2.5 text-sm leading-relaxed text-zinc-100">
                 {turn.text}
               </p>
             </div>
           ) : (
-            <AssistantTurn key={turn.id} turn={turn} onRefresh={onRefresh} />
+            <AssistantTurn
+              key={turn.id}
+              turn={turn}
+              onRefresh={onRefresh}
+              onEvent={onEvent}
+            />
           ),
         )}
         <div ref={endRef} />
@@ -70,9 +80,11 @@ export function Thread({
 function AssistantTurn({
   turn,
   onRefresh,
+  onEvent,
 }: {
   turn: Turn;
   onRefresh: () => void;
+  onEvent: (message: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -88,16 +100,33 @@ function AssistantTurn({
 
       {turn.text ? <Markdown text={turn.text} /> : null}
 
-      {turn.actions.map((action, i) => (
+      {(turn.outcomes ?? []).map((card, i) => (
+        <CardView key={`outcome-${i}`} card={card} />
+      ))}
+
+      {turn.actions.map((action) => (
         <ActionCard
-          key={i}
+          // Keyed by content, not position. Resolving the first of two cards
+          // used to shift the second into the first one's slot, and with it
+          // the first one's state.
+          key={`${action.kind}:${action.summary}`}
           action={action}
-          onSettled={() => {
-            clearAction(turn.id, i);
+          onResolved={(outcome, message) => {
+            resolveAction(turn.id, action, outcome);
             onRefresh();
+            if (message) onEvent(message);
           }}
         />
       ))}
+
+      {(turn.expired ?? []).length > 0 ? (
+        <p className="rounded-lg border border-zinc-800 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
+          {turn.expired!.length === 1 ? "An approval card" : "Approval cards"} for{" "}
+          <span className="text-zinc-300">{turn.expired!.join(", ")}</span>{" "}
+          expired when the page reloaded, because an approval should not outlive
+          the moment it was offered. Ask again and it will be prepared fresh.
+        </p>
+      ) : null}
 
       {turn.error ? (
         <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3">
@@ -251,6 +280,25 @@ function Sources({ sources }: { sources: Source[] }) {
           <span className="text-zinc-600">{source.detail}</span>
         </span>
       ))}
+    </div>
+  );
+}
+
+/**
+ * A card's outcome, reported to the copilot.
+ *
+ * It is sent as a message so the copilot can answer it, but the person did not
+ * type it, so it is not drawn as their bubble. A status line says what it is.
+ */
+function EventLine({ text }: { text: string }) {
+  const shown = text.replace(/^\[Card result\]\s*/, "");
+  const failed = /: (failed|refused|not settled)/.test(shown);
+  return (
+    <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${failed ? "bg-red-400" : "bg-emerald-400"}`}
+      />
+      <span className="truncate">{shown.split(". ").slice(0, 2).join(". ")}</span>
     </div>
   );
 }

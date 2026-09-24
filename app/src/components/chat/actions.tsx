@@ -19,8 +19,8 @@ import {
   transferTokens,
 } from "@/lib/token-instructions";
 import { useConduitProgram } from "@/hooks/use-conduit-program";
-import type { Card, PendingAction, WalletResultCard } from "@/lib/copilot/events";
-import { AssetBadge, CardView } from "./cards";
+import { actionTitle, type Card, type PendingAction, type WalletResultCard } from "@/lib/copilot/events";
+import { AssetBadge } from "./cards";
 
 /**
  * The approval step.
@@ -45,9 +45,7 @@ import { AssetBadge, CardView } from "./cards";
 type Phase =
   | { state: "idle" }
   | { state: "working"; note: string }
-  | { state: "done"; card: Card }
-  | { state: "failed"; message: string }
-  | { state: "dismissed" };
+  | { state: "failed"; message: string };
 
 type Signer = "agent" | "owner" | "faucet";
 
@@ -285,20 +283,48 @@ async function runServerAction(action: ServerAction): Promise<Card> {
   }
 }
 
+/**
+ * What the copilot is told once a card is done.
+ *
+ * Sent as an event rather than as something the person typed, so the copilot
+ * can say what happened and what comes next. That is the difference between an
+ * approval that ends the conversation and one that moves it forward.
+ */
+function outcomeMessage(action: PendingAction, card: Card): string {
+  const title = actionTitle(action);
+
+  if (card.kind === "wallet-result") {
+    const r = card.result;
+    const lines = r.lines.map((l) => `${l.label}: ${l.value}`).join("; ");
+    return `[Card result] ${title}: ${r.ok ? "done" : "failed"}. ${r.headline}.${r.detail ? ` ${r.detail}` : ""}${lines ? ` (${lines})` : ""}`;
+  }
+  if (card.kind === "submission") {
+    const s = card.submission;
+    return s.accepted
+      ? `[Card result] ${title}: accepted on chain.`
+      : `[Card result] ${title}: refused${s.programError ? ` by the program with ${s.programError.name}, ${s.programError.message}` : ""}.${s.detail ? ` ${s.detail}` : ""}`;
+  }
+  if (card.kind === "settlement") {
+    const s = card.settlement;
+    return s.settled
+      ? `[Card result] ${title}: settled, real tokens moved.`
+      : `[Card result] ${title}: not settled. ${s.programError?.message ?? s.detail ?? ""}`.trim();
+  }
+  return `[Card result] ${title}: done.`;
+}
+
 export function ActionCard({
   action,
-  onSettled,
+  onResolved,
 }: {
   action: PendingAction;
-  onSettled: () => void;
+  /** The outcome to keep, and the message to send the copilot. Both null when dismissed. */
+  onResolved: (outcome: Card | null, message: string | null) => void;
 }) {
   const [phase, setPhase] = useState<Phase>({ state: "idle" });
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
   const program = useConduitProgram();
-
-  if (phase.state === "dismissed") return null;
-  if (phase.state === "done") return <CardView card={phase.card} />;
 
   const view = present(action);
 
@@ -401,8 +427,7 @@ export function ActionCard({
           note: view.signer === "faucet" ? "Adding demo cash" : "The agent is signing",
         });
         const card = await runServerAction(action);
-        setPhase({ state: "done", card });
-        onSettled();
+        onResolved(card, outcomeMessage(action, card));
         return;
       }
 
@@ -426,8 +451,8 @@ export function ActionCard({
       setPhase({ state: "working", note: "Confirming on chain" });
 
       const outcome = await confirmSignature(connection, signature, { lastValidBlockHeight });
-      setPhase({ state: "done", card: ownerResult(action, signature, outcome) });
-      onSettled();
+      const card = ownerResult(action, signature, outcome);
+      onResolved(card, outcomeMessage(action, card));
     } catch (error) {
       const programError = extractProgramError(error);
       setPhase({
@@ -487,10 +512,7 @@ export function ActionCard({
         </button>
         <button
           type="button"
-          onClick={() => {
-            setPhase({ state: "dismissed" });
-            onSettled();
-          }}
+          onClick={() => onResolved(null, null)}
           disabled={phase.state === "working"}
           className="rounded-md px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:text-zinc-200 disabled:opacity-40"
         >

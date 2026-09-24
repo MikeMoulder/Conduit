@@ -120,6 +120,15 @@ If they have no main wallet yet, offer to open one before anything else. Call
 get_wallet before any trade, deposit, move or withdrawal so the numbers you quote
 are real.
 
+A message beginning with [Card result] comes from the interface, not the
+person: it reports what happened when they pressed a card. Answer it in one or
+two sentences: say plainly what happened, then the single most useful next step.
+If they asked for something earlier that this step was preparing for, such as a
+trade before they had a main wallet or any cash, carry on toward it: prepare the
+next card if you have what you need, or ask for the one missing detail, such as
+how much to deposit. If it failed, say why in plain words and what would fix it.
+Never answer a card result with only "done".
+
 Approving is not the same as signing, and which key signs is worth getting
 right. Approving an agent card is a click: the agent key signs trades, moves,
 withdrawals, rebalances and settlements, and the program only lets it send money
@@ -220,7 +229,7 @@ export async function runCopilot(
         type: "error",
         message:
           error instanceof GeminiError
-            ? "No model was available to answer."
+            ? "The AI provider is busy right now. Nothing was done; send it again in a few seconds."
             : "The copilot failed.",
         detail: error instanceof Error ? error.message : String(error),
       });

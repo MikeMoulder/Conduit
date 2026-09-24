@@ -264,6 +264,32 @@ export type PendingAction =
       summary: string;
     };
 
+/** A short name for an action, for places that cannot show the whole card. */
+export function actionTitle(action: PendingAction): string {
+  switch (action.kind) {
+    case "create-mandate":
+      return "Create a mandate";
+    case "set-status":
+      return `Set the mandate to ${action.status}`;
+    case "submit-rebalance":
+      return "Submit a rebalance";
+    case "settle":
+      return "Settle the portfolio";
+    case "open-wallet":
+      return "Open your main wallet";
+    case "demo-cash":
+      return "Add demo cash";
+    case "deposit":
+      return `Deposit $${action.dollars.toLocaleString()} into ${action.destinationLabel}`;
+    case "trade":
+      return `${action.side === "buy" ? "Buy" : "Sell"} $${action.dollars.toLocaleString()} of ${action.symbol}`;
+    case "fund-mandate":
+      return `Move $${action.dollars.toLocaleString()} into ${action.mandateLabel}`;
+    case "withdraw":
+      return "Withdraw to your wallet";
+  }
+}
+
 export type CopilotEvent =
   /** A line in the running step list, before any tool is known. */
   | { type: "status"; label: string; detail?: string }

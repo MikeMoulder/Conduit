@@ -75,6 +75,7 @@ export function Copilot() {
             key={`${conversation.id}:${refresh}`}
             turns={conversation.turns}
             onRefresh={() => setRefresh((r) => r + 1)}
+            onEvent={(message) => void send(message, { event: true })}
           />
         ) : (
           <Welcome connected={connected} />
