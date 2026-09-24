@@ -113,6 +113,25 @@ describe("transferring cash", () => {
     ]);
   });
 
+  it("builds without Buffer's BigInt methods, as in the browser", () => {
+    // The browser's Buffer polyfill has no writeBigUInt64LE. The deposit card
+    // threw "data.writeBigUInt64LE is not a function" in Chrome while every
+    // test here passed, because Node's Buffer has it. Removing it reproduces
+    // the browser.
+    const proto = Buffer.prototype as unknown as Record<string, unknown>;
+    const saved = proto.writeBigUInt64LE;
+    delete proto.writeBigUInt64LE;
+    try {
+      const ix = transferTokens(key(), key(), key(), BigInt(1_000_000_000));
+      expect(ix.data[0]).to.equal(3);
+      expect(new DataView(ix.data.buffer, ix.data.byteOffset).getBigUint64(1, true)).to.equal(
+        BigInt(1_000_000_000),
+      );
+    } finally {
+      proto.writeBigUInt64LE = saved;
+    }
+  });
+
   it("carries amounts past what a JavaScript number holds exactly", () => {
     const big = BigInt("18000000000000000000");
     const ix = transferTokens(key(), key(), key(), big);

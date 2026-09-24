@@ -55,9 +55,14 @@ export function transferTokens(
   owner: PublicKey,
   amount: bigint,
 ): TransactionInstruction {
-  const data = Buffer.alloc(9);
-  data.writeUInt8(3, 0);
-  data.writeBigUInt64LE(amount, 1);
+  // Written through a DataView rather than Buffer.writeBigUInt64LE. This runs
+  // in the browser too, for deposits, and the Buffer polyfill bundled there
+  // predates the BigInt methods: the deposit card failed with "is not a
+  // function" while every Node test passed. DataView is native everywhere.
+  const bytes = new Uint8Array(9);
+  bytes[0] = 3;
+  new DataView(bytes.buffer).setBigUint64(1, amount, true);
+  const data = Buffer.from(bytes);
 
   return new TransactionInstruction({
     programId: TOKEN_PROGRAM,
