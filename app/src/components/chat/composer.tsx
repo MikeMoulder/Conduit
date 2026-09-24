@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { ArrowUp, Square } from "lucide-react";
 
 /**
  * The input.
@@ -49,7 +50,7 @@ export function Composer({
 
   return (
     <div className="bg-canvas">
-      <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2 sm:px-6">
         {showSuggestions ? (
           <div className="mb-3 flex flex-wrap gap-2">
             {SUGGESTIONS.map((s) => (
@@ -57,7 +58,7 @@ export function Composer({
                 key={s}
                 type="button"
                 onClick={() => submit(s)}
-                className="rounded-full border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+                className="rounded-full border border-line px-3.5 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:bg-raised hover:text-ink"
               >
                 {s}
               </button>
@@ -65,8 +66,12 @@ export function Composer({
           </div>
         ) : null}
 
-        <div className="flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2 focus-within:border-zinc-600">
+        <div className="flex items-end gap-2 rounded-[20px] border border-line bg-raised px-3 py-2.5 transition-colors focus-within:border-line-strong">
+          <label htmlFor="conduit-input" className="sr-only">
+            Ask Conduit
+          </label>
           <textarea
+            id="conduit-input"
             ref={box}
             rows={1}
             value={value}
@@ -81,40 +86,33 @@ export function Composer({
               }
             }}
             placeholder="Ask about the market, your positions, or your mandate"
-            className="max-h-[200px] flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
+            className="max-h-[200px] min-w-0 flex-1 resize-none bg-transparent px-1 py-1 text-sm leading-relaxed text-ink placeholder:text-ink-ghost focus:outline-none"
           />
           {busy ? (
             <button
               type="button"
               onClick={onStop}
+              aria-label="Stop"
               title="Stop"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-700 text-zinc-100 transition-colors hover:bg-zinc-600"
+              className="grid size-8 shrink-0 place-items-center rounded-full bg-overlay text-ink-muted transition-colors hover:text-ink"
             >
-              <span className="block h-2.5 w-2.5 rounded-[2px] bg-current" />
+              <Square className="size-3 fill-current" aria-hidden="true" />
             </button>
           ) : (
             <button
               type="button"
               onClick={() => submit()}
               disabled={value.trim().length === 0}
+              aria-label="Send"
               title="Send"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500 text-black transition-colors hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-600"
+              className="grid size-8 shrink-0 place-items-center rounded-full bg-ink text-canvas transition-opacity hover:opacity-90 disabled:opacity-25"
             >
-              <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true">
-                <path
-                  d="M8 13V3M8 3L4 7M8 3l4 4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              <ArrowUp className="size-4" aria-hidden="true" />
             </button>
           )}
         </div>
 
-        <p className="mt-2 text-center text-[10px] text-zinc-700">
+        <p className="mt-2 text-center text-[10px] text-ink-faint">
           Research, not financial advice. Devnet. Every limit is enforced by the
           program, not by this interface.
         </p>

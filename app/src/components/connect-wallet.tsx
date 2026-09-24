@@ -186,7 +186,7 @@ export function ConnectWallet({
           <div
             role="dialog"
             aria-label="Connected wallet"
-            className={`absolute ${position} z-50 w-72 overflow-hidden rounded-2xl border border-line bg-overlay shadow-[0_2px_4px_rgb(0_0_0/0.3),0_12px_32px_-8px_rgb(0_0_0/0.6)]`}
+            className={`absolute ${position} z-50 w-72 overflow-hidden rounded-2xl border border-line bg-overlay shadow-menu`}
           >
             <div className="px-4 pb-2 pt-3.5">
               <p className="text-[11px] text-ink-faint">
@@ -243,8 +243,9 @@ export function ConnectWallet({
         <button
           type="button"
           onClick={() => void disconnect()}
-          className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+          className="flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-sm text-ink-muted transition-colors hover:bg-raised hover:text-ink"
         >
+          <LogOut className="size-3.5" aria-hidden="true" />
           Disconnect
         </button>
       </div>
@@ -280,8 +281,9 @@ export function ConnectWallet({
           disabled={connecting}
           aria-expanded={open}
           aria-haspopup="menu"
-          className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
+          className="flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-medium text-canvas transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
         >
+          <Wallet className="size-4 shrink-0" aria-hidden="true" />
           {connectLabel}
         </button>
       )}
@@ -289,10 +291,10 @@ export function ConnectWallet({
       {open ? (
         <div
           role="menu"
-          className={`absolute ${position} z-50 w-64 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl`}
+          className={`absolute ${position} z-50 w-64 overflow-hidden rounded-2xl border border-line bg-overlay p-1.5 shadow-menu`}
         >
           {installed.length === 0 ? (
-            <p className="px-4 py-3 text-sm leading-relaxed text-zinc-400">
+            <p className="px-2.5 py-2 text-sm leading-relaxed text-ink-muted">
               No Solana wallet detected in this browser. Install{" "}
               <a
                 href="https://phantom.app/download"
@@ -320,7 +322,7 @@ export function ConnectWallet({
                 type="button"
                 role="menuitem"
                 onClick={() => choose(adapter.name)}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-900"
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-ink transition-colors hover:bg-raised"
               >
                 {adapter.icon ? (
                   // Wallet icons are data URIs supplied by the extension, so

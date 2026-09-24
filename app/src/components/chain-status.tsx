@@ -64,7 +64,7 @@ export function ChainStatus() {
   }, [connection]);
 
   return (
-    <dl className="grid gap-px overflow-hidden rounded-lg border border-zinc-800 bg-zinc-800 sm:grid-cols-3">
+    <dl className="grid gap-px overflow-hidden rounded-2xl border border-line bg-zinc-800 sm:grid-cols-3">
       <Cell label="Cluster">{CLUSTER}</Cell>
 
       <Cell label="Program">

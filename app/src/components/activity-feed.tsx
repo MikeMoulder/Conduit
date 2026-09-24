@@ -80,11 +80,11 @@ export function ActivityFeed({
           {fresh.error}
         </p>
       ) : fresh.records && fresh.records.length === 0 ? (
-        <p className="rounded-lg border border-zinc-800 px-4 py-3 text-sm text-zinc-500">
+        <p className="rounded-2xl border border-line px-4 py-3 text-sm text-zinc-500">
           Nothing yet.
         </p>
       ) : (
-        <ol className="flex flex-col gap-1 overflow-hidden rounded-lg border border-zinc-800 py-1">
+        <ol className="flex flex-col gap-1 overflow-hidden rounded-2xl border border-line py-1">
           {fresh.records?.map((record) => (
             <li
               key={record.signature}

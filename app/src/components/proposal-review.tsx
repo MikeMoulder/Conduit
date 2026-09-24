@@ -180,14 +180,14 @@ export function ProposalReview({
           value={objective}
           onChange={(e) => setObjective(e.target.value)}
           rows={3}
-          className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm leading-relaxed text-zinc-100 focus:border-emerald-500 focus:outline-none"
+          className="w-full resize-y rounded-xl border border-line bg-zinc-950 px-3 py-2 text-sm leading-relaxed text-zinc-100 focus:border-emerald-500 focus:outline-none"
         />
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={() => void run()}
             disabled={running || objective.trim().length === 0}
-            className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {running ? "Five stages running" : "Ask the agent"}
           </button>
@@ -226,7 +226,7 @@ export function ProposalReview({
               </span>
             </div>
 
-            <div className="overflow-hidden rounded-lg border border-zinc-800">
+            <div className="overflow-hidden rounded-2xl border border-line">
               {result.proposal.positions.map((position) => {
                 const asset = getAssetBySymbol(position.symbol);
                 if (!asset) return null;
@@ -324,7 +324,7 @@ function Verdict({
   onSubmit: () => void;
 }) {
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-zinc-800 p-4">
+    <section className="flex flex-col gap-3 rounded-2xl border border-line p-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <Metric
           label="allocated"
@@ -404,7 +404,7 @@ function Verdict({
 function SubmissionResult({ submission }: { submission: SubmitResponse }) {
   if (submission.accepted) {
     return (
-      <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+      <div className="flex flex-col gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
         <p className="text-sm text-emerald-300">
           Accepted on chain at slot {submission.slot}. The portfolio now holds
           what the agent proposed.
@@ -501,7 +501,7 @@ function Reasoning({ result }: { result: PipelineResponse }) {
         </button>
       </div>
 
-      <p className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3 text-sm leading-relaxed text-zinc-300">
+      <p className="rounded-2xl border border-line bg-zinc-900/40 px-4 py-3 text-sm leading-relaxed text-zinc-300">
         {result.proposal.reasoning}
       </p>
 
@@ -580,7 +580,7 @@ function Stage({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 px-4 py-3">
+    <div className="rounded-2xl border border-line px-4 py-3">
       <h3
         className={`mb-2 text-xs uppercase tracking-wide ${accent ?? "text-zinc-500"}`}
       >

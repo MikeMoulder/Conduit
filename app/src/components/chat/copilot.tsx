@@ -77,7 +77,7 @@ export function Copilot() {
             type="button"
             aria-label="Open the sidebar"
             onClick={() => setOpen(true)}
-            className="text-zinc-400 hover:text-zinc-100"
+            className="grid size-8 place-items-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
           >
             <Menu className="size-5" aria-hidden="true" />
           </button>
@@ -122,19 +122,19 @@ function Welcome({ connected }: { connected: boolean }) {
           />
           <div>
             <h1 className="text-lg font-semibold tracking-tight">CONDUIT</h1>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-ink-faint">
               tokenized equities on {CLUSTER}, governed on chain
             </p>
           </div>
         </div>
 
-        <p className="max-w-2xl text-[15px] leading-relaxed text-zinc-300">
+        <p className="max-w-2xl text-[15px] leading-relaxed text-ink">
           Ask me about the market, your portfolio, or the mandate it runs
           under. I will fetch what I need and show you every tool I used to
           get there. I will not give you a number I could not look up.
         </p>
 
-        <ul className="flex flex-col gap-2 text-sm text-zinc-400">
+        <ul className="flex flex-col gap-2 text-sm text-ink-muted">
           <Bullet>
             Read live prices, and the gap between a token and the thing it
             tracks.
@@ -152,8 +152,8 @@ function Welcome({ connected }: { connected: boolean }) {
           </Bullet>
         </ul>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 px-4 py-3">
-          <p className="text-[13px] leading-relaxed text-zinc-400">
+        <div className="rounded-2xl border border-line bg-surface px-4 py-3.5">
+          <p className="text-[13px] leading-relaxed text-ink-muted">
             The mandate is not a prompt. It is an account on Solana, and every
             proposal is re-derived against it before anything moves. I can
             propose. I cannot widen a limit, replace the agent or withdraw. Those

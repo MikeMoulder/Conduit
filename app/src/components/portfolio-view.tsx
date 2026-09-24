@@ -109,13 +109,13 @@ export function PortfolioView() {
             min={0}
             value={mandateId}
             onChange={(e) => setMandateId(Math.max(0, Number(e.target.value) || 0))}
-            className="w-20 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-right font-mono text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
+            className="w-20 rounded-xl border border-line bg-zinc-950 px-2 py-1 text-right font-mono text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
           />
         </label>
         <button
           type="button"
           onClick={() => setNonce((n) => n + 1)}
-          className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
+          className="rounded-xl border border-line-strong px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
         >
           Reload from chain
         </button>
@@ -187,7 +187,7 @@ function MandateSummary({ mandate }: { mandate: MandateView }) {
         </span>
       </div>
 
-      <dl className="grid gap-px overflow-hidden rounded-lg border border-zinc-800 bg-zinc-800 sm:grid-cols-4">
+      <dl className="grid gap-px overflow-hidden rounded-2xl border border-line bg-zinc-800 sm:grid-cols-4">
         <Cell label="max position" value={bpsToPercent(mandate.constraints.maxPositionBps)} />
         <Cell label="min cash" value={bpsToPercent(mandate.constraints.minCashBps)} />
         <Cell label="max turnover" value={bpsToPercent(mandate.constraints.maxTurnoverBps)} />
@@ -201,7 +201,7 @@ function MandateSummary({ mandate }: { mandate: MandateView }) {
             <span
               key={asset.mint}
               title={asset.mint}
-              className="rounded-full border border-zinc-800 px-2.5 py-0.5 font-mono text-[11px] text-zinc-400"
+              className="rounded-full border border-line px-2.5 py-0.5 font-mono text-[11px] text-zinc-400"
             >
               {known?.symbol ?? `${asset.mint.slice(0, 6)}..`}
             </span>
@@ -240,12 +240,12 @@ function Targets({ portfolio }: { portfolio: PortfolioView | null }) {
     <section className="flex flex-col gap-3">
       <h2 className="text-sm font-medium text-zinc-200">Targets</h2>
       {portfolio.positions.length === 0 ? (
-        <p className="rounded-lg border border-zinc-800 px-4 py-3 text-sm text-zinc-500">
+        <p className="rounded-2xl border border-line px-4 py-3 text-sm text-zinc-500">
           Fully in cash. No well formed mandate can forbid that, which is why a
           portfolio opens this way.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-zinc-800">
+        <div className="overflow-hidden rounded-2xl border border-line">
           {portfolio.positions.map((position) => {
             const asset = getAssetByMint(position.mint);
             return (

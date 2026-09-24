@@ -82,7 +82,7 @@ export function OwnerPanel() {
   }
 
   return (
-    <div className="rounded-lg border border-zinc-800">
+    <div className="rounded-2xl border border-line">
       <Row label="Owner" value={publicKey.toBase58()} />
       <Row
         label={`Mandate ${DEFAULT_MANDATE_ID}`}

@@ -12,6 +12,9 @@ import { ConnectWallet } from "@/components/connect-wallet";
  * validates every keystroke against the program is a good way to learn what the
  * limits mean.
  */
+const NAV_LINK =
+  "rounded-full px-3 py-1.5 transition-colors hover:bg-raised hover:text-ink";
+
 export default function WorkspaceLayout({
   children,
 }: {
@@ -23,29 +26,24 @@ export default function WorkspaceLayout({
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-6 py-3">
           <Link href="/" className="flex items-center gap-2.5">
             <Image
-              src="/logo-mark.png"
+              src="/logo.png"
               alt=""
-              width={26}
-              height={26}
+              width={512}
+              height={512}
+              className="size-8"
             />
-            <span className="text-sm font-semibold tracking-tight">
+            <span className="text-[17px] font-semibold tracking-tight">
               CONDUIT
             </span>
           </Link>
-          <nav className="ml-auto mr-4 flex gap-5 text-sm text-zinc-400">
-            <Link href="/" className="transition-colors hover:text-zinc-100">
+          <nav className="ml-auto mr-2 flex gap-1 text-sm text-ink-muted">
+            <Link href="/" className={NAV_LINK}>
               Ask
             </Link>
-            <Link
-              href="/portfolio"
-              className="transition-colors hover:text-zinc-100"
-            >
+            <Link href="/portfolio" className={NAV_LINK}>
               Portfolio
             </Link>
-            <Link
-              href="/mandate"
-              className="hidden transition-colors hover:text-zinc-100 sm:inline"
-            >
+            <Link href="/mandate" className={`hidden sm:inline ${NAV_LINK}`}>
               Author a mandate
             </Link>
           </nav>
