@@ -335,7 +335,7 @@ const getPortfolio: CopilotTool = {
                 : "Nothing has been settled yet, so the portfolio owns no tokens.",
             }
           : {
-              note: "This mandate cannot be settled on chain, so it holds targets only. Settlement needs a price the program can verify, which exists for the crypto sleeve on devnet and not for the tokenized equities or pre IPO names.",
+              note: "This mandate permits an asset with no on chain price, so it holds targets only. Every asset in the current registry is priced; this means the mandate names something outside it.",
             },
       },
       summary:
@@ -857,7 +857,7 @@ const settlePortfolio: CopilotTool = {
   declaration: {
     name: "settle_portfolio",
     description:
-      "Prepares a settlement, which moves real tokens until the portfolio actually holds what it targets. Everything before this is policy: a position is a weight the program enforces, not custody. Only works on a mandate whose every asset has a price the program can verify on chain, which today means the crypto sleeve. This does NOT execute: it returns a card the person approves.",
+      "Prepares a settlement, which moves real tokens until the portfolio actually holds what it targets. Everything before this is policy: a position is a weight the program enforces, not custody. Works for any mandate over the registry: crypto, tokenized equities and pre IPO names are all priced on chain. This does NOT execute: it returns a card the person approves.",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -875,7 +875,7 @@ const settlePortfolio: CopilotTool = {
         .map((a) => getAssetByMint(a.mint)?.symbol ?? a.mint);
 
       throw new ToolError(
-        `This mandate cannot be settled on chain. Settlement needs a price the program can verify itself, and there is none for ${blocked.join(", ")}. A mandate over the crypto sleeve can be settled; one holding tokenized equities or pre IPO names is policy only.`,
+        `This mandate cannot be settled on chain. Settlement needs a price the program can read itself, and there is none for ${blocked.join(", ")}.`,
       );
     }
 

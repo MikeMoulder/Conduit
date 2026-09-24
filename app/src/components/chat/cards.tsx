@@ -369,7 +369,7 @@ function PortfolioCard({ card }: { card: Extract<Card, { kind: "portfolio" }> })
       </div>
       <p className="border-t border-zinc-900 px-4 py-2 text-[11px] leading-relaxed text-zinc-600">
         {!holdings?.settleable
-          ? "Weights the program enforces, not tokens the portfolio owns. This mandate cannot be settled on chain, because settlement needs a price the program can verify and there is none for these assets on devnet."
+          ? "Weights the program enforces, not tokens the portfolio owns. This mandate names an asset with no on chain price, so it cannot be settled."
           : settled
             ? "Settled. The amounts underneath are real token balances, moved against the desk at the oracle price."
             : "Weights the program enforces. Nothing has settled yet, so the portfolio owns no tokens."}

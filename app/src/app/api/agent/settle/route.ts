@@ -109,7 +109,7 @@ export async function POST(request: Request): Promise<Response> {
       {
         error: "this mandate cannot be settled on chain",
         detail:
-          "settlement needs a price the program can verify, which exists for the crypto sleeve on devnet and not for the tokenized equities or the pre IPO names",
+          "settlement needs a price the program can read on chain, and at least one asset this mandate permits has none",
         unpriceable,
         onChainError: "MandateNotSettleable",
       },
