@@ -119,6 +119,24 @@ export async function POST(request: Request): Promise<Response> {
 
   const before = await fetchHoldings(connection, portfolioAddress, mandate);
 
+  // Refused here with a reason rather than sent and left to fail. A fresh
+  // portfolio has no token accounts at all, and the program's account checks
+  // reject that with a simulation dump that says nothing useful to a person.
+  const accountsOpen =
+    Boolean(before.cash?.exists) && before.assets.every((a) => a.exists);
+
+  if (!accountsOpen || !before.funded) {
+    return Response.json(
+      {
+        settled: false,
+        error: "this portfolio has nothing to settle with yet",
+        detail:
+          "It has no cash, or the token accounts settlement needs are not open. On devnet, add demo cash first; that opens the accounts too.",
+      },
+      { status: 409 },
+    );
+  }
+
   /**
    * Four accounts per asset, in the order the mandate permits them. The program
    * pairs them positionally with `allowed_assets`, so the order is not a

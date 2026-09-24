@@ -1,5 +1,6 @@
 import type { Connection, PublicKey } from "@solana/web3.js";
 
+import { PROGRAM_ID } from "./chain";
 import { codecProgram } from "./program-client";
 
 /**
@@ -143,7 +144,17 @@ export async function fetchMandate(
   address: PublicKey,
 ): Promise<MandateView | null> {
   const account = await connection.getAccountInfo(address);
-  return account ? decodeMandate(address, account.data) : null;
+  // An account this program does not own is not a mandate, whatever its bytes
+  // happen to be. Without this check an arbitrary address reached the decoder
+  // and threw, which surfaced as a bare 500 from every route that takes a
+  // mandate address from a caller.
+  if (!account || !account.owner.equals(PROGRAM_ID)) return null;
+  try {
+    return decodeMandate(address, account.data);
+  } catch {
+    // Owned by this program but not a mandate: a portfolio, the desk, a price.
+    return null;
+  }
 }
 
 export async function fetchPortfolio(
@@ -151,5 +162,10 @@ export async function fetchPortfolio(
   address: PublicKey,
 ): Promise<PortfolioView | null> {
   const account = await connection.getAccountInfo(address);
-  return account ? decodePortfolio(address, account.data) : null;
+  if (!account || !account.owner.equals(PROGRAM_ID)) return null;
+  try {
+    return decodePortfolio(address, account.data);
+  } catch {
+    return null;
+  }
 }
