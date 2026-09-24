@@ -1,26 +1,89 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/**
+ * Conduit design tokens.
+ *
+ * Dark only, one canvas. The sidebar, the header and the composer all sit on
+ * the same colour as the conversation, so no seam is drawn down the app and
+ * grouping is done by spacing and surface rather than by rules.
+ *
+ * Tailwind's own radius and text scales are deliberately left alone. The chat
+ * cards are built on them, and retuning `rounded-lg` here would quietly
+ * restyle every card in the thread.
+ */
+
+@theme {
+  /* Surfaces, darkest to lightest. */
+  --color-canvas: #08090a;
+  --color-surface: #0d0f11;
+  --color-raised: #141719;
+  --color-overlay: #1a1e21;
+
+  /* Lines. Soft enough to shape a control without reading as a divider. */
+  --color-line: #1e2225;
+  --color-line-strong: #2a2f33;
+
+  /* Text, most to least prominent. */
+  --color-ink: #f2f4f5;
+  --color-ink-muted: #a8b0b6;
+  --color-ink-faint: #7b848a;
+  --color-ink-ghost: #5f686d;
+
+  --ease-out-quick: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--color-canvas);
+  color: var(--color-ink);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* One focus treatment for the whole app. */
+:focus-visible {
+  outline: 2px solid var(--color-line-strong);
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* The composer lights its own border on focus, so a second ring around the
+   textarea inside it would read as a browser default rather than a design.
+   Unlayered on purpose, because the rule above is unlayered too. */
+#conduit-input:focus-visible {
+  outline: none;
+}
+
+/* Scrollbars: present, but quiet. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-line-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }

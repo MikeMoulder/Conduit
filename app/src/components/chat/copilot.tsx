@@ -36,7 +36,7 @@ export function Copilot() {
   const [refresh, setRefresh] = useState(0);
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-zinc-950 text-zinc-100">
+    <div className="flex h-dvh overflow-hidden bg-canvas text-ink">
       <Sidebar
         conversations={conversations}
         currentId={conversation?.id ?? null}

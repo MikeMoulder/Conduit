@@ -33,7 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="h-full bg-zinc-950 text-zinc-100">
+      <body className="h-full bg-canvas text-ink">
         <SolanaProviders>{children}</SolanaProviders>
       </body>
     </html>
