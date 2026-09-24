@@ -45,7 +45,7 @@ export function Copilot() {
         onNew={newChat}
         onSelect={select}
         onDelete={remove}
-        footer={<ConnectWallet />}
+        footer={<ConnectWallet placement="above-start" />}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">

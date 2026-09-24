@@ -23,7 +23,27 @@ function shorten(address: string): string {
   return `${address.slice(0, 4)}..${address.slice(-4)}`;
 }
 
-export function ConnectWallet() {
+/**
+ * Where the wallet menu opens, relative to the button.
+ *
+ * The same control lives in two places that need opposite directions. In the
+ * workspace header it sits top right, so the menu drops down and grows to the
+ * left. In the chat sidebar it sits bottom left, where dropping down puts the
+ * whole menu below the fold and off the left edge: the button appeared to do
+ * nothing, while the menu was open the entire time out of view.
+ */
+export type MenuPlacement = "below-end" | "above-start";
+
+const MENU_POSITION: Record<MenuPlacement, string> = {
+  "below-end": "right-0 top-full mt-2",
+  "above-start": "left-0 bottom-full mb-2",
+};
+
+export function ConnectWallet({
+  placement = "below-end",
+}: {
+  placement?: MenuPlacement;
+} = {}) {
   const { connection } = useConnection();
   const {
     wallets,
@@ -150,7 +170,7 @@ export function ConnectWallet() {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl"
+          className={`absolute ${MENU_POSITION[placement]} z-20 w-64 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl`}
         >
           {installed.length === 0 ? (
             <p className="px-4 py-3 text-sm leading-relaxed text-zinc-400">
