@@ -55,7 +55,14 @@ export function ActionCard({
 
   const agentSigns =
     action.kind === "submit-rebalance" || action.kind === "settle";
-  const signer = agentSigns ? "the agent" : "your wallet";
+  // The faucet is a third key, and naming it keeps the card honest: this is
+  // paid for by the demo, not by the person and not by the agent.
+  const signer =
+    action.kind === "fund"
+      ? "the devnet faucet"
+      : agentSigns
+        ? "the agent"
+        : "your wallet";
   const dangerous =
     action.kind === "submit-rebalance" && !action.evaluation.compliant;
   const permanent = action.kind === "set-status" && action.status === "closed";
@@ -87,6 +94,34 @@ export function ActionCard({
               signature: data.signature ?? null,
               slot: data.slot ?? null,
               programError: data.programError ?? null,
+              detail: data.detail ?? data.error ?? null,
+            },
+          },
+        });
+        onSettled();
+        return;
+      }
+
+      if (action.kind === "fund") {
+        setPhase({ state: "working", note: "Adding demo cash" });
+
+        const response = await fetch("/api/faucet", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mandate: action.mandate }),
+        });
+
+        const data = await response.json();
+        setPhase({
+          state: "done",
+          card: {
+            kind: "funding",
+            funding: {
+              funded: Boolean(data.funded),
+              signature: data.signature ?? null,
+              slot: data.slot ?? null,
+              sent: typeof data.sent === "number" ? data.sent : 0,
+              after: data.after ?? null,
               detail: data.detail ?? data.error ?? null,
             },
           },
@@ -219,6 +254,8 @@ export function ActionCard({
               ? "Submit this rebalance"
               : action.kind === "settle"
                 ? "Settle this portfolio"
+                : action.kind === "fund"
+                  ? "Add demo cash"
                 : `Set the mandate to ${action.status}`}
         </span>
         <span className="font-mono text-[11px] text-zinc-500">
@@ -278,6 +315,8 @@ export function ActionCard({
                 ? "Close permanently"
                 : action.kind === "settle"
                   ? "Settle"
+                  : action.kind === "fund"
+                    ? "Add demo cash"
                   : "Approve"}
         </button>
         <button

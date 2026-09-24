@@ -14,6 +14,7 @@ import { validateConstraints, validateUniverse } from "../mandate";
 import { evaluateProposal } from "../proposal";
 import { getConnection } from "../rpc";
 import { fetchHoldings, isSettleable, settleableAsset } from "../holdings";
+import { FUND_UNITS } from "../faucet";
 import { getAgentIdentity } from "../agent-identity";
 import type {
   Card,
@@ -852,6 +853,50 @@ const setStatus: CopilotTool = {
   },
 };
 
+const fundPortfolio: CopilotTool = {
+  label: "Preparing demo cash",
+  declaration: {
+    name: "fund_portfolio",
+    description:
+      "Prepares a devnet top up of demo cash into the portfolio, and creates the token accounts settlement needs. Use it when a portfolio has no cash to settle with, typically right after a mandate is created. The cash is worthless test currency from a faucet, not a deposit, and nothing leaves the person's wallet. This does NOT execute: it returns a card the person approves.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        mandateId: { type: "INTEGER", description: "Which mandate. Defaults to 0." },
+      },
+    },
+  },
+  async run(args, ctx) {
+    const { mandateId = 0 } = z.object({ mandateId: mandateIdArg }).parse(args);
+    const { mandate, address } = await loadMandate(ctx, mandateId);
+
+    const { portfolio: portfolioAddress } = addresses(ctx, mandateId);
+    const holdings = await fetchHoldings(getConnection(), portfolioAddress, mandate);
+    const cash = holdings.cash?.uiAmount ?? 0;
+
+    if (cash >= FUND_UNITS) {
+      throw new ToolError(
+        `The portfolio already holds ${cash.toLocaleString()} in cash, at or above the ${FUND_UNITS.toLocaleString()} the faucet tops up to. There is nothing to add.`,
+      );
+    }
+
+    return {
+      result: {
+        prepared: true,
+        currentCash: cash,
+        topUpTo: FUND_UNITS,
+        note: "Waiting for the person to approve. Devnet demo cash, not a deposit.",
+      },
+      summary: `ready to top up to ${FUND_UNITS.toLocaleString()} demo cash`,
+      action: {
+        kind: "fund",
+        mandate: address.toBase58(),
+        summary: `Top the portfolio up to ${FUND_UNITS.toLocaleString()} in devnet demo cash and open the token accounts settlement needs. Paid by a faucet: nothing leaves your wallet, and the cash has no value outside this demo.`,
+      },
+    };
+  },
+};
+
 const settlePortfolio: CopilotTool = {
   label: "Preparing the settlement",
   declaration: {
@@ -892,7 +937,7 @@ const settlePortfolio: CopilotTool = {
 
     if (!holdings.funded) {
       throw new ToolError(
-        "The portfolio has no cash and no tokens, so there is nothing to settle with. It has to be funded before it can hold anything.",
+        "The portfolio has no cash and no tokens, so there is nothing to settle with. It has to be funded before it can hold anything. Offer to top it up with devnet demo cash using fund_portfolio.",
       );
     }
 
@@ -933,6 +978,7 @@ export const TOOLS: Record<string, CopilotTool> = {
   propose_rebalance: proposeRebalance,
   prepare_mandate: prepareMandate,
   set_mandate_status: setStatus,
+  fund_portfolio: fundPortfolio,
   settle_portfolio: settlePortfolio,
 };
 

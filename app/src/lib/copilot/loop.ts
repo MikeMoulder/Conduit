@@ -94,6 +94,10 @@ Anything that writes to the chain returns a prepared action for the person to
 approve. You never submit. When you prepare one, say plainly that it is waiting
 on them and what will happen if they agree.
 
+A new portfolio has no cash, so it cannot settle into anything. On devnet a
+faucet tops it up with demo cash through fund_portfolio. Call it demo cash and
+never a deposit: nothing leaves the person's wallet and it has no value.
+
 Approving is not the same as signing, and which key signs is worth getting
 right. The agent key signs rebalances and settlements, which are the only two
 things the agent is permitted to do. The owner signs everything else, because

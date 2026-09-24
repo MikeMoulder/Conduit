@@ -36,6 +36,8 @@ export function CardView({ card }: { card: Card }) {
       return <SubmissionCard card={card} />;
     case "settlement":
       return <SettlementCard card={card} />;
+    case "funding":
+      return <FundingCard card={card} />;
   }
 }
 
@@ -372,7 +374,7 @@ function PortfolioCard({ card }: { card: Extract<Card, { kind: "portfolio" }> })
           ? "Weights the program enforces, not tokens the portfolio owns. This mandate names an asset with no on chain price, so it cannot be settled."
           : settled
             ? "Settled. The amounts underneath are real token balances, moved against the desk at the oracle price."
-            : "Weights the program enforces. Nothing has settled yet, so the portfolio owns no tokens."}
+            : "Weights the program enforces. Nothing has settled yet, so the portfolio owns no tokens. On devnet, ask me to add demo cash, then to settle."}
       </p>
     </Shell>
   );
@@ -818,4 +820,59 @@ function diffHoldings(
       after: h.uiAmount,
     }))
     .filter((c) => c.before !== c.after);
+}
+
+/**
+ * Demo cash arriving, stated as exactly that.
+ *
+ * Kept deliberately plain and deliberately labelled. A card that looked like a
+ * deposit would be the interface overstating something again, which is the
+ * mistake the holdings work spent a phase correcting.
+ */
+function FundingCard({ card }: { card: Extract<Card, { kind: "funding" }> }) {
+  const { funding } = card;
+  const cash = funding.after?.cash?.uiAmount ?? null;
+
+  return (
+    <div
+      className={`overflow-hidden rounded-xl border px-4 py-3 ${
+        funding.funded
+          ? "border-emerald-500/30 bg-emerald-500/5"
+          : "border-red-500/30 bg-red-500/5"
+      }`}
+    >
+      {funding.funded ? (
+        <>
+          <p className="text-sm text-emerald-300">
+            {funding.sent > 0
+              ? `Added ${formatAmount(funding.sent)} in devnet demo cash.`
+              : "Already topped up, so nothing was added."}
+            {cash !== null ? ` The portfolio now holds ${formatAmount(cash)}.` : ""}
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+            Paid by a faucet, not by your wallet. It has no value outside this
+            demo. The token accounts settlement needs are open too, so the
+            portfolio can now be settled.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-medium text-red-300">No cash was added</p>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-red-200/70">
+            {funding.detail}
+          </p>
+        </>
+      )}
+      {funding.signature ? (
+        <a
+          href={explorerUrl(funding.signature, "tx", CLUSTER)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1.5 inline-block font-mono text-[11px] text-emerald-400 underline underline-offset-4"
+        >
+          {funding.signature.slice(0, 10)}..{funding.signature.slice(-10)}
+        </a>
+      ) : null}
+    </div>
+  );
 }

@@ -50,7 +50,8 @@ export type Card =
   | { kind: "analysis"; analysis: AnalysisCard }
   | { kind: "verdict"; evaluation: ProposalEvaluation; positions: WeightRow[] }
   | { kind: "submission"; submission: SubmissionCard }
-  | { kind: "settlement"; settlement: SettlementCard };
+  | { kind: "settlement"; settlement: SettlementCard }
+  | { kind: "funding"; funding: FundingCard };
 
 export interface UniverseRow {
   symbol: string;
@@ -112,6 +113,17 @@ export interface AnalysisCard {
   excludedForMissingPrice: string[];
 }
 
+/** The result of topping a portfolio up with devnet demo cash. */
+export interface FundingCard {
+  funded: boolean;
+  signature: string | null;
+  slot: number | null;
+  /** Whole units of cash sent. Zero when the portfolio was already topped up. */
+  sent: number;
+  after: PortfolioHoldings | null;
+  detail: string | null;
+}
+
 export interface SettlementCard {
   settled: boolean;
   signature: string | null;
@@ -166,6 +178,12 @@ export type PendingAction =
       kind: "set-status";
       mandate: string;
       status: "active" | "paused" | "closed";
+      summary: string;
+    }
+  | {
+      kind: "fund";
+      /** Paid by the devnet faucet key on the server once approved. */
+      mandate: string;
       summary: string;
     }
   | {
