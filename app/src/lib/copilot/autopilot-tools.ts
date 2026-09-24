@@ -9,6 +9,8 @@ import { listDecisions, listEntries } from "../autopilot/state";
 import { mandatePda, portfolioPda } from "../chain";
 import { fetchHoldings } from "../holdings";
 import { getConnection } from "../rpc";
+import { botToken } from "../telegram/bot";
+import { chatFor } from "../telegram/state";
 import { ToolError, type CopilotTool, type ToolContext } from "./tool-types";
 
 /**
@@ -133,6 +135,7 @@ const getAutopilot: CopilotTool = {
 
     return {
       result: {
+        telegramLinked: chatFor(owner) !== null,
         running: entries.filter((e) => e.enabled).map((e) => ({ mandateId: e.mandateId, everyMinutes: e.everyMinutes })),
         recent: decisions.slice(0, 5).map((d) => ({
           at: new Date(d.at).toISOString(),
@@ -184,7 +187,65 @@ const runAutopilotNow: CopilotTool = {
   },
 };
 
+const linkTelegram: CopilotTool = {
+  label: "Preparing Telegram",
+  declaration: {
+    name: "link_telegram",
+    description:
+      "Prepares connecting the person's own Telegram chat, so their autopilot decisions are sent to them there. Their wallet signs a short message proving it is theirs (not a transaction), then they get a one time link to open in Telegram and press Start. Each person links their own chat; decisions only ever go to the chat linked to the wallet that owns the mandate. This does NOT execute: they approve a card.",
+    parameters: { type: "OBJECT", properties: {} },
+  },
+  async run(_args, ctx) {
+    const owner = requireOwner(ctx);
+    if (!botToken()) {
+      throw new ToolError(
+        "Telegram is not set up on this server yet: the operator needs to add a bot token. Everything the autopilot decides is still visible here with get_autopilot.",
+      );
+    }
+    if (chatFor(owner.toBase58()) !== null) {
+      throw new ToolError("This wallet already has a Telegram chat linked. Offer unlink_telegram if they want to change it.");
+    }
+    return {
+      result: { prepared: true },
+      summary: "Telegram link ready to sign",
+      action: {
+        kind: "link-telegram",
+        owner: owner.toBase58(),
+        summary:
+          "Connect your Telegram so the autopilot can tell you what it decides. Your wallet signs a short message to prove it is yours; nothing moves and it costs nothing. You then get a link to open in Telegram and press Start. It works once and expires in ten minutes.",
+      },
+    };
+  },
+};
+
+const unlinkTelegram: CopilotTool = {
+  label: "Preparing to disconnect Telegram",
+  declaration: {
+    name: "unlink_telegram",
+    description:
+      "Prepares stopping Telegram updates for the person's wallet. Their wallet signs a short message to prove it is theirs. Sending /stop to the bot does the same. This does NOT execute: they approve a card.",
+    parameters: { type: "OBJECT", properties: {} },
+  },
+  async run(_args, ctx) {
+    const owner = requireOwner(ctx);
+    if (chatFor(owner.toBase58()) === null) {
+      throw new ToolError("No Telegram chat is linked to this wallet.");
+    }
+    return {
+      result: { prepared: true },
+      summary: "ready to disconnect Telegram",
+      action: {
+        kind: "unlink-telegram",
+        owner: owner.toBase58(),
+        summary: "Stop sending autopilot updates for this wallet to Telegram. Your wallet signs a short message to confirm; nothing moves.",
+      },
+    };
+  },
+};
+
 export const AUTOPILOT_TOOLS: Record<string, CopilotTool> = {
+  link_telegram: linkTelegram,
+  unlink_telegram: unlinkTelegram,
   set_autopilot: setAutopilot,
   get_autopilot: getAutopilot,
   run_autopilot_now: runAutopilotNow,

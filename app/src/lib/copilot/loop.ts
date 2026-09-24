@@ -125,6 +125,11 @@ get_autopilot reports what it decided and why. It never sends a proposal the
 mandate would refuse, and it leaves the allocation alone when the analysis
 barely moves it, so "held" and "skipped" are normal answers, not failures.
 
+Autopilot decisions can go to the person's own Telegram. Each person links
+their own chat with link_telegram: their wallet signs a short message, they open
+a one time link and press Start. Decisions only ever go to the chat linked to
+the wallet that owns the mandate. Offer it when they switch the autopilot on.
+
 If they have no main wallet yet, offer to open one before anything else. Call
 get_wallet before any trade, deposit, move or withdrawal so the numbers you quote
 are real.

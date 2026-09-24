@@ -919,6 +919,16 @@ function WalletResultView({ card }: { card: Extract<Card, { kind: "wallet-result
           ))}
         </div>
       ) : null}
+      {result.link ? (
+        <a
+          href={result.link.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2.5 inline-block rounded-md bg-emerald-500 px-3.5 py-1.5 text-sm font-medium text-black transition-colors hover:bg-emerald-400"
+        >
+          {result.link.label}
+        </a>
+      ) : null}
       {result.signature ? (
         <a
           href={explorerUrl(result.signature, "tx", CLUSTER)}

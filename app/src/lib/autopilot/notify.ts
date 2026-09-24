@@ -2,18 +2,21 @@ import "server-only";
 
 import { explorerUrl } from "../chain";
 import { CLUSTER } from "../cluster";
+import { botToken, sendMessage } from "../telegram/bot";
+import { chatFor } from "../telegram/state";
 import type { AutopilotEntry, Decision } from "./state";
 
 /**
  * Tells the owner what the autopilot decided, over Telegram.
  *
- * Optional. With TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID unset it does nothing,
- * and the decisions are still readable in the chat. A failure to send is
- * swallowed: a notification that did not arrive must never be the reason a
- * cycle is reported as failed, because the cycle itself is on chain either way.
+ * To the chat that owner linked, and nobody else. There is no fixed chat id in
+ * configuration: one bot serves everyone, and each person links their own chat
+ * to their own wallet by proving the wallet is theirs. An owner who has not
+ * linked a chat gets nothing here, and still sees every decision in Conduit.
  *
- * One chat id for the deployment, which is right for a demo with one person
- * watching and would become a per owner link in a real deployment.
+ * A failure to send is swallowed: a notification that did not arrive must
+ * never be the reason a cycle is reported as failed, because the cycle itself
+ * is on chain either way.
  */
 
 const ICON: Record<Decision["outcome"], string> = {
@@ -39,22 +42,8 @@ export function formatDecision(decision: Decision, entry: AutopilotEntry): strin
 }
 
 export async function notify(decision: Decision, entry: AutopilotEntry): Promise<void> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chat = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chat) return;
-
-  try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chat,
-        text: formatDecision(decision, entry),
-        disable_web_page_preview: true,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch {
-    // Deliberately quiet. See above.
-  }
+  if (!botToken()) return;
+  const chatId = chatFor(decision.owner);
+  if (chatId === null) return;
+  await sendMessage(chatId, formatDecision(decision, entry));
 }

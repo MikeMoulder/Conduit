@@ -13,6 +13,8 @@ import { bpsToPercent, extractProgramError, portfolioPda } from "@/lib/chain";
 import { confirmSignature } from "@/lib/confirm";
 import { associatedTokenAddress, desk, type PortfolioHoldings } from "@/lib/holdings";
 import { walletAddress } from "@/lib/main-wallet";
+import { buildProofMessage } from "@/lib/wallet-proof";
+import bs58 from "bs58";
 import { createMandateInstructions, setStatusInstruction } from "@/lib/mandate-tx";
 import {
   createAssociatedTokenAccountIdempotent,
@@ -53,7 +55,9 @@ type OwnerAction = Extract<
   PendingAction,
   { kind: "create-mandate" | "set-status" | "open-wallet" | "deposit" }
 >;
-type ServerAction = Exclude<PendingAction, OwnerAction>;
+/** Signed as a message, not a transaction: proof of the wallet, nothing moves. */
+type MessageAction = Extract<PendingAction, { kind: "link-telegram" | "unlink-telegram" }>;
+type ServerAction = Exclude<PendingAction, OwnerAction | MessageAction>;
 
 interface Presentation {
   title: string;
@@ -128,6 +132,10 @@ function present(action: PendingAction): Presentation {
         button: "Run it now",
         warning: false,
       };
+    case "link-telegram":
+      return { title: "Connect Telegram", signer: "owner", button: "Sign and get the link", warning: false };
+    case "unlink-telegram":
+      return { title: "Disconnect Telegram", signer: "owner", button: "Sign and disconnect", warning: false };
   }
 }
 
@@ -137,8 +145,12 @@ const SIGNER_LABEL: Record<Signer, string> = {
   faucet: "paid by the devnet faucet",
 };
 
+function isMessageAction(action: PendingAction): action is MessageAction {
+  return action.kind === "link-telegram" || action.kind === "unlink-telegram";
+}
+
 function isOwnerAction(action: PendingAction): action is OwnerAction {
-  return present(action).signer === "owner";
+  return !isMessageAction(action) && present(action).signer === "owner";
 }
 
 async function postJson(route: string, body: unknown): Promise<Record<string, unknown>> {
@@ -392,7 +404,7 @@ export function ActionCard({
 }) {
   const [phase, setPhase] = useState<Phase>({ state: "idle" });
   const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, sendTransaction, signMessage } = useWallet();
   const program = useConduitProgram();
 
   const view = present(action);
@@ -488,8 +500,50 @@ export function ActionCard({
     };
   }
 
+  /** Signs a proof message with the wallet and hands it to the server. */
+  async function runMessageAction(messageAction: MessageAction): Promise<Card> {
+    if (!publicKey) throw new Error("Connect a wallet first. Only you can sign this.");
+    if (!signMessage) throw new Error("This wallet cannot sign messages, so it cannot prove it is yours here.");
+
+    const owner = publicKey.toBase58();
+    const purpose = messageAction.kind;
+    const message = buildProofMessage(purpose, owner);
+    const signed = await signMessage(new TextEncoder().encode(message));
+    const body = { owner, message, signature: bs58.encode(signed) };
+
+    if (purpose === "link-telegram") {
+      const data = await postJson("/api/telegram/link", body);
+      if (!data.link) return failure(data, "Telegram was not linked");
+      return resultCard({
+        ok: true,
+        headline: "One step left: open Telegram and press Start",
+        detail: `The link works once and expires in ${Number(data.expiresInMinutes ?? 10)} minutes. When you press Start, the bot confirms which wallet it is linked to.`,
+        signature: null,
+        lines: [],
+        link: { label: "Open in Telegram", href: String(data.link) },
+      });
+    }
+
+    const data = await postJson("/api/telegram/unlink", body);
+    if (data.error) return failure(data, "Telegram was not disconnected");
+    return resultCard({
+      ok: true,
+      headline: data.unlinked ? "Telegram disconnected" : "No Telegram chat was linked",
+      detail: data.unlinked ? "No more autopilot updates will be sent there." : null,
+      signature: null,
+      lines: [],
+    });
+  }
+
   async function approve() {
     try {
+      if (isMessageAction(action)) {
+        setPhase({ state: "working", note: "Waiting for your signature" });
+        const card = await runMessageAction(action);
+        onResolved(card, outcomeMessage(action, card));
+        return;
+      }
+
       if (!isOwnerAction(action)) {
         setPhase({
           state: "working",

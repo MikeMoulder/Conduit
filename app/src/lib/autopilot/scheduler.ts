@@ -1,5 +1,6 @@
 import "server-only";
 
+import { startTelegramPoller } from "../telegram/bot";
 import { runCycle } from "./cycle";
 import { notify } from "./notify";
 import {
@@ -103,6 +104,8 @@ export async function runDue(): Promise<void> {
  * evaluated more than once, and two timers would double every cycle.
  */
 export function startScheduler(): void {
+  // The bot's listener rides along: it has its own once per process guard.
+  startTelegramPoller();
   if (shared.__conduitAutopilot) return;
   shared.__conduitAutopilot = setInterval(() => {
     void runDue().catch(() => {

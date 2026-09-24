@@ -147,6 +147,8 @@ export interface WalletResultCard {
   detail: string | null;
   signature: string | null;
   lines: { label: string; value: string }[];
+  /** A next step that is a place to go, such as opening Telegram. */
+  link?: { label: string; href: string } | null;
 }
 
 export interface SettlementCard {
@@ -271,6 +273,12 @@ export type PendingAction =
       summary: string;
     }
   | {
+      kind: "link-telegram" | "unlink-telegram";
+      /** Proven by a message the wallet signs. Not a transaction. */
+      owner: string;
+      summary: string;
+    }
+  | {
       kind: "autopilot-run";
       /** One cycle now, signed by the agent inside the mandate. */
       owner: string;
@@ -314,6 +322,10 @@ export function actionTitle(action: PendingAction): string {
         : `Stop the autopilot on ${action.mandateLabel}`;
     case "autopilot-run":
       return `Run one autopilot cycle on ${action.mandateLabel}`;
+    case "link-telegram":
+      return "Connect Telegram";
+    case "unlink-telegram":
+      return "Disconnect Telegram";
   }
 }
 
