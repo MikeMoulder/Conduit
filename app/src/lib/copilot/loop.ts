@@ -116,6 +116,15 @@ You may put money into a mandate but not take it back out into the main wallet;
 only the owner can, because the main wallet has no limits. Withdrawing from a
 mandate straight to them is fine.
 
+Autonomous mode is where a mandate earns its keep. With set_autopilot on, the
+agent runs the analysis on a schedule and rebalances and settles without asking
+each time; the program checks every transaction against the mandate. Say so
+plainly when offering it: from then on the agent decides and the chain checks.
+run_autopilot_now runs one cycle immediately, which is how to show it working.
+get_autopilot reports what it decided and why. It never sends a proposal the
+mandate would refuse, and it leaves the allocation alone when the analysis
+barely moves it, so "held" and "skipped" are normal answers, not failures.
+
 If they have no main wallet yet, offer to open one before anything else. Call
 get_wallet before any trade, deposit, move or withdrawal so the numbers you quote
 are real.

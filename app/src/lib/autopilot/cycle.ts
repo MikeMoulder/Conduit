@@ -1,0 +1,182 @@
+import "server-only";
+
+import { PublicKey } from "@solana/web3.js";
+
+import { fetchMandate, fetchPortfolio } from "../accounts";
+import { getAgentIdentity } from "../agent-identity";
+import { executeRebalance, executeSettle } from "../agent-execution";
+import { runPipeline, type MandateSpec } from "../agents/pipeline";
+import { getAssetByMint, getAssetBySymbol } from "../assets";
+import { bpsToPercent, portfolioPda } from "../chain";
+import { fetchHoldings } from "../holdings";
+import { pricedSymbols, snapshotMarket } from "../market";
+import { evaluateProposal } from "../proposal";
+import { getConnection } from "../rpc";
+import type { AutopilotEntry, Decision } from "./state";
+
+/**
+ * One autonomous cycle for one mandate: look, decide, act, write it down.
+ *
+ * This is the part of the product the mandate exists for. Everywhere else a
+ * person approves each step. Here nobody does, and that is safe for one reason
+ * only: every transaction the cycle sends is checked by the program against
+ * the rules the owner signed, so the worst the agent can do unsupervised is
+ * what the mandate already allows.
+ *
+ * Two choices keep it honest rather than merely safe.
+ *
+ * It never sends a proposal it knows will be refused. The analysis can produce
+ * an allocation the mandate forbids, and in the approval flow the person may
+ * send one anyway to watch the chain refuse it. Unsupervised, that would only
+ * burn fees and litter the history, so the cycle checks first and records why
+ * it held back instead.
+ *
+ * It does not churn. If the analysis moves less than one percent of the book,
+ * the targets stay as they are. Rebalancing on noise is how an agent with
+ * unlimited patience turns a small edge into a large fee bill.
+ */
+
+/** Below this much turnover the targets are left alone. */
+const MIN_TURNOVER_BPS = 100;
+
+function describe(positions: { symbol: string; targetBps: number }[]): string {
+  const invested = positions.reduce((sum, p) => sum + p.targetBps, 0);
+  const parts = positions.map((p) => `${p.symbol} ${bpsToPercent(p.targetBps)}`);
+  parts.push(`cash ${bpsToPercent(10_000 - invested)}`);
+  return parts.join(", ");
+}
+
+export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
+  const base = {
+    mandate: entry.mandate,
+    owner: entry.owner,
+    at: Date.now(),
+    reasoning: null,
+    positions: [],
+    signatures: [],
+  };
+  const skip = (summary: string): Decision => ({ ...base, outcome: "skipped", summary });
+
+  const connection = getConnection();
+  const mandateKey = new PublicKey(entry.mandate);
+  const mandate = await fetchMandate(connection, mandateKey);
+
+  if (!mandate) return skip("The mandate no longer exists.");
+  if (mandate.status !== "active") {
+    return skip(`The mandate is ${mandate.status}, so the program would refuse the agent. Nothing was sent.`);
+  }
+
+  const agent = getAgentIdentity();
+  if (!agent.configured || mandate.agent !== agent.publicKey) {
+    return skip("This mandate names a different agent than the one this server holds.");
+  }
+
+  const portfolioKey = portfolioPda(mandateKey);
+  const [portfolio, holdings] = await Promise.all([
+    fetchPortfolio(connection, portfolioKey),
+    fetchHoldings(connection, portfolioKey, mandate),
+  ]);
+
+  if (!portfolio) return skip("The mandate has no portfolio yet.");
+  if (!holdings.funded) {
+    return skip("The mandate holds no cash to invest yet. Move some in from the main wallet.");
+  }
+
+  const symbols = mandate.allowedAssets
+    .map((a) => getAssetByMint(a.mint)?.symbol)
+    .filter((s): s is string => Boolean(s));
+  const snapshot = await snapshotMarket(symbols);
+  const tradable = snapshot.filter((s) => s.price !== null);
+  if (tradable.length === 0) return skip("No permitted asset has a price right now.");
+
+  const current = portfolio.positions;
+  const spec: MandateSpec = {
+    objective: entry.objective,
+    maxPositionBps: mandate.constraints.maxPositionBps,
+    minCashBps: mandate.constraints.minCashBps,
+    maxTurnoverBps: mandate.constraints.maxTurnoverBps,
+    maxAssets: Math.min(mandate.constraints.maxAssets, tradable.length),
+    allowedSymbols: pricedSymbols(tradable),
+    currentPositions: current.flatMap((p) => {
+      const known = getAssetByMint(p.mint);
+      return known ? [{ symbol: known.symbol, targetBps: p.targetBps }] : [];
+    }),
+  };
+
+  const run = await runPipeline(spec, tradable);
+  const reasoning = run.proposal.reasoning;
+
+  const allowed = new Set(mandate.allowedAssets.map((a) => a.mint));
+  const proposed = run.proposal.positions
+    .map((p) => ({ symbol: p.symbol, targetBps: p.targetBps, mint: getAssetBySymbol(p.symbol)?.mint }))
+    .filter((p): p is { symbol: string; targetBps: number; mint: string } =>
+      Boolean(p.mint) && allowed.has(p.mint!) && p.targetBps > 0,
+    );
+
+  const evaluation = evaluateProposal({
+    constraints: mandate.constraints,
+    allowedMints: [...allowed],
+    current,
+    proposed: proposed.map((p) => ({ mint: p.mint, targetBps: p.targetBps })),
+  });
+
+  const positions = proposed.map((p) => ({ symbol: p.symbol, targetBps: p.targetBps }));
+
+  if (!evaluation.compliant) {
+    return {
+      ...base,
+      outcome: "skipped",
+      reasoning,
+      positions,
+      summary: `The analysis proposed ${describe(positions)}, which the mandate would refuse with ${evaluation.firstRefusal}. Nothing was sent.`,
+    };
+  }
+
+  const signatures: string[] = [];
+  const changed = evaluation.turnoverBps >= MIN_TURNOVER_BPS;
+
+  if (changed) {
+    const rebalance = await executeRebalance({
+      mandate: entry.mandate,
+      positions: proposed.map((p) => ({ mint: p.mint, targetBps: p.targetBps })),
+    });
+    if (!rebalance.body.accepted) {
+      const error = rebalance.body.programError as { name?: string } | null;
+      return {
+        ...base,
+        outcome: "failed",
+        reasoning,
+        positions,
+        summary: `The rebalance was not accepted${error?.name ? `: ${error.name}` : ""}. ${String(rebalance.body.detail ?? rebalance.body.error ?? "")}`.trim(),
+      };
+    }
+    signatures.push(String(rebalance.body.signature));
+  }
+
+  // Settled every cycle, changed or not: prices move, holdings drift from
+  // their targets, and settling is what brings them back.
+  const settle = await executeSettle({ mandate: entry.mandate });
+  if (!settle.body.settled) {
+    const error = settle.body.programError as { name?: string } | null;
+    return {
+      ...base,
+      outcome: "failed",
+      reasoning,
+      positions,
+      signatures,
+      summary: `${changed ? "The new targets were accepted, but the" : "The"} settlement did not go through${error?.name ? `: ${error.name}` : ""}. ${String(settle.body.detail ?? settle.body.error ?? "")}`.trim(),
+    };
+  }
+  signatures.push(String(settle.body.signature));
+
+  return {
+    ...base,
+    outcome: changed ? "rebalanced" : "held",
+    reasoning,
+    positions,
+    signatures,
+    summary: changed
+      ? `Rebalanced to ${describe(positions)}, then settled into real tokens.`
+      : `Kept the allocation: the analysis moved less than ${bpsToPercent(MIN_TURNOVER_BPS)} of the book. Settled any drift back to target.`,
+  };
+}

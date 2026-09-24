@@ -114,6 +114,20 @@ function present(action: PendingAction): Presentation {
       };
     case "withdraw":
       return { title: "Withdraw to your wallet", signer: "agent", button: "Withdraw", warning: false };
+    case "autopilot":
+      return {
+        title: action.on ? `Autopilot on ${action.mandateLabel}` : `Stop the autopilot on ${action.mandateLabel}`,
+        signer: "agent",
+        button: action.on ? "Switch it on" : "Stop it",
+        warning: false,
+      };
+    case "autopilot-run":
+      return {
+        title: `Run a cycle on ${action.mandateLabel}`,
+        signer: "agent",
+        button: "Run it now",
+        warning: false,
+      };
   }
 }
 
@@ -253,6 +267,61 @@ async function runServerAction(action: ServerAction): Promise<Card> {
           { label: "main wallet cash", value: usd(Number(data.walletCashAfter ?? 0)) },
           { label: `${action.mandateLabel} cash`, value: usd(Number(data.mandateCashAfter ?? 0)) },
         ],
+      });
+    }
+
+    case "autopilot": {
+      const data = await postJson("/api/autopilot", {
+        owner: action.owner,
+        mandateId: action.mandateId,
+        on: action.on,
+        everyMinutes: action.everyMinutes,
+        objective: action.objective ?? undefined,
+      });
+      if (!data.ok) return failure(data, "The autopilot was not changed");
+      return resultCard({
+        ok: true,
+        headline: action.on
+          ? `The agent now runs ${action.mandateLabel} on its own, every ${action.everyMinutes} minutes`
+          : `The autopilot on ${action.mandateLabel} is off`,
+        detail: action.on
+          ? "Its first cycle starts within a minute. Every transaction it sends is checked against the mandate's rules. Ask what it has been doing at any time."
+          : "Nothing it already did is undone.",
+        signature: null,
+        lines: [],
+      });
+    }
+
+    case "autopilot-run": {
+      const data = await postJson("/api/autopilot/run", {
+        owner: action.owner,
+        mandateId: action.mandateId,
+      });
+      const decision = data.decision as
+        | {
+            outcome: "rebalanced" | "held" | "skipped" | "failed";
+            summary: string;
+            reasoning: string | null;
+            positions: { symbol: string; targetBps: number }[];
+            signatures: string[];
+          }
+        | undefined;
+      if (!decision) return failure(data, "The cycle did not run");
+      const headline = {
+        rebalanced: "The agent rebalanced and settled on its own",
+        held: "The agent kept the allocation",
+        skipped: "The agent held back",
+        failed: "The cycle did not complete",
+      }[decision.outcome];
+      return resultCard({
+        ok: decision.outcome !== "failed",
+        headline,
+        detail: decision.summary,
+        signature: decision.signatures[decision.signatures.length - 1] ?? null,
+        lines: decision.positions.map((p) => ({
+          label: p.symbol,
+          value: bpsToPercent(p.targetBps),
+        })),
       });
     }
 

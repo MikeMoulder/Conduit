@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { startScheduler } from "@/lib/autopilot/scheduler";
 
 import { runCopilot } from "@/lib/copilot/loop";
 import type { CopilotEvent } from "@/lib/copilot/events";
@@ -39,6 +40,8 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: Request): Promise<Response> {
+  // Starts the autopilot timer if this process has not yet. Idempotent.
+  startScheduler();
   let body: unknown;
   try {
     body = await request.json();

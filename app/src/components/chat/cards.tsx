@@ -40,6 +40,8 @@ export function CardView({ card }: { card: Card }) {
       return <WalletCardView card={card} />;
     case "wallet-result":
       return <WalletResultView card={card} />;
+    case "autopilot":
+      return <AutopilotCardView card={card} />;
   }
 }
 
@@ -930,5 +932,83 @@ function WalletResultView({ card }: { card: Extract<Card, { kind: "wallet-result
         </a>
       ) : null}
     </div>
+  );
+}
+
+const OUTCOME_STYLE: Record<string, string> = {
+  rebalanced: "bg-emerald-500/15 text-emerald-300",
+  held: "bg-zinc-800 text-zinc-300",
+  skipped: "bg-amber-500/10 text-amber-300",
+  failed: "bg-red-500/15 text-red-300",
+};
+
+function ago(at: number): string {
+  const minutes = Math.round((Date.now() - at) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
+}
+
+/**
+ * What the agent did while nobody was approving.
+ *
+ * The honest record of autonomous mode. Every decision is listed, including
+ * the ones where it chose to do nothing, because "held back, and here is why"
+ * is as much the product as a trade is. Each line that sent something links to
+ * the transaction, so none of it has to be taken on trust.
+ */
+function AutopilotCardView({ card }: { card: Extract<Card, { kind: "autopilot" }> }) {
+  const running = card.entries.filter((e) => e.enabled);
+
+  return (
+    <Shell
+      title="Autopilot"
+      aside={
+        <span className="text-[11px] text-zinc-500">
+          {running.length === 0
+            ? "off"
+            : running.map((e) => `mandate ${e.mandateId} every ${e.everyMinutes} min`).join(", ")}
+        </span>
+      }
+    >
+      {card.decisions.length === 0 ? (
+        <p className="px-4 py-3 text-sm text-zinc-500">
+          No decisions yet. The first cycle runs within a minute of switching it on.
+        </p>
+      ) : (
+        card.decisions.map((d, i) => (
+          <div
+            key={`${d.at}-${i}`}
+            className={`px-4 py-2.5 ${i === card.decisions.length - 1 ? "" : "border-b border-zinc-900"}`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span
+                className={`rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${OUTCOME_STYLE[d.outcome] ?? ""}`}
+              >
+                {d.outcome}
+              </span>
+              <span className="text-[11px] text-zinc-600">{ago(d.at)}</span>
+            </div>
+            <p className="mt-1.5 text-sm leading-relaxed text-zinc-300">{d.summary}</p>
+            {d.signatures.length > 0 ? (
+              <div className="mt-1 flex flex-wrap gap-3">
+                {d.signatures.map((sig) => (
+                  <a
+                    key={sig}
+                    href={explorerUrl(sig, "tx", CLUSTER)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-[11px] text-emerald-400 underline underline-offset-4"
+                  >
+                    {sig.slice(0, 8)}..{sig.slice(-8)}
+                  </a>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))
+      )}
+    </Shell>
   );
 }

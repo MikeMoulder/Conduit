@@ -1,6 +1,7 @@
 import type { MandateView, PortfolioView } from "../accounts";
 import type { ActivityRecord } from "../events";
 import type { ProposalEvaluation } from "../proposal";
+import type { AutopilotEntry, Decision } from "../autopilot/state";
 import type { PortfolioHoldings } from "../holdings";
 
 /**
@@ -52,7 +53,8 @@ export type Card =
   | { kind: "submission"; submission: SubmissionCard }
   | { kind: "settlement"; settlement: SettlementCard }
   | { kind: "wallet"; wallet: WalletCard }
-  | { kind: "wallet-result"; result: WalletResultCard };
+  | { kind: "wallet-result"; result: WalletResultCard }
+  | { kind: "autopilot"; entries: AutopilotEntry[]; decisions: Decision[] };
 
 export interface UniverseRow {
   symbol: string;
@@ -258,6 +260,25 @@ export type PendingAction =
       summary: string;
     }
   | {
+      kind: "autopilot";
+      /** Recorded on the server once approved. No signature: see the route. */
+      owner: string;
+      mandateId: number;
+      mandateLabel: string;
+      on: boolean;
+      everyMinutes: number;
+      objective: string | null;
+      summary: string;
+    }
+  | {
+      kind: "autopilot-run";
+      /** One cycle now, signed by the agent inside the mandate. */
+      owner: string;
+      mandateId: number;
+      mandateLabel: string;
+      summary: string;
+    }
+  | {
       kind: "settle";
       /** Signed by the agent on the server once approved. */
       mandate: string;
@@ -287,6 +308,12 @@ export function actionTitle(action: PendingAction): string {
       return `Move $${action.dollars.toLocaleString()} into ${action.mandateLabel}`;
     case "withdraw":
       return "Withdraw to your wallet";
+    case "autopilot":
+      return action.on
+        ? `Run ${action.mandateLabel} on its own every ${action.everyMinutes} minutes`
+        : `Stop the autopilot on ${action.mandateLabel}`;
+    case "autopilot-run":
+      return `Run one autopilot cycle on ${action.mandateLabel}`;
   }
 }
 
