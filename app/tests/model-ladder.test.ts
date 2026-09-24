@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { expect } from "chai";
 
-import { generateWithTools, resetModelAvailability } from "../src/lib/gemini";
+import { z } from "zod";
+
+import { generateStructured, generateWithTools, resetModelAvailability } from "../src/lib/gemini";
 
 /**
  * Tests for what happens when the model provider misbehaves.
@@ -103,5 +105,85 @@ describe("the model ladder under a misbehaving provider", () => {
     const result = await generateWithTools(request);
     expect(calls).to.equal(4);
     expect(result.parts[0].text).to.equal("answered");
+  });
+
+  it("waits out a rate limit in an analysis stage too", async () => {
+    // The first autonomous cycle stopped at the bull stage: five stages fired
+    // back to back found every model rate limited, and the structured path had
+    // no wait. It shares the tool turn's policy now.
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return calls <= 3
+        ? new Response(JSON.stringify({ error: { message: "rate limited" } }), { status: 429 })
+        : new Response(
+            JSON.stringify({
+              candidates: [{ content: { parts: [{ text: '{"verdict":"bullish"}' }] }, finishReason: "STOP" }],
+            }),
+            { status: 200 },
+          );
+    }) as typeof fetch;
+
+    const result = await generateStructured({
+      stage: "bull",
+      systemInstruction: "test",
+      prompt: "test",
+      schema: { type: "OBJECT", properties: { verdict: { type: "STRING" } } } as never,
+      validator: z.object({ verdict: z.string() }),
+    });
+
+    expect(calls).to.equal(4);
+    expect(result.value.verdict).to.equal("bullish");
+  });
+
+  it("tries another pass after a mix of busy models and a malformed reply", async () => {
+    // The pattern behind the timed cycle that stopped at the bull stage: one
+    // model answered in the wrong shape, the others were rate limited, and the
+    // old rule only retried when every failure was a busy model.
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(
+          JSON.stringify({ candidates: [{ content: { parts: [{ text: "not json at all" }] }, finishReason: "STOP" }] }),
+          { status: 200 },
+        );
+      }
+      if (calls <= 4) {
+        return new Response(JSON.stringify({ error: { message: "rate limited" } }), { status: 429 });
+      }
+      return new Response(
+        JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"verdict":"bearish"}' }] }, finishReason: "STOP" }] }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const result = await generateStructured({
+      stage: "bear",
+      systemInstruction: "test",
+      prompt: "test",
+      schema: { type: "OBJECT", properties: { verdict: { type: "STRING" } } } as never,
+      validator: z.object({ verdict: z.string() }),
+    });
+
+    expect(result.value.verdict).to.equal("bearish");
+  });
+
+  it("does not wait on a model that does not exist", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ error: { message: "not found" } }), { status: 404 });
+    }) as typeof fetch;
+
+    const began = Date.now();
+    try {
+      await generateWithTools(request);
+      expect.fail("answered with every model missing");
+    } catch (error) {
+      expect(String(error)).to.include("no model answered");
+    }
+    expect(calls).to.equal(3);
+    expect(Date.now() - began).to.be.below(1_000);
   });
 });

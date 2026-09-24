@@ -51,6 +51,29 @@ const MODEL_LADDER = [
  */
 const COOLDOWN_MS = 60_000;
 
+/**
+ * Waits between passes over the ladder when another pass could succeed.
+ *
+ * On a free key the whole ladder shares a per minute budget, so a burst can
+ * find every model rate limited at once: a card result sent straight after an
+ * answer, or the five stages of an analysis fired back to back. Those limits
+ * clear in seconds, and waiting briefly turns a failure into a slower answer.
+ *
+ * A reply in the wrong shape is worth another pass too. The bull and bear
+ * stages regularly need a repair on the fastest model, and an autonomous cycle
+ * once stopped because a mix of busy models and one malformed reply fell
+ * through a rule that only retried when every failure was a busy model.
+ *
+ * What is not waited on is what another pass cannot fix: a model that does not
+ * exist (404), one that hung for the full timeout (408), or a request the
+ * provider rejected outright (400, 401, 403).
+ */
+const RETRY_DELAYS_MS = [0, 3_000, 8_000];
+
+function worthAnotherPass(failures: string[]): boolean {
+  return failures.length > 0 && !failures.every((f) => /http (400|401|403|404|408) /.test(f));
+}
+
 /** Model name to the time its cooldown expires. */
 const unavailableUntil = new Map<string, number>();
 
@@ -262,13 +285,10 @@ export async function generateWithTools(
    * seconds. Waiting briefly and trying again turns "no model was available"
    * into a slower answer, which is the better failure for someone mid flow.
    */
-  const retryDelays = [0, 3_000, 8_000];
-
-  for (let round = 0; round < retryDelays.length; round += 1) {
-    if (retryDelays[round] > 0) {
-      const onlyBusy = failures.every((f) => /http (429|503|500|0) /.test(f));
-      if (!onlyBusy) break;
-      await new Promise((resolve) => setTimeout(resolve, retryDelays[round]));
+  for (let round = 0; round < RETRY_DELAYS_MS.length; round += 1) {
+    if (RETRY_DELAYS_MS[round] > 0) {
+      if (!worthAnotherPass(failures)) break;
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[round]));
     }
 
     // Later rounds try every model: the cooldowns were set by this same burst.
@@ -346,61 +366,70 @@ export async function generateStructured<T>(
   let attempts = 0;
   const failures: string[] = [];
 
-  for (const model of models) {
-    for (let repair = 0; repair <= 1; repair += 1) {
-      attempts += 1;
+  for (let round = 0; round < RETRY_DELAYS_MS.length; round += 1) {
+    if (RETRY_DELAYS_MS[round] > 0) {
+      if (!worthAnotherPass(failures)) break;
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[round]));
+    }
+    // Later rounds try every model: the cooldowns were set by this same burst.
+    const pass = round === 0 ? models : availableModels(env.GEMINI_MODEL, true);
 
-      const prompt =
-        repair === 0
-          ? request.prompt
-          : `${request.prompt}\n\nYour previous reply did not satisfy the schema: ${failures[failures.length - 1]}\nReturn only valid JSON matching the schema exactly.`;
+    for (const model of pass) {
+      for (let repair = 0; repair <= 1; repair += 1) {
+        attempts += 1;
 
-      const response = await callModel(model, buildBody(prompt));
+        const prompt =
+          repair === 0
+            ? request.prompt
+            : `${request.prompt}\n\nYour previous reply did not satisfy the schema: ${failures[failures.length - 1]}\nReturn only valid JSON matching the schema exactly.`;
 
-      if (!response.ok) {
-        // Availability problems are a property of the model, not the prompt, so
-        // repairing would be pointless. Move on.
-        if ([404, 408, 429, 503, 500, 0].includes(response.status)) {
-          unavailableUntil.set(model, Date.now() + COOLDOWN_MS);
+        const response = await callModel(model, buildBody(prompt));
+
+        if (!response.ok) {
+          // Availability problems are a property of the model, not the prompt, so
+          // repairing would be pointless. Move on.
+          if ([404, 408, 429, 503, 500, 0].includes(response.status)) {
+            unavailableUntil.set(model, Date.now() + COOLDOWN_MS);
+            failures.push(`${model}: http ${response.status} ${response.detail}`);
+            break;
+          }
           failures.push(`${model}: http ${response.status} ${response.detail}`);
-          break;
+          continue;
         }
-        failures.push(`${model}: http ${response.status} ${response.detail}`);
-        continue;
-      }
 
-      const text = extractText(response.data);
-      if (!text) {
-        const reason = response.data.candidates?.[0]?.finishReason ?? "unknown";
-        failures.push(`${model}: empty response, finishReason=${reason}`);
-        continue;
-      }
+        const text = extractText(response.data);
+        if (!text) {
+          const reason = response.data.candidates?.[0]?.finishReason ?? "unknown";
+          failures.push(`${model}: empty response, finishReason=${reason}`);
+          continue;
+        }
 
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(text);
-      } catch (error) {
-        failures.push(`${model}: response was not JSON (${String(error).slice(0, 80)})`);
-        continue;
-      }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch (error) {
+          failures.push(`${model}: response was not JSON (${String(error).slice(0, 80)})`);
+          continue;
+        }
 
-      const checked = request.validator.safeParse(parsed);
-      if (!checked.success) {
-        failures.push(
-          `${model}: ${checked.error.issues
-            .map((i) => `${i.path.join(".") || "(root)"} ${i.message}`)
-            .join("; ")
-            .slice(0, 200)}`,
-        );
-        continue;
-      }
+        const checked = request.validator.safeParse(parsed);
+        if (!checked.success) {
+          failures.push(
+            `${model}: ${checked.error.issues
+              .map((i) => `${i.path.join(".") || "(root)"} ${i.message}`)
+              .join("; ")
+              .slice(0, 200)}`,
+          );
+          continue;
+        }
 
-      return {
-        value: checked.data,
-        model,
-        totalTokens: response.data.usageMetadata?.totalTokenCount ?? null,
-        attempts,
-      };
+        return {
+          value: checked.data,
+          model,
+          totalTokens: response.data.usageMetadata?.totalTokenCount ?? null,
+          attempts,
+        };
+      }
     }
   }
 
