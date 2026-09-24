@@ -1,4 +1,4 @@
-//! CONDUIT: on chain enforcement of an investment mandate.
+//! Conduit: on chain enforcement of an investment mandate.
 //!
 //! The premise of this program is that an autonomous agent managing someone's
 //! money should not be trusted, and does not need to be. The owner writes their

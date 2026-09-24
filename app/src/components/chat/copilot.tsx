@@ -14,7 +14,7 @@ import { Sidebar } from "./sidebar";
 import { Thread } from "./thread";
 
 /**
- * CONDUIT, as a conversation.
+ * Conduit, as a conversation.
  *
  * The whole engine sits behind this: the price feeds, the five stage pipeline,
  * the account readers, the proposal mirror and the program itself. What changed
@@ -82,7 +82,7 @@ export function Copilot() {
             <Menu className="size-5" aria-hidden="true" />
           </button>
           <span className="text-sm font-semibold tracking-tight">
-            CONDUIT
+            Conduit
           </span>
         </header>
 
@@ -124,7 +124,7 @@ function Welcome({ connected }: { connected: boolean }) {
             priority
           />
           <div>
-            <h1 className="text-lg font-semibold tracking-tight">CONDUIT</h1>
+            <h1 className="text-lg font-semibold tracking-tight">Conduit</h1>
             <p className="text-xs text-ink-faint">
               tokenized equities on {CLUSTER}, governed on chain
             </p>

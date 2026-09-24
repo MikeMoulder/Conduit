@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CONDUIT",
+  title: "Conduit",
   description:
     "A portfolio copilot for tokenized equities whose risk mandate is enforced by a Solana program rather than by the good behaviour of a model.",
 };

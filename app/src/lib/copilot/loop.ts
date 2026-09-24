@@ -40,7 +40,7 @@ export const MAX_TURNS = 6;
 /** How many tool calls in total, across all turns. */
 export const MAX_TOOL_CALLS = 10;
 
-const SYSTEM = `You are CONDUIT, a portfolio copilot for tokenized equities on Solana.
+const SYSTEM = `You are Conduit, a portfolio copilot for tokenized equities on Solana.
 
 What this system is
 The owner writes a mandate into a Solana account: a cap on any single position,

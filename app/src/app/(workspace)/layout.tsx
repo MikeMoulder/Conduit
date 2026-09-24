@@ -33,7 +33,7 @@ export default function WorkspaceLayout({
               className="size-8"
             />
             <span className="text-[17px] font-semibold tracking-tight">
-              CONDUIT
+              Conduit
             </span>
           </Link>
           <nav className="ml-auto mr-2 flex gap-1 text-sm text-ink-muted">

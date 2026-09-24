@@ -1,5 +1,5 @@
 /**
- * Issues the devnet SPL mints for the CONDUIT asset registry.
+ * Issues the devnet SPL mints for the Conduit asset registry.
  *
  * Why this exists
  * ---------------

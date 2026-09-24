@@ -1,5 +1,5 @@
 /**
- * Integration tests for the CONDUIT constitution, run against the deployed
+ * Integration tests for the Conduit constitution, run against the deployed
  * program on devnet.
  *
  * The unit tests in `programs/conduit/src/policy.rs` already prove the policy
