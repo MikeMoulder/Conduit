@@ -2,33 +2,44 @@
 
 import { useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, Transaction } from "@solana/web3.js";
+import {
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  type TransactionInstruction,
+} from "@solana/web3.js";
 
-import { bpsToPercent, extractProgramError } from "@/lib/chain";
+import { bpsToPercent, extractProgramError, portfolioPda } from "@/lib/chain";
 import { confirmSignature } from "@/lib/confirm";
+import { associatedTokenAddress, desk, type PortfolioHoldings } from "@/lib/holdings";
+import { walletAddress } from "@/lib/main-wallet";
 import { createMandateInstructions, setStatusInstruction } from "@/lib/mandate-tx";
+import {
+  createAssociatedTokenAccountIdempotent,
+  transferTokens,
+} from "@/lib/token-instructions";
 import { useConduitProgram } from "@/hooks/use-conduit-program";
-import type { Card, PendingAction } from "@/lib/copilot/events";
+import type { Card, PendingAction, WalletResultCard } from "@/lib/copilot/events";
 import { AssetBadge, CardView } from "./cards";
 
 /**
  * The approval step.
  *
- * Every write the copilot can reach arrives here first. It never happens
- * because a sentence asked for it; it happens because somebody read a card and
- * pressed a button.
+ * Every write the copilot can reach arrives here first. Nothing happens because
+ * a sentence asked for it; it happens because somebody read a card and pressed
+ * a button.
  *
- * Which key signs is the interesting part, and the card says so plainly rather
- * than hiding it behind one uniform button. A rebalance is signed by the agent,
- * which is the one thing the agent is allowed to do. Creating a mandate, or
- * pausing one, is signed by the owner, because the agent has no way to reach
- * those instructions at all. That difference is the architecture, and this is
- * the first screen where a person can see it.
+ * What differs is who signs, and the card says so rather than hiding it behind
+ * one uniform button. Approving an agent card is a click: the agent's key signs
+ * on the server, and the program decides what that key may do. Approving an
+ * owner card opens the person's wallet, because those are the steps the agent
+ * cannot take: creating or pausing a mandate, opening a main wallet, and moving
+ * money out of their own wallet.
  *
- * Settlement is also signed by the agent, and signing it decides nothing. Every
- * quantity is worked out inside the program from targets it already accepted and
- * prices it reads itself. It is the same single power, carried to the point
- * where a target stops being a number and becomes a balance.
+ * Main wallet trades, moves into a mandate and withdrawals are agent signed on
+ * purpose. The person asked not to sign every trade, and they do not need to:
+ * the program only lets the agent send money to the desk at the published
+ * price, into the same owner's mandates, or back to the owner.
  */
 
 type Phase =
@@ -37,6 +48,242 @@ type Phase =
   | { state: "done"; card: Card }
   | { state: "failed"; message: string }
   | { state: "dismissed" };
+
+type Signer = "agent" | "owner" | "faucet";
+
+type OwnerAction = Extract<
+  PendingAction,
+  { kind: "create-mandate" | "set-status" | "open-wallet" | "deposit" }
+>;
+type ServerAction = Exclude<PendingAction, OwnerAction>;
+
+interface Presentation {
+  title: string;
+  signer: Signer;
+  button: string;
+  warning: boolean;
+}
+
+const usd = (n: number) =>
+  `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const tokens = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+
+function present(action: PendingAction): Presentation {
+  switch (action.kind) {
+    case "create-mandate":
+      return { title: "Create this mandate", signer: "owner", button: "Approve", warning: false };
+    case "set-status":
+      return {
+        title: `Set the mandate to ${action.status}`,
+        signer: "owner",
+        button: action.status === "closed" ? "Close permanently" : "Approve",
+        warning: action.status === "closed",
+      };
+    case "submit-rebalance":
+      return {
+        title: "Submit this rebalance",
+        signer: "agent",
+        button: action.evaluation.compliant ? "Approve" : "Send it and let the chain refuse",
+        warning: !action.evaluation.compliant,
+      };
+    case "settle":
+      return { title: "Settle this portfolio", signer: "agent", button: "Settle", warning: false };
+    case "open-wallet":
+      return { title: "Open your main wallet", signer: "owner", button: "Open", warning: false };
+    case "demo-cash":
+      return { title: "Add demo cash", signer: "faucet", button: "Add demo cash", warning: false };
+    case "deposit":
+      return {
+        title: `Deposit ${usd(action.dollars)} into ${action.destinationLabel}`,
+        signer: "owner",
+        button: "Deposit",
+        warning: false,
+      };
+    case "trade":
+      return {
+        title: `${action.side === "buy" ? "Buy" : "Sell"} ${usd(action.dollars)} of ${action.symbol}`,
+        signer: "agent",
+        button: action.side === "buy" ? "Buy" : "Sell",
+        warning: false,
+      };
+    case "fund-mandate":
+      return {
+        title: `Move ${usd(action.dollars)} into ${action.mandateLabel}`,
+        signer: "agent",
+        button: "Move",
+        warning: false,
+      };
+    case "withdraw":
+      return { title: "Withdraw to your wallet", signer: "agent", button: "Withdraw", warning: false };
+  }
+}
+
+const SIGNER_LABEL: Record<Signer, string> = {
+  agent: "signed by the agent",
+  owner: "signed by your wallet",
+  faucet: "paid by the devnet faucet",
+};
+
+function isOwnerAction(action: PendingAction): action is OwnerAction {
+  return present(action).signer === "owner";
+}
+
+async function postJson(route: string, body: unknown): Promise<Record<string, unknown>> {
+  const response = await fetch(route, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return response.json();
+}
+
+function holding(h: PortfolioHoldings | undefined, symbol: string): number {
+  if (!h) return 0;
+  if (symbol === "CASH") return h.cash?.uiAmount ?? 0;
+  return h.assets.find((a) => a.symbol === symbol)?.uiAmount ?? 0;
+}
+
+function resultCard(result: WalletResultCard): Card {
+  return { kind: "wallet-result", result };
+}
+
+function failure(data: Record<string, unknown>, headline: string): Card {
+  const programError = data.programError as { name?: string; message?: string } | null;
+  return resultCard({
+    ok: false,
+    headline,
+    detail:
+      programError?.message ??
+      (data.detail as string | undefined) ??
+      (data.error as string | undefined) ??
+      "The request did not complete.",
+    signature: (data.signature as string | null) ?? null,
+    lines: programError?.name ? [{ label: "program error", value: programError.name }] : [],
+  });
+}
+
+/** The actions a server route signs: the agent's, and the faucet's. */
+async function runServerAction(action: ServerAction): Promise<Card> {
+  switch (action.kind) {
+    case "submit-rebalance": {
+      const data = await postJson("/api/agent/rebalance", {
+        mandate: action.mandate,
+        positions: action.positions.map((p) => ({ mint: p.mint, targetBps: p.targetBps })),
+      });
+      return {
+        kind: "submission",
+        submission: {
+          accepted: Boolean(data.accepted),
+          signature: (data.signature as string) ?? null,
+          slot: (data.slot as number) ?? null,
+          programError: (data.programError as never) ?? null,
+          detail: ((data.detail ?? data.error) as string) ?? null,
+        },
+      };
+    }
+
+    case "settle": {
+      const data = await postJson("/api/agent/settle", { mandate: action.mandate });
+      return {
+        kind: "settlement",
+        settlement: {
+          settled: Boolean(data.settled),
+          signature: (data.signature as string) ?? null,
+          slot: (data.slot as number) ?? null,
+          before: (data.before as PortfolioHoldings) ?? null,
+          after: (data.after as PortfolioHoldings) ?? null,
+          programError: (data.programError as never) ?? null,
+          detail: ((data.detail ?? data.error) as string) ?? null,
+        },
+      };
+    }
+
+    case "demo-cash": {
+      const data = await postJson("/api/faucet", { owner: action.owner });
+      if (!data.funded) return failure(data, "No demo cash was added");
+      const sent = Number(data.sent ?? 0);
+      return resultCard({
+        ok: true,
+        headline: sent > 0 ? `Added ${usd(sent)} in devnet demo cash` : "Already topped up",
+        detail:
+          "In your own wallet, not in Conduit. It has no value outside this demo. Deposit it into your main wallet or a mandate when you are ready.",
+        signature: (data.signature as string) ?? null,
+        lines: [{ label: "your wallet", value: usd(Number(data.balance ?? 0)) }],
+      });
+    }
+
+    case "trade": {
+      const data = await postJson("/api/wallet/trade", {
+        owner: action.owner,
+        side: action.side,
+        symbol: action.symbol,
+        dollars: action.dollars,
+      });
+      if (!data.traded) return failure(data, "The trade did not go through");
+      const before = data.before as PortfolioHoldings;
+      const after = data.after as PortfolioHoldings;
+      return resultCard({
+        ok: true,
+        headline: `${action.side === "buy" ? "Bought" : "Sold"} ${action.symbol} in your main wallet`,
+        detail: `At ${usd(Number(data.price))}, the settlement price the program read.`,
+        signature: (data.signature as string) ?? null,
+        lines: [
+          {
+            label: action.symbol,
+            value: `${tokens(holding(before, action.symbol))} to ${tokens(holding(after, action.symbol))}`,
+          },
+          { label: "cash", value: `${usd(holding(before, "CASH"))} to ${usd(holding(after, "CASH"))}` },
+        ],
+      });
+    }
+
+    case "fund-mandate": {
+      const data = await postJson("/api/wallet/move", {
+        owner: action.owner,
+        mandate: action.mandate,
+        dollars: action.dollars,
+      });
+      if (!data.moved) return failure(data, "Nothing was moved");
+      return resultCard({
+        ok: true,
+        headline: `Moved ${usd(action.dollars)} into ${action.mandateLabel}`,
+        detail:
+          "The agent invests it from here, inside that mandate's rules. Only you can move it back into the main wallet.",
+        signature: (data.signature as string) ?? null,
+        lines: [
+          { label: "main wallet cash", value: usd(Number(data.walletCashAfter ?? 0)) },
+          { label: `${action.mandateLabel} cash`, value: usd(Number(data.mandateCashAfter ?? 0)) },
+        ],
+      });
+    }
+
+    case "withdraw": {
+      const data = await postJson("/api/wallet/withdraw", {
+        owner: action.owner,
+        mandate: action.mandate ?? undefined,
+        symbol: action.symbol,
+        amount: action.amount ?? undefined,
+        all: action.all,
+      });
+      if (!data.withdrawn) return failure(data, "Nothing was withdrawn");
+      const amount = Number(data.amount ?? 0);
+      const what = action.symbol === "CASH" ? usd(amount) : `${tokens(amount)} ${action.symbol}`;
+      return resultCard({
+        ok: true,
+        headline: `Sent ${what} back to your wallet`,
+        detail: `From ${data.from === "mandate" ? "the mandate" : "your main wallet"}. The program only allows withdrawals to you.`,
+        signature: (data.signature as string) ?? null,
+        lines: [
+          {
+            label: "your wallet cash",
+            value: usd(holding(data.personalAfter as PortfolioHoldings, "CASH")),
+          },
+        ],
+      });
+    }
+  }
+}
 
 export function ActionCard({
   action,
@@ -53,216 +300,122 @@ export function ActionCard({
   if (phase.state === "dismissed") return null;
   if (phase.state === "done") return <CardView card={phase.card} />;
 
-  const agentSigns =
-    action.kind === "submit-rebalance" ||
-    action.kind === "settle" ||
-    action.kind === "order";
-  // The faucet is a third key, and naming it keeps the card honest: this is
-  // paid for by the demo, not by the person and not by the agent.
-  const signer =
-    action.kind === "fund"
-      ? "the devnet faucet"
-      : agentSigns
-        ? "the agent"
-        : "your wallet";
-  const dangerous =
-    action.kind === "submit-rebalance" && !action.evaluation.compliant;
-  const permanent = action.kind === "set-status" && action.status === "closed";
+  const view = present(action);
+
+  /** What the owner signs, for the steps only they can take. */
+  async function ownerInstructions(
+    owned: OwnerAction,
+    owner: PublicKey,
+  ): Promise<TransactionInstruction[]> {
+    const cashMint = new PublicKey(desk.cashMint);
+
+    switch (owned.kind) {
+      case "create-mandate":
+        return (await createMandateInstructions(program!, owner, owned.draft)).instructions;
+
+      case "set-status":
+        return [
+          await setStatusInstruction(program!, owner, new PublicKey(owned.mandate), owned.status),
+        ];
+
+      case "open-wallet": {
+        const wallet = walletAddress(owner);
+        return [
+          await program!.methods
+            .openWallet(new PublicKey(owned.agent))
+            .accountsStrict({ wallet, owner, systemProgram: SystemProgram.programId })
+            .instruction(),
+          // Its cash account, so the first deposit has somewhere to land.
+          createAssociatedTokenAccountIdempotent(
+            owner,
+            associatedTokenAddress(wallet, cashMint),
+            wallet,
+            cashMint,
+          ),
+        ];
+      }
+
+      case "deposit": {
+        const holder = owned.mandate
+          ? portfolioPda(new PublicKey(owned.mandate))
+          : walletAddress(owner);
+        const destination = associatedTokenAddress(holder, cashMint);
+        const amount = BigInt(Math.floor(owned.dollars * 10 ** desk.cashDecimals));
+        return [
+          createAssociatedTokenAccountIdempotent(owner, destination, holder, cashMint),
+          transferTokens(associatedTokenAddress(owner, cashMint), destination, owner, amount),
+        ];
+      }
+    }
+  }
+
+  function ownerResult(
+    owned: OwnerAction,
+    signature: string,
+    outcome: Awaited<ReturnType<typeof confirmSignature>>,
+  ): Card {
+    const confirmed = outcome.status === "confirmed";
+
+    if (confirmed && owned.kind === "open-wallet") {
+      return resultCard({
+        ok: true,
+        headline: "Your main wallet is open",
+        detail:
+          "From now on the agent can trade, fund your mandates and send money back to you without asking you to sign. Deposit into it whenever you are ready.",
+        signature,
+        lines: [],
+      });
+    }
+    if (confirmed && owned.kind === "deposit") {
+      return resultCard({
+        ok: true,
+        headline: `Deposited ${usd(owned.dollars)} into ${owned.destinationLabel}`,
+        detail: null,
+        signature,
+        lines: [],
+      });
+    }
+
+    return {
+      kind: "submission",
+      submission: {
+        accepted: confirmed,
+        signature,
+        slot: confirmed ? outcome.slot : null,
+        programError: outcome.status === "failed" ? extractProgramError(outcome.error) : null,
+        detail:
+          outcome.status === "expired"
+            ? "The transaction expired without landing. Nothing happened and it cannot be replayed."
+            : outcome.status === "unknown"
+              ? "No result within the wait. It may still land, so check the explorer before retrying."
+              : null,
+      },
+    };
+  }
 
   async function approve() {
     try {
-      if (action.kind === "submit-rebalance") {
-        setPhase({ state: "working", note: "The agent is signing" });
-
-        const response = await fetch("/api/agent/rebalance", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            mandate: action.mandate,
-            positions: action.positions.map((p) => ({
-              mint: p.mint,
-              targetBps: p.targetBps,
-            })),
-          }),
-        });
-
-        const data = await response.json();
-        setPhase({
-          state: "done",
-          card: {
-            kind: "submission",
-            submission: {
-              accepted: Boolean(data.accepted),
-              signature: data.signature ?? null,
-              slot: data.slot ?? null,
-              programError: data.programError ?? null,
-              detail: data.detail ?? data.error ?? null,
-            },
-          },
-        });
-        onSettled();
-        return;
-      }
-
-      if (action.kind === "order") {
-        // Two transactions behind one approval, in order. The target has to
-        // be accepted before there is anything to settle into, and if the
-        // program refuses it the settlement is never attempted: the refusal
-        // is the result, and it is shown as one.
-        setPhase({ state: "working", note: "Setting the target" });
-
-        const proposed = await fetch("/api/agent/rebalance", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            mandate: action.mandate,
-            positions: action.positions.map((p) => ({
-              mint: p.mint,
-              targetBps: p.targetBps,
-            })),
-          }),
-        }).then((r) => r.json());
-
-        if (!proposed.accepted) {
-          setPhase({
-            state: "done",
-            card: {
-              kind: "submission",
-              submission: {
-                accepted: false,
-                signature: proposed.signature ?? null,
-                slot: proposed.slot ?? null,
-                programError: proposed.programError ?? null,
-                detail: proposed.detail ?? proposed.error ?? null,
-              },
-            },
-          });
-          onSettled();
-          return;
-        }
-
+      if (!isOwnerAction(action)) {
         setPhase({
           state: "working",
-          note: action.side === "buy" ? "Buying" : "Selling",
+          note: view.signer === "faucet" ? "Adding demo cash" : "The agent is signing",
         });
-
-        const settled = await fetch("/api/agent/settle", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ mandate: action.mandate }),
-        }).then((r) => r.json());
-
-        setPhase({
-          state: "done",
-          card: {
-            kind: "settlement",
-            settlement: {
-              settled: Boolean(settled.settled),
-              signature: settled.signature ?? null,
-              slot: settled.slot ?? null,
-              before: settled.before ?? null,
-              after: settled.after ?? null,
-              programError: settled.programError ?? null,
-              detail: settled.settled
-                ? null
-                : `The target was accepted but the settlement was not. ${settled.detail ?? settled.error ?? ""}`.trim(),
-            },
-          },
-        });
+        const card = await runServerAction(action);
+        setPhase({ state: "done", card });
         onSettled();
         return;
       }
 
-      if (action.kind === "fund") {
-        setPhase({ state: "working", note: "Adding demo cash" });
-
-        const response = await fetch("/api/faucet", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ mandate: action.mandate }),
-        });
-
-        const data = await response.json();
-        setPhase({
-          state: "done",
-          card: {
-            kind: "funding",
-            funding: {
-              funded: Boolean(data.funded),
-              signature: data.signature ?? null,
-              slot: data.slot ?? null,
-              sent: typeof data.sent === "number" ? data.sent : 0,
-              after: data.after ?? null,
-              detail: data.detail ?? data.error ?? null,
-            },
-          },
-        });
-        onSettled();
-        return;
-      }
-
-      if (action.kind === "settle") {
-        setPhase({ state: "working", note: "Moving the tokens" });
-
-        const response = await fetch("/api/agent/settle", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ mandate: action.mandate }),
-        });
-
-        const data = await response.json();
-        setPhase({
-          state: "done",
-          card: {
-            kind: "settlement",
-            settlement: {
-              settled: Boolean(data.settled),
-              signature: data.signature ?? null,
-              slot: data.slot ?? null,
-              before: data.before ?? null,
-              after: data.after ?? null,
-              programError: data.programError ?? null,
-              detail: data.detail ?? data.error ?? null,
-            },
-          },
-        });
-        onSettled();
-        return;
-      }
-
-      // Everything below is signed by the owner, so it needs a wallet rather
-      // than a route.
+      // Owner signed: the connected wallet, not a route.
       if (!program || !publicKey) {
-        setPhase({
-          state: "failed",
-          message: "Connect a wallet first. Only the owner can sign this.",
-        });
-        return;
-      }
-
-      if (action.kind !== "create-mandate" && action.kind !== "set-status") {
-        setPhase({ state: "failed", message: "Nothing to approve here." });
+        setPhase({ state: "failed", message: "Connect a wallet first. Only you can sign this." });
         return;
       }
 
       setPhase({ state: "working", note: "Waiting for your signature" });
 
-      const instructions =
-        action.kind === "create-mandate"
-          ? (await createMandateInstructions(program, publicKey, action.draft))
-              .instructions
-          : [
-              await setStatusInstruction(
-                program,
-                publicKey,
-                new PublicKey(action.mandate),
-                action.status,
-              ),
-            ];
-
-      const { blockhash, lastValidBlockHeight } =
-        await connection.getLatestBlockhash("confirmed");
-
+      const instructions = await ownerInstructions(action, publicKey);
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
       const transaction = new Transaction({
         feePayer: publicKey,
         blockhash,
@@ -272,39 +425,14 @@ export function ActionCard({
       const signature = await sendTransaction(transaction, connection);
       setPhase({ state: "working", note: "Confirming on chain" });
 
-      const outcome = await confirmSignature(connection, signature, {
-        lastValidBlockHeight,
-      });
-
-      setPhase({
-        state: "done",
-        card: {
-          kind: "submission",
-          submission: {
-            accepted: outcome.status === "confirmed",
-            signature,
-            slot: outcome.status === "confirmed" ? outcome.slot : null,
-            programError:
-              outcome.status === "failed"
-                ? extractProgramError(outcome.error)
-                : null,
-            detail:
-              outcome.status === "expired"
-                ? "The transaction expired without landing. Nothing was created and it cannot be replayed."
-                : outcome.status === "unknown"
-                  ? "No result within the wait. It may still land, so check the explorer before retrying."
-                  : null,
-          },
-        },
-      });
+      const outcome = await confirmSignature(connection, signature, { lastValidBlockHeight });
+      setPhase({ state: "done", card: ownerResult(action, signature, outcome) });
       onSettled();
     } catch (error) {
       const programError = extractProgramError(error);
       setPhase({
         state: "failed",
-        message:
-          programError?.message ??
-          (error instanceof Error ? error.message : String(error)),
+        message: programError?.message ?? (error instanceof Error ? error.message : String(error)),
       });
     }
   }
@@ -312,63 +440,36 @@ export function ActionCard({
   return (
     <div
       className={`overflow-hidden rounded-xl border ${
-        dangerous || permanent
-          ? "border-amber-500/40 bg-amber-500/5"
-          : "border-emerald-500/30 bg-emerald-500/5"
+        view.warning ? "border-amber-500/40 bg-amber-500/5" : "border-emerald-500/30 bg-emerald-500/5"
       }`}
     >
       <div className="flex items-baseline justify-between gap-3 border-b border-white/5 px-4 py-2.5">
-        <span className="text-[11px] uppercase tracking-wider text-zinc-400">
-          {action.kind === "create-mandate"
-            ? "Create this mandate"
-            : action.kind === "submit-rebalance"
-              ? "Submit this rebalance"
-              : action.kind === "settle"
-                ? "Settle this portfolio"
-                : action.kind === "fund"
-                  ? "Add demo cash"
-                  : action.kind === "order"
-                    ? `${action.side === "buy" ? "Buy" : "Sell"} ${usd(action.executedDollars)} of ${action.symbol}`
-                : `Set the mandate to ${action.status}`}
-        </span>
-        <span className="font-mono text-[11px] text-zinc-500">
-          signed by {signer}
-        </span>
+        <span className="text-[11px] uppercase tracking-wider text-zinc-400">{view.title}</span>
+        <span className="font-mono text-[11px] text-zinc-500">{SIGNER_LABEL[view.signer]}</span>
       </div>
 
-      <p className="px-4 py-3 text-sm leading-relaxed text-zinc-300">
-        {action.summary}
-      </p>
+      <p className="px-4 py-3 text-sm leading-relaxed text-zinc-300">{action.summary}</p>
 
       {action.kind === "submit-rebalance" ? (
         <div className="border-t border-white/5 px-4 py-2.5">
           {action.positions.map((p) => (
-            <div
-              key={p.mint}
-              className="flex items-center justify-between gap-3 py-1"
-            >
+            <div key={p.mint} className="flex items-center justify-between gap-3 py-1">
               <AssetBadge symbol={p.symbol} />
               <span className="flex items-baseline gap-2 font-mono text-sm">
                 {p.currentBps !== p.targetBps ? (
-                  <span className="text-[11px] text-zinc-600">
-                    {bpsToPercent(p.currentBps)} to
-                  </span>
+                  <span className="text-[11px] text-zinc-600">{bpsToPercent(p.currentBps)} to</span>
                 ) : null}
-                <span className="text-zinc-100">
-                  {bpsToPercent(p.targetBps)}
-                </span>
+                <span className="text-zinc-100">{bpsToPercent(p.targetBps)}</span>
               </span>
             </div>
           ))}
         </div>
       ) : null}
 
-      {action.kind === "order" ? <OrderDetail action={action} /> : null}
+      {action.kind === "trade" ? <TradeDetail action={action} /> : null}
 
       {phase.state === "failed" ? (
-        <p className="border-t border-white/5 px-4 py-2.5 text-sm text-red-300">
-          {phase.message}
-        </p>
+        <p className="border-t border-white/5 px-4 py-2.5 text-sm text-red-300">{phase.message}</p>
       ) : null}
 
       <div className="flex items-center gap-2 border-t border-white/5 px-4 py-2.5">
@@ -377,26 +478,12 @@ export function ActionCard({
           onClick={() => void approve()}
           disabled={phase.state === "working"}
           className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors disabled:cursor-wait disabled:opacity-60 ${
-            dangerous || permanent
+            view.warning
               ? "bg-amber-500 text-black hover:bg-amber-400"
               : "bg-emerald-500 text-black hover:bg-emerald-400"
           }`}
         >
-          {phase.state === "working"
-            ? phase.note
-            : dangerous
-              ? "Send it and let the chain refuse"
-              : permanent
-                ? "Close permanently"
-                : action.kind === "settle"
-                  ? "Settle"
-                  : action.kind === "fund"
-                    ? "Add demo cash"
-                    : action.kind === "order"
-                      ? action.side === "buy"
-                        ? "Buy"
-                        : "Sell"
-                  : "Approve"}
+          {phase.state === "working" ? phase.note : view.button}
         </button>
         <button
           type="button"
@@ -414,46 +501,22 @@ export function ActionCard({
   );
 }
 
-function usd(n: number): string {
-  return `$${n.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
 /**
- * What the order will do, in the terms it was asked in.
+ * What a main wallet trade will do, in the terms it was asked in.
  *
- * Dollars first, because that is how it was asked, with the share of the
- * portfolio beside it, because that is what the mandate limits. The price line
- * names where the number came from and how old it is, since the settlement
- * will run at that account and the person approving should know what they are
- * trusting.
+ * Dollars first, the tokens they buy at the preview price beside them, and
+ * where the price came from and how old it is, since the program reads that
+ * same account when it runs the trade.
  */
-function OrderDetail({
-  action,
-}: {
-  action: Extract<PendingAction, { kind: "order" }>;
-}) {
+function TradeDetail({ action }: { action: Extract<PendingAction, { kind: "trade" }> }) {
   const minutes = Math.max(1, Math.round(action.priceAgeSeconds / 60));
-  const rounded =
-    Math.abs(action.executedDollars - action.requestedDollars) >= 0.01;
-
   return (
     <div className="border-t border-white/5 px-4 py-2.5">
       <div className="flex items-center justify-between gap-3 py-1">
         <AssetBadge symbol={action.symbol} />
-        <span className="flex items-baseline gap-2 font-mono text-sm">
-          <span className="text-[11px] text-zinc-600">
-            {usd(action.valueBefore)} to
-          </span>
-          <span className="text-zinc-100">{usd(action.valueAfter)}</span>
-        </span>
-      </div>
-      <div className="flex items-baseline justify-between gap-3 py-1 text-[11px] text-zinc-500">
-        <span>share of the portfolio</span>
-        <span className="font-mono">
-          {bpsToPercent(action.bpsBefore)} to {bpsToPercent(action.bpsAfter)}
+        <span className="font-mono text-sm text-zinc-100">
+          {action.side === "buy" ? "+" : "-"}
+          {tokens(action.tokens)}
         </span>
       </div>
       <div className="flex items-baseline justify-between gap-3 py-1 text-[11px] text-zinc-500">
@@ -461,11 +524,9 @@ function OrderDetail({
         <span className="font-mono">{usd(action.cashAfter)}</span>
       </div>
       <p className="pt-1 text-[11px] leading-relaxed text-zinc-600">
-        At {usd(action.price)}, published {minutes} min ago from{" "}
-        {action.priceSource}. Every other holding keeps its current value.
-        {rounded
-          ? ` Targets are whole basis points, so this trades ${usd(action.executedDollars)} rather than exactly ${usd(action.requestedDollars)}.`
-          : ""}
+        At {usd(action.price)}, published {minutes} min ago from {action.priceSource}. No mandate
+        applies to your main wallet; the program fixes the price and keeps both sides of the trade
+        in it.
       </p>
     </div>
   );

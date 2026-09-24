@@ -51,7 +51,8 @@ export type Card =
   | { kind: "verdict"; evaluation: ProposalEvaluation; positions: WeightRow[] }
   | { kind: "submission"; submission: SubmissionCard }
   | { kind: "settlement"; settlement: SettlementCard }
-  | { kind: "funding"; funding: FundingCard };
+  | { kind: "wallet"; wallet: WalletCard }
+  | { kind: "wallet-result"; result: WalletResultCard };
 
 export interface UniverseRow {
   symbol: string;
@@ -113,15 +114,37 @@ export interface AnalysisCard {
   excludedForMissingPrice: string[];
 }
 
-/** The result of topping a portfolio up with devnet demo cash. */
-export interface FundingCard {
-  funded: boolean;
-  signature: string | null;
-  slot: number | null;
-  /** Whole units of cash sent. Zero when the portfolio was already topped up. */
-  sent: number;
-  after: PortfolioHoldings | null;
+export interface WalletLine {
+  symbol: string;
+  /** Whole tokens. */
+  amount: number;
+  /** Dollars at the settlement price, null when there is no fresh price. */
+  value: number | null;
+}
+
+/** A person's main wallet, and the cash still in their own wallet. */
+export interface WalletCard {
+  opened: boolean;
+  address: string | null;
+  cash: number;
+  holdings: WalletLine[];
+  /** Cash plus every holding that has a price. */
+  total: number;
+  /** Demo cash sitting in the connected wallet, not yet deposited. */
+  ownCash: number;
+}
+
+/**
+ * The outcome of anything done to a wallet: a deposit, a trade, a move into a
+ * mandate, a withdrawal. One shape for all of them, because what a person needs
+ * to see is the same each time: did it happen, what changed, and the proof.
+ */
+export interface WalletResultCard {
+  ok: boolean;
+  headline: string;
   detail: string | null;
+  signature: string | null;
+  lines: { label: string; value: string }[];
 }
 
 export interface SettlementCard {
@@ -181,33 +204,57 @@ export type PendingAction =
       summary: string;
     }
   | {
-      kind: "order";
-      /** Signed by the agent on approval: the target, then the settlement. */
-      mandate: string;
-      side: "buy" | "sell";
-      symbol: string;
-      mint: string;
-      requestedDollars: number;
-      /** What rounding to whole basis points will actually trade. */
-      executedDollars: number;
-      /** The settlement price used for the preview, dollars per token. */
-      price: number;
-      priceSource: string;
-      priceAgeSeconds: number;
-      valueBefore: number;
-      valueAfter: number;
-      bpsBefore: number;
-      bpsAfter: number;
-      cashAfter: number;
-      /** The full target vector proposed, every other holding at its weight. */
-      positions: WeightRow[];
-      evaluation: ProposalEvaluation;
+      kind: "open-wallet";
+      /** The one signature for convenience. Signed by the person's wallet. */
+      agent: string;
       summary: string;
     }
   | {
-      kind: "fund";
-      /** Paid by the devnet faucet key on the server once approved. */
+      kind: "demo-cash";
+      /** Paid by the devnet faucet into the person's own wallet. */
+      owner: string;
+      summary: string;
+    }
+  | {
+      kind: "deposit";
+      /** Signed by the person's wallet: money leaving it needs their consent. */
+      mandate: string | null;
+      destinationLabel: string;
+      dollars: number;
+      summary: string;
+    }
+  | {
+      kind: "trade";
+      /** Signed by the agent. The program fixes the price and the destination. */
+      owner: string;
+      side: "buy" | "sell";
+      symbol: string;
+      dollars: number;
+      price: number;
+      priceSource: string;
+      priceAgeSeconds: number;
+      /** Whole tokens the dollars buy or sell at the preview price. */
+      tokens: number;
+      cashAfter: number;
+      summary: string;
+    }
+  | {
+      kind: "fund-mandate";
+      /** Signed by the agent, from the main wallet into the same owner's mandate. */
+      owner: string;
       mandate: string;
+      mandateLabel: string;
+      dollars: number;
+      summary: string;
+    }
+  | {
+      kind: "withdraw";
+      /** Signed by the agent. The program only lets it reach the owner. */
+      owner: string;
+      mandate: string | null;
+      symbol: string;
+      amount: number | null;
+      all: boolean;
       summary: string;
     }
   | {

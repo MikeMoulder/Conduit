@@ -36,8 +36,10 @@ export function CardView({ card }: { card: Card }) {
       return <SubmissionCard card={card} />;
     case "settlement":
       return <SettlementCard card={card} />;
-    case "funding":
-      return <FundingCard card={card} />;
+    case "wallet":
+      return <WalletCardView card={card} />;
+    case "wallet-result":
+      return <WalletResultView card={card} />;
   }
 }
 
@@ -822,55 +824,109 @@ function diffHoldings(
     .filter((c) => c.before !== c.after);
 }
 
+const dollars = (n: number) =>
+  `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 /**
- * Demo cash arriving, stated as exactly that.
+ * The main wallet, and the cash still waiting in the person's own wallet.
  *
- * Kept deliberately plain and deliberately labelled. A card that looked like a
- * deposit would be the interface overstating something again, which is the
- * mistake the holdings work spent a phase correcting.
+ * Two different places shown on one card, and labelled as two. Money in the
+ * main wallet is something the agent can act on. Money still in the connected
+ * wallet is not, until the person deposits it, and blurring the two would hide
+ * the one step they sign for.
  */
-function FundingCard({ card }: { card: Extract<Card, { kind: "funding" }> }) {
-  const { funding } = card;
-  const cash = funding.after?.cash?.uiAmount ?? null;
+function WalletCardView({ card }: { card: Extract<Card, { kind: "wallet" }> }) {
+  const { wallet } = card;
+
+  return (
+    <Shell
+      title="Main wallet"
+      aside={
+        wallet.opened ? (
+          <span className="font-mono text-[11px] text-zinc-400">{dollars(wallet.total)}</span>
+        ) : (
+          <span className="text-[11px] text-zinc-600">not opened</span>
+        )
+      }
+    >
+      {!wallet.opened ? (
+        <p className="px-4 py-3 text-sm leading-relaxed text-zinc-500">
+          No main wallet yet. Opening one takes one signature; after that the agent can trade,
+          fund mandates and send money back without asking you to sign.
+        </p>
+      ) : wallet.holdings.length === 0 ? (
+        <p className="px-4 py-3 text-sm text-zinc-500">Nothing bought yet. Only cash.</p>
+      ) : (
+        wallet.holdings.map((h, i) => (
+          <Row key={h.symbol} last={i === wallet.holdings.length - 1}>
+            <AssetBadge symbol={h.symbol} />
+            <span className="text-right">
+              <span className="block font-mono text-sm text-zinc-100">
+                {h.value === null ? "no fresh price" : dollars(h.value)}
+              </span>
+              <span className="block font-mono text-[10px] text-zinc-600">
+                {formatAmount(h.amount)} tokens
+              </span>
+            </span>
+          </Row>
+        ))
+      )}
+      {wallet.opened ? (
+        <div className="flex items-baseline justify-between bg-zinc-900/40 px-4 py-2">
+          <span className="text-sm text-zinc-400">cash</span>
+          <span className="font-mono text-sm text-zinc-300">{dollars(wallet.cash)}</span>
+        </div>
+      ) : null}
+      <div className="flex items-baseline justify-between border-t border-zinc-900 px-4 py-2">
+        <span className="text-[11px] text-zinc-500">in your own wallet, not deposited</span>
+        <span className="font-mono text-[11px] text-zinc-400">{dollars(wallet.ownCash)}</span>
+      </div>
+    </Shell>
+  );
+}
+
+/** Whatever was just done to a wallet: what happened, what changed, the proof. */
+function WalletResultView({ card }: { card: Extract<Card, { kind: "wallet-result" }> }) {
+  const { result } = card;
 
   return (
     <div
       className={`overflow-hidden rounded-xl border px-4 py-3 ${
-        funding.funded
-          ? "border-emerald-500/30 bg-emerald-500/5"
-          : "border-red-500/30 bg-red-500/5"
+        result.ok ? "border-emerald-500/30 bg-emerald-500/5" : "border-red-500/30 bg-red-500/5"
       }`}
     >
-      {funding.funded ? (
-        <>
-          <p className="text-sm text-emerald-300">
-            {funding.sent > 0
-              ? `Added ${formatAmount(funding.sent)} in devnet demo cash.`
-              : "Already topped up, so nothing was added."}
-            {cash !== null ? ` The portfolio now holds ${formatAmount(cash)}.` : ""}
-          </p>
-          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-            Paid by a faucet, not by your wallet. It has no value outside this
-            demo. The token accounts settlement needs are open too, so the
-            portfolio can now be settled.
-          </p>
-        </>
-      ) : (
-        <>
-          <p className="text-sm font-medium text-red-300">No cash was added</p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-red-200/70">
-            {funding.detail}
-          </p>
-        </>
-      )}
-      {funding.signature ? (
+      <p className={`text-sm ${result.ok ? "text-emerald-300" : "font-medium text-red-300"}`}>
+        {result.headline}
+      </p>
+      {result.detail ? (
+        <p
+          className={`mt-1 text-[11px] leading-relaxed ${
+            result.ok ? "text-zinc-500" : "text-red-200/70"
+          }`}
+        >
+          {result.detail}
+        </p>
+      ) : null}
+      {result.lines.length > 0 ? (
+        <div className="mt-2 space-y-1">
+          {result.lines.map((line) => (
+            <div key={line.label} className="flex items-baseline justify-between gap-3">
+              <span className="text-[11px] text-zinc-500">{line.label}</span>
+              <span className="font-mono text-[11px] text-zinc-300">{line.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {result.signature ? (
         <a
-          href={explorerUrl(funding.signature, "tx", CLUSTER)}
+          href={explorerUrl(result.signature, "tx", CLUSTER)}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-1.5 inline-block font-mono text-[11px] text-emerald-400 underline underline-offset-4"
+          className={`mt-2 inline-block font-mono text-[11px] underline underline-offset-4 ${
+            result.ok ? "text-emerald-400" : "text-red-300"
+          }`}
         >
-          {funding.signature.slice(0, 10)}..{funding.signature.slice(-10)}
+          {result.signature.slice(0, 10)}..{result.signature.slice(-10)}
         </a>
       ) : null}
     </div>
