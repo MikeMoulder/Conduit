@@ -99,7 +99,10 @@ export function Copilot() {
 
         <Composer
           busy={busy}
-          onSend={(q) => void send(q)}
+          locked={!connected}
+          onSend={(q) => {
+            if (connected) void send(q);
+          }}
           onStop={stop}
           showSuggestions={!conversation}
         />
@@ -163,10 +166,10 @@ function Welcome({ connected }: { connected: boolean }) {
         </div>
 
         {!connected ? (
-          <p className="text-[13px] text-zinc-500">
-            Connect a {CLUSTER} wallet and I can read your mandate and your
-            positions. Without one I can still talk about the market and how any
-            of this works.
+          <p className="text-[13px] text-ink-faint">
+            Connect a {CLUSTER} wallet to start. I read your mandate and your
+            positions from it, so there is nothing to ask about until one is
+            connected.
           </p>
         ) : null}
       </div>
