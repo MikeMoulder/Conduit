@@ -272,6 +272,255 @@ export type Conduit = {
       "args": []
     },
     {
+      "name": "moveFromMandate",
+      "docs": [
+        "Moves money out of a mandate back into the owner's main wallet.",
+        "",
+        "Owner only, and this is the one place the agent is refused where the",
+        "owner is not. The main wallet has no limits. If the agent could pull",
+        "money out of a mandate into it, it could step around every rule the",
+        "mandate sets by moving the cash first and trading it after."
+      ],
+      "discriminator": [
+        35,
+        101,
+        177,
+        22,
+        8,
+        84,
+        81,
+        10
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  97,
+                  108,
+                  108,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "wallet.owner",
+                "account": "mainWallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "portfolio",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  114,
+                  116,
+                  102,
+                  111,
+                  108,
+                  105,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "portfolio.mandate",
+                "account": "portfolio"
+              }
+            ]
+          }
+        },
+        {
+          "name": "from",
+          "writable": true
+        },
+        {
+          "name": "to",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "moveToMandate",
+      "docs": [
+        "Moves money from the main wallet into one of the same owner's mandates.",
+        "",
+        "The owner or the agent. Money going into a mandate only ever gets more",
+        "constrained, so there is nothing here the agent could use to escape a",
+        "limit."
+      ],
+      "discriminator": [
+        36,
+        164,
+        120,
+        201,
+        208,
+        137,
+        98,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  97,
+                  108,
+                  108,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "wallet.owner",
+                "account": "mainWallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "portfolio",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  114,
+                  116,
+                  102,
+                  111,
+                  108,
+                  105,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "portfolio.mandate",
+                "account": "portfolio"
+              }
+            ]
+          }
+        },
+        {
+          "name": "from",
+          "writable": true
+        },
+        {
+          "name": "to",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "openWallet",
+      "docs": [
+        "Opens a person's main wallet and names the agent that may act on it.",
+        "",
+        "The one signature the owner gives for convenience. After it the agent",
+        "can trade, fund mandates and withdraw on the owner's word without a",
+        "wallet prompt, because every way money can leave is fixed by the",
+        "program: to the desk at the published price, into the same owner's",
+        "mandates, or back to the owner."
+      ],
+      "discriminator": [
+        201,
+        7,
+        112,
+        216,
+        203,
+        79,
+        88,
+        251
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  97,
+                  108,
+                  108,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "agent",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "proposeRebalance",
       "docs": [
         "The agent asks to move the portfolio to a new allocation.",
@@ -461,6 +710,98 @@ export type Conduit = {
       ]
     },
     {
+      "name": "registerDeskAsset",
+      "docs": [
+        "States which feed the desk prices a mint by.",
+        "",
+        "Signed by the desk authority. A main wallet has no mandate to bind its",
+        "assets to feeds, so the counterparty does it, and a trade reads the",
+        "binding from here rather than trusting the caller to pair a mint with",
+        "the right price."
+      ],
+      "discriminator": [
+        56,
+        163,
+        37,
+        28,
+        27,
+        194,
+        180,
+        236
+      ],
+      "accounts": [
+        {
+          "name": "desk",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  115,
+                  107
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "deskAsset",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  115,
+                  107,
+                  95,
+                  97,
+                  115,
+                  115,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "desk"
+          ]
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "feedId",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "setMandateStatus",
       "docs": [
         "Owner suspends or resumes the agent, or closes the mandate permanently.",
@@ -608,6 +949,288 @@ export type Conduit = {
         }
       ],
       "args": []
+    },
+    {
+      "name": "trade",
+      "docs": [
+        "Buys or sells one asset in a main wallet, for a cash amount.",
+        "",
+        "No mandate is consulted: this is the owner's own money traded on their",
+        "word. What the program does fix is everything a dishonest caller could",
+        "otherwise choose. The price comes from the feed the desk bound to this",
+        "mint, never from the caller. Both legs land in this wallet or the desk.",
+        "Rounding goes against the wallet, so a trade can never pay out a unit",
+        "the desk did not receive.",
+        "",
+        "A buy spends `amount` of cash. A sell raises at most `amount` of cash,",
+        "selling the whole units that amount buys at the published price."
+      ],
+      "discriminator": [
+        178,
+        144,
+        26,
+        216,
+        241,
+        187,
+        206,
+        130
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  97,
+                  108,
+                  108,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "wallet.owner",
+                "account": "mainWallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "desk",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  115,
+                  107
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "deskAsset",
+          "docs": [
+            "The binding that stops a caller pairing this mint with another price."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  115,
+                  107,
+                  95,
+                  97,
+                  115,
+                  115,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "price"
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "cashMint"
+        },
+        {
+          "name": "walletCash",
+          "writable": true
+        },
+        {
+          "name": "walletAsset",
+          "writable": true
+        },
+        {
+          "name": "deskCash",
+          "writable": true
+        },
+        {
+          "name": "deskHolding",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "buying",
+          "type": "bool"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "docs": [
+        "Sends money from the main wallet back to the owner.",
+        "",
+        "The owner or the agent, because the destination is fixed: a token",
+        "account the owner holds, checked here. The agent can carry out \"send",
+        "my money back\" without a wallet prompt, and a stolen agent key can do",
+        "nothing with this but return the owner's money to them."
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  97,
+                  108,
+                  108,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "wallet.owner",
+                "account": "mainWallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "from",
+          "writable": true
+        },
+        {
+          "name": "destination",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdrawFromMandate",
+      "docs": [
+        "Sends money from a mandate straight back to the owner.",
+        "",
+        "The owner or the mandate's agent. Unlike moving money into the main",
+        "wallet, this cannot be used to escape a limit: the money leaves the",
+        "system entirely, to an account only the owner controls."
+      ],
+      "discriminator": [
+        5,
+        16,
+        194,
+        15,
+        172,
+        169,
+        65,
+        136
+      ],
+      "accounts": [
+        {
+          "name": "mandate",
+          "relations": [
+            "portfolio"
+          ]
+        },
+        {
+          "name": "portfolio",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  114,
+                  116,
+                  102,
+                  111,
+                  108,
+                  105,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mandate"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "from",
+          "writable": true
+        },
+        {
+          "name": "destination",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -622,6 +1245,32 @@ export type Conduit = {
         158,
         166,
         73
+      ]
+    },
+    {
+      "name": "deskAsset",
+      "discriminator": [
+        65,
+        113,
+        214,
+        126,
+        185,
+        130,
+        255,
+        248
+      ]
+    },
+    {
+      "name": "mainWallet",
+      "discriminator": [
+        59,
+        202,
+        237,
+        78,
+        10,
+        218,
+        16,
+        236
       ]
     },
     {
@@ -679,6 +1328,19 @@ export type Conduit = {
   ],
   "events": [
     {
+      "name": "fundsMoved",
+      "discriminator": [
+        45,
+        213,
+        142,
+        27,
+        233,
+        76,
+        210,
+        8
+      ]
+    },
+    {
       "name": "portfolioSettled",
       "discriminator": [
         55,
@@ -715,6 +1377,19 @@ export type Conduit = {
         226,
         122,
         248
+      ]
+    },
+    {
+      "name": "walletTraded",
+      "discriminator": [
+        254,
+        220,
+        44,
+        203,
+        88,
+        215,
+        240,
+        105
       ]
     }
   ],
@@ -828,6 +1503,36 @@ export type Conduit = {
       "code": 6021,
       "name": "unknownPriceSource",
       "msg": "The price account is owned by neither Pyth nor this program"
+    },
+    {
+      "code": 6022,
+      "name": "unauthorizedWalletSigner",
+      "msg": "Only the wallet's owner or its agent may act on it"
+    },
+    {
+      "code": 6023,
+      "name": "ownerOnly",
+      "msg": "Only the owner may take money out of a mandate into the main wallet"
+    },
+    {
+      "code": 6024,
+      "name": "insufficientBalance",
+      "msg": "The wallet holds less than this needs"
+    },
+    {
+      "code": 6025,
+      "name": "tradeTooSmall",
+      "msg": "The amount is too small to trade a single unit at this price"
+    },
+    {
+      "code": 6026,
+      "name": "walletOwnerMismatch",
+      "msg": "The two wallets do not belong to the same owner"
+    },
+    {
+      "code": 6027,
+      "name": "destinationNotOwner",
+      "msg": "Withdrawals can only go to an account the owner holds"
     }
   ],
   "types": [
@@ -900,6 +1605,134 @@ export type Conduit = {
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "deskAsset",
+      "docs": [
+        "Which price feed the desk trades a mint at.",
+        "",
+        "A mandate binds each asset to a feed when its owner signs it. A main wallet",
+        "has no mandate, so the binding has to come from somewhere else, and it comes",
+        "from the desk: the counterparty states what it prices each instrument by.",
+        "Without it a caller could pass one asset's mint with another asset's price",
+        "and buy a share of NVDA at the price of something cheaper."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "feedId",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "fundsMoved",
+      "docs": [
+        "Money moving between an owner's wallets, or back to the owner."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "signer",
+            "type": "pubkey"
+          },
+          {
+            "name": "from",
+            "type": "pubkey"
+          },
+          {
+            "name": "to",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "mainWallet",
+      "docs": [
+        "A person's main wallet inside Conduit.",
+        "",
+        "Where they keep money the agent trades on their word rather than on its own",
+        "judgement: \"buy $3,000 of NVDA\" typed into a chat window, executed without a",
+        "wallet prompt. That convenience is the reason it exists, and the design is",
+        "about what the convenience must never cost.",
+        "",
+        "It is a program derived address seeded by the owner's key, so it is bound to",
+        "exactly one person and nobody holds a private key for it. Not the owner, not",
+        "the agent, not the operator. Money leaves it only through this program, and",
+        "the program lets money leave in three ways and no others:",
+        "",
+        "- traded with the desk, at the published price, into this same wallet",
+        "- moved into one of the same owner's mandate wallets",
+        "- withdrawn to a token account the owner holds",
+        "",
+        "So the agent key can act here without a signature from the owner, and the",
+        "worst a stolen agent key can do is trade at market prices or send the owner",
+        "their own money. It cannot send it anywhere else.",
+        "",
+        "What it deliberately does not have is a mandate. Trades here are the",
+        "owner's decisions relayed by the agent, and the program cannot tell a relayed",
+        "decision from one the agent made up. That is the honest trade for not",
+        "signing every order: the owner trusts the app with what to trade here, and",
+        "never with custody. Money the agent decides about belongs in a mandate",
+        "wallet, where the chain checks every decision."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "agent",
+            "docs": [
+              "The one other key that may act on this wallet."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "createdAt",
+            "type": "i64"
           }
         ]
       }
@@ -1190,11 +2023,6 @@ export type Conduit = {
     {
       "name": "pricePublished",
       "docs": [
-        "Emitted on every accepted rebalance.",
-        "",
-        "The client reads these to build the agent activity feed, so the history shown",
-        "to the user is reconstructed from chain state rather than from an application",
-        "database that could disagree with it.",
         "A price entering the chain, so the history of what a settlement could have",
         "run at is recoverable without watching every account."
       ],
@@ -1393,6 +2221,57 @@ export type Conduit = {
           },
           {
             "name": "sequence",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "walletTraded",
+      "docs": [
+        "Emitted on every accepted rebalance.",
+        "",
+        "The client reads these to build the agent activity feed, so the history shown",
+        "to the user is reconstructed from chain state rather than from an application",
+        "database that could disagree with it.",
+        "A trade in a main wallet, on the owner's word rather than a mandate."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "signer",
+            "docs": [
+              "The owner, or the agent acting for them."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "buying",
+            "type": "bool"
+          },
+          {
+            "name": "assetAmount",
+            "type": "u64"
+          },
+          {
+            "name": "cashAmount",
             "type": "u64"
           },
           {

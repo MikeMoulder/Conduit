@@ -29,3 +29,9 @@ pub const PUBLISHER_SEED: &[u8] = b"publisher";
 /// One published price per feed, addressed by the feed it carries so that the
 /// account for a given instrument is derivable rather than announced.
 pub const PRICE_SEED: &[u8] = b"price";
+
+/// A person's main wallet, one per owner.
+pub const WALLET_SEED: &[u8] = b"wallet";
+
+/// The desk's statement of which feed prices a mint.
+pub const DESK_ASSET_SEED: &[u8] = b"desk_asset";

@@ -65,4 +65,16 @@ pub enum ConduitError {
     PriceNotNewer,
     #[msg("The price account is owned by neither Pyth nor this program")]
     UnknownPriceSource,
+    #[msg("Only the wallet's owner or its agent may act on it")]
+    UnauthorizedWalletSigner,
+    #[msg("Only the owner may take money out of a mandate into the main wallet")]
+    OwnerOnly,
+    #[msg("The wallet holds less than this needs")]
+    InsufficientBalance,
+    #[msg("The amount is too small to trade a single unit at this price")]
+    TradeTooSmall,
+    #[msg("The two wallets do not belong to the same owner")]
+    WalletOwnerMismatch,
+    #[msg("Withdrawals can only go to an account the owner holds")]
+    DestinationNotOwner,
 }

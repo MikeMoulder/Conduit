@@ -21,21 +21,57 @@ pub mod settlement;
 pub mod state;
 
 use constants::{
-    BPS_DENOMINATOR, DESK_SEED, MANDATE_SEED, MAX_ASSETS, PORTFOLIO_SEED, PRICE_SEED,
-    PUBLISHER_SEED,
+    BPS_DENOMINATOR, DESK_ASSET_SEED, DESK_SEED, MANDATE_SEED, MAX_ASSETS, PORTFOLIO_SEED,
+    PRICE_SEED, PUBLISHER_SEED, WALLET_SEED,
 };
 use errors::ConduitError;
 use policy::{evaluate_proposal, ProposedPosition};
 use settlement::{
-    leg_for, net_asset_value, read_price, read_published_price, Holding,
-    MAX_PRICE_AGE_SECONDS, PYTH_RECEIVER,
+    leg_for, net_asset_value, quantity_for, read_price, read_published_price, value_of, Holding,
+    Price, MAX_PRICE_AGE_SECONDS, PYTH_RECEIVER,
 };
 use state::{
-    AllowedAsset, Desk, Mandate, MandateConstraints, MandateStatus, Portfolio, Position,
-    PublishedPrice, Publisher,
+    AllowedAsset, Desk, DeskAsset, MainWallet, Mandate, MandateConstraints, MandateStatus,
+    Portfolio, Position, PublishedPrice, Publisher,
 };
 
 declare_id!("6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu");
+
+/// Reads a price from whichever source owns the account, or refuses it.
+///
+/// The single place trust in a price is decided. Pyth means many publishers
+/// agreed on a market; this program means its publishing key asserted a
+/// number; any other owner means nobody vouched for it at all. Deserialised
+/// rather than parsed by offset for our own accounts, so the discriminator is
+/// checked and a mandate or portfolio cannot be passed off as a price.
+fn price_from(price_info: &AccountInfo, feed_id: &[u8; 32], now: i64) -> Result<Price> {
+    if price_info.owner == &PYTH_RECEIVER {
+        read_price(&price_info.try_borrow_data()?, feed_id, now)
+    } else if price_info.owner == &crate::ID {
+        let data = price_info.try_borrow_data()?;
+        let published = PublishedPrice::try_deserialize(&mut &data[..])?;
+        read_published_price(
+            &published.feed_id,
+            published.price,
+            published.exponent,
+            published.publish_time,
+            feed_id,
+            now,
+        )
+    } else {
+        err!(ConduitError::UnknownPriceSource)
+    }
+}
+
+/// The owner, or the agent the owner named. Nobody else acts on a wallet.
+fn require_wallet_signer(wallet: &MainWallet, signer: &Pubkey) -> Result<()> {
+    require!(
+        signer == &wallet.owner || signer == &wallet.agent,
+        ConduitError::UnauthorizedWalletSigner
+    );
+    Ok(())
+}
+
 
 #[program]
 pub mod conduit {
@@ -198,6 +234,342 @@ pub mod conduit {
     }
 
 
+    /// Opens a person's main wallet and names the agent that may act on it.
+    ///
+    /// The one signature the owner gives for convenience. After it the agent
+    /// can trade, fund mandates and withdraw on the owner's word without a
+    /// wallet prompt, because every way money can leave is fixed by the
+    /// program: to the desk at the published price, into the same owner's
+    /// mandates, or back to the owner.
+    pub fn open_wallet(ctx: Context<OpenWallet>, agent: Pubkey) -> Result<()> {
+        let wallet = &mut ctx.accounts.wallet;
+        wallet.owner = ctx.accounts.owner.key();
+        wallet.agent = agent;
+        wallet.bump = ctx.bumps.wallet;
+        wallet.created_at = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    /// States which feed the desk prices a mint by.
+    ///
+    /// Signed by the desk authority. A main wallet has no mandate to bind its
+    /// assets to feeds, so the counterparty does it, and a trade reads the
+    /// binding from here rather than trusting the caller to pair a mint with
+    /// the right price.
+    pub fn register_desk_asset(ctx: Context<RegisterDeskAsset>, feed_id: [u8; 32]) -> Result<()> {
+        require!(feed_id != [0u8; 32], ConduitError::PriceUnusable);
+        let asset = &mut ctx.accounts.desk_asset;
+        asset.mint = ctx.accounts.mint.key();
+        asset.feed_id = feed_id;
+        asset.bump = ctx.bumps.desk_asset;
+        Ok(())
+    }
+
+    /// Buys or sells one asset in a main wallet, for a cash amount.
+    ///
+    /// No mandate is consulted: this is the owner's own money traded on their
+    /// word. What the program does fix is everything a dishonest caller could
+    /// otherwise choose. The price comes from the feed the desk bound to this
+    /// mint, never from the caller. Both legs land in this wallet or the desk.
+    /// Rounding goes against the wallet, so a trade can never pay out a unit
+    /// the desk did not receive.
+    ///
+    /// A buy spends `amount` of cash. A sell raises at most `amount` of cash,
+    /// selling the whole units that amount buys at the published price.
+    pub fn trade(ctx: Context<Trade>, buying: bool, amount: u64) -> Result<()> {
+        require_wallet_signer(&ctx.accounts.wallet, &ctx.accounts.signer.key())?;
+        require!(amount > 0, ConduitError::TradeTooSmall);
+
+        let now = Clock::get()?.unix_timestamp;
+        let price = price_from(
+            &ctx.accounts.price.to_account_info(),
+            &ctx.accounts.desk_asset.feed_id,
+            now,
+        )?;
+
+        let asset_decimals = ctx.accounts.mint.decimals;
+        let cash_decimals = ctx.accounts.cash_mint.decimals;
+        let quantity = quantity_for(amount, asset_decimals, price, cash_decimals)?;
+        require!(quantity > 0, ConduitError::TradeTooSmall);
+
+        let owner_key = ctx.accounts.wallet.owner;
+        let wallet_seeds: &[&[u8]] = &[WALLET_SEED, owner_key.as_ref(), &[ctx.accounts.wallet.bump]];
+        let desk_seeds: &[&[u8]] = &[DESK_SEED, &[ctx.accounts.desk.bump]];
+        let token_program = ctx.accounts.token_program.to_account_info();
+
+        let (asset_amount, cash_amount) = if buying {
+            require!(
+                ctx.accounts.wallet_cash.amount >= amount,
+                ConduitError::InsufficientBalance
+            );
+            token::transfer(
+                CpiContext::new_with_signer(
+                    token_program.clone(),
+                    Transfer {
+                        from: ctx.accounts.wallet_cash.to_account_info(),
+                        to: ctx.accounts.desk_cash.to_account_info(),
+                        authority: ctx.accounts.wallet.to_account_info(),
+                    },
+                    &[wallet_seeds],
+                ),
+                amount,
+            )?;
+            token::transfer(
+                CpiContext::new_with_signer(
+                    token_program,
+                    Transfer {
+                        from: ctx.accounts.desk_holding.to_account_info(),
+                        to: ctx.accounts.wallet_asset.to_account_info(),
+                        authority: ctx.accounts.desk.to_account_info(),
+                    },
+                    &[desk_seeds],
+                ),
+                quantity,
+            )?;
+            (quantity, amount)
+        } else {
+            require!(
+                ctx.accounts.wallet_asset.amount >= quantity,
+                ConduitError::InsufficientBalance
+            );
+            // Valued again from the units actually sold, rounded down, so the
+            // cash paid out never exceeds what those units are worth.
+            let proceeds = value_of(quantity, asset_decimals, price, cash_decimals)?;
+            require!(proceeds > 0, ConduitError::TradeTooSmall);
+            token::transfer(
+                CpiContext::new_with_signer(
+                    token_program.clone(),
+                    Transfer {
+                        from: ctx.accounts.wallet_asset.to_account_info(),
+                        to: ctx.accounts.desk_holding.to_account_info(),
+                        authority: ctx.accounts.wallet.to_account_info(),
+                    },
+                    &[wallet_seeds],
+                ),
+                quantity,
+            )?;
+            token::transfer(
+                CpiContext::new_with_signer(
+                    token_program,
+                    Transfer {
+                        from: ctx.accounts.desk_cash.to_account_info(),
+                        to: ctx.accounts.wallet_cash.to_account_info(),
+                        authority: ctx.accounts.desk.to_account_info(),
+                    },
+                    &[desk_seeds],
+                ),
+                proceeds,
+            )?;
+            (quantity, proceeds)
+        };
+
+        emit!(WalletTraded {
+            wallet: ctx.accounts.wallet.key(),
+            owner: owner_key,
+            signer: ctx.accounts.signer.key(),
+            mint: ctx.accounts.mint.key(),
+            buying,
+            asset_amount,
+            cash_amount,
+            timestamp: now,
+        });
+        Ok(())
+    }
+
+    /// Moves money from the main wallet into one of the same owner's mandates.
+    ///
+    /// The owner or the agent. Money going into a mandate only ever gets more
+    /// constrained, so there is nothing here the agent could use to escape a
+    /// limit.
+    pub fn move_to_mandate(ctx: Context<MoveToMandate>, amount: u64) -> Result<()> {
+        require_wallet_signer(&ctx.accounts.wallet, &ctx.accounts.signer.key())?;
+        require!(
+            ctx.accounts.portfolio.owner == ctx.accounts.wallet.owner,
+            ConduitError::WalletOwnerMismatch
+        );
+        require!(
+            ctx.accounts.from.amount >= amount && amount > 0,
+            ConduitError::InsufficientBalance
+        );
+
+        let owner_key = ctx.accounts.wallet.owner;
+        let wallet_seeds: &[&[u8]] = &[WALLET_SEED, owner_key.as_ref(), &[ctx.accounts.wallet.bump]];
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.from.to_account_info(),
+                    to: ctx.accounts.to.to_account_info(),
+                    authority: ctx.accounts.wallet.to_account_info(),
+                },
+                &[wallet_seeds],
+            ),
+            amount,
+        )?;
+
+        emit!(FundsMoved {
+            owner: owner_key,
+            signer: ctx.accounts.signer.key(),
+            from: ctx.accounts.wallet.key(),
+            to: ctx.accounts.portfolio.key(),
+            mint: ctx.accounts.from.mint,
+            amount,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+        Ok(())
+    }
+
+    /// Moves money out of a mandate back into the owner's main wallet.
+    ///
+    /// Owner only, and this is the one place the agent is refused where the
+    /// owner is not. The main wallet has no limits. If the agent could pull
+    /// money out of a mandate into it, it could step around every rule the
+    /// mandate sets by moving the cash first and trading it after.
+    pub fn move_from_mandate(ctx: Context<MoveFromMandate>, amount: u64) -> Result<()> {
+        require_keys_eq!(
+            ctx.accounts.owner.key(),
+            ctx.accounts.wallet.owner,
+            ConduitError::OwnerOnly
+        );
+        require!(
+            ctx.accounts.portfolio.owner == ctx.accounts.wallet.owner,
+            ConduitError::WalletOwnerMismatch
+        );
+        require!(
+            ctx.accounts.from.amount >= amount && amount > 0,
+            ConduitError::InsufficientBalance
+        );
+
+        let mandate_key = ctx.accounts.portfolio.mandate;
+        let portfolio_seeds: &[&[u8]] = &[
+            PORTFOLIO_SEED,
+            mandate_key.as_ref(),
+            &[ctx.accounts.portfolio.bump],
+        ];
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.from.to_account_info(),
+                    to: ctx.accounts.to.to_account_info(),
+                    authority: ctx.accounts.portfolio.to_account_info(),
+                },
+                &[portfolio_seeds],
+            ),
+            amount,
+        )?;
+
+        emit!(FundsMoved {
+            owner: ctx.accounts.wallet.owner,
+            signer: ctx.accounts.owner.key(),
+            from: ctx.accounts.portfolio.key(),
+            to: ctx.accounts.wallet.key(),
+            mint: ctx.accounts.from.mint,
+            amount,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+        Ok(())
+    }
+
+    /// Sends money from the main wallet back to the owner.
+    ///
+    /// The owner or the agent, because the destination is fixed: a token
+    /// account the owner holds, checked here. The agent can carry out "send
+    /// my money back" without a wallet prompt, and a stolen agent key can do
+    /// nothing with this but return the owner's money to them.
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        require_wallet_signer(&ctx.accounts.wallet, &ctx.accounts.signer.key())?;
+        require!(
+            ctx.accounts.destination.owner == ctx.accounts.wallet.owner,
+            ConduitError::DestinationNotOwner
+        );
+        require!(
+            ctx.accounts.from.amount >= amount && amount > 0,
+            ConduitError::InsufficientBalance
+        );
+
+        let owner_key = ctx.accounts.wallet.owner;
+        let wallet_seeds: &[&[u8]] = &[WALLET_SEED, owner_key.as_ref(), &[ctx.accounts.wallet.bump]];
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.from.to_account_info(),
+                    to: ctx.accounts.destination.to_account_info(),
+                    authority: ctx.accounts.wallet.to_account_info(),
+                },
+                &[wallet_seeds],
+            ),
+            amount,
+        )?;
+
+        emit!(FundsMoved {
+            owner: owner_key,
+            signer: ctx.accounts.signer.key(),
+            from: ctx.accounts.wallet.key(),
+            to: ctx.accounts.destination.key(),
+            mint: ctx.accounts.from.mint,
+            amount,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+        Ok(())
+    }
+
+    /// Sends money from a mandate straight back to the owner.
+    ///
+    /// The owner or the mandate's agent. Unlike moving money into the main
+    /// wallet, this cannot be used to escape a limit: the money leaves the
+    /// system entirely, to an account only the owner controls.
+    pub fn withdraw_from_mandate(ctx: Context<WithdrawFromMandate>, amount: u64) -> Result<()> {
+        let signer = ctx.accounts.signer.key();
+        require!(
+            signer == ctx.accounts.mandate.owner || signer == ctx.accounts.mandate.agent,
+            ConduitError::UnauthorizedWalletSigner
+        );
+        require!(
+            ctx.accounts.destination.owner == ctx.accounts.mandate.owner,
+            ConduitError::DestinationNotOwner
+        );
+        require!(
+            ctx.accounts.from.amount >= amount && amount > 0,
+            ConduitError::InsufficientBalance
+        );
+
+        let mandate_key = ctx.accounts.mandate.key();
+        let portfolio_seeds: &[&[u8]] = &[
+            PORTFOLIO_SEED,
+            mandate_key.as_ref(),
+            &[ctx.accounts.portfolio.bump],
+        ];
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.from.to_account_info(),
+                    to: ctx.accounts.destination.to_account_info(),
+                    authority: ctx.accounts.portfolio.to_account_info(),
+                },
+                &[portfolio_seeds],
+            ),
+            amount,
+        )?;
+
+        emit!(FundsMoved {
+            owner: ctx.accounts.mandate.owner,
+            signer,
+            from: ctx.accounts.portfolio.key(),
+            to: ctx.accounts.destination.key(),
+            mint: ctx.accounts.from.mint,
+            amount,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+        Ok(())
+    }
+
     /// Names the one key allowed to publish prices.
     ///
     /// Called once, by whoever deploys. Deliberately a different key from the
@@ -341,25 +713,7 @@ pub mod conduit {
             // What both share is the property the design rests on. Neither is
             // written by the agent. An agent that could choose its own marks
             // could satisfy any mandate while doing anything it liked.
-            let price = if price_info.owner == &PYTH_RECEIVER {
-                read_price(&price_info.try_borrow_data()?, &allowed.feed_id, now)?
-            } else if price_info.owner == &crate::ID {
-                // Deserialised rather than parsed by offset, so the
-                // discriminator is checked and a mandate or portfolio account
-                // cannot be passed off as a price.
-                let published: Account<'info, PublishedPrice> =
-                    Account::try_from(price_info)?;
-                read_published_price(
-                    &published.feed_id,
-                    published.price,
-                    published.exponent,
-                    published.publish_time,
-                    &allowed.feed_id,
-                    now,
-                )?
-            } else {
-                return err!(ConduitError::UnknownPriceSource);
-            };
+            let price = price_from(price_info, &allowed.feed_id, now)?;
 
             require_keys_eq!(
                 mint_info.key(),
@@ -566,6 +920,32 @@ pub mod conduit {
 /// The client reads these to build the agent activity feed, so the history shown
 /// to the user is reconstructed from chain state rather than from an application
 /// database that could disagree with it.
+/// A trade in a main wallet, on the owner's word rather than a mandate.
+#[event]
+pub struct WalletTraded {
+    pub wallet: Pubkey,
+    pub owner: Pubkey,
+    /// The owner, or the agent acting for them.
+    pub signer: Pubkey,
+    pub mint: Pubkey,
+    pub buying: bool,
+    pub asset_amount: u64,
+    pub cash_amount: u64,
+    pub timestamp: i64,
+}
+
+/// Money moving between an owner's wallets, or back to the owner.
+#[event]
+pub struct FundsMoved {
+    pub owner: Pubkey,
+    pub signer: Pubkey,
+    pub from: Pubkey,
+    pub to: Pubkey,
+    pub mint: Pubkey,
+    pub amount: u64,
+    pub timestamp: i64,
+}
+
 /// A price entering the chain, so the history of what a settlement could have
 /// run at is recoverable without watching every account.
 #[event]
@@ -623,6 +1003,158 @@ pub struct InitializeDesk<'info> {
     pub authority: Signer<'info>,
 
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct OpenWallet<'info> {
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + MainWallet::INIT_SPACE,
+        seeds = [WALLET_SEED, owner.key().as_ref()],
+        bump,
+    )]
+    pub wallet: Account<'info, MainWallet>,
+
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RegisterDeskAsset<'info> {
+    #[account(seeds = [DESK_SEED], bump = desk.bump, has_one = authority)]
+    pub desk: Account<'info, Desk>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + DeskAsset::INIT_SPACE,
+        seeds = [DESK_ASSET_SEED, mint.key().as_ref()],
+        bump,
+    )]
+    pub desk_asset: Account<'info, DeskAsset>,
+
+    pub mint: Account<'info, Mint>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Trade<'info> {
+    #[account(seeds = [WALLET_SEED, wallet.owner.as_ref()], bump = wallet.bump)]
+    pub wallet: Account<'info, MainWallet>,
+
+    pub signer: Signer<'info>,
+
+    #[account(seeds = [DESK_SEED], bump = desk.bump)]
+    pub desk: Account<'info, Desk>,
+
+    /// The binding that stops a caller pairing this mint with another price.
+    #[account(seeds = [DESK_ASSET_SEED, mint.key().as_ref()], bump = desk_asset.bump)]
+    pub desk_asset: Account<'info, DeskAsset>,
+
+    /// CHECK: owner and feed id are verified by `price_from` before use.
+    pub price: UncheckedAccount<'info>,
+
+    pub mint: Account<'info, Mint>,
+
+    #[account(address = desk.cash_mint)]
+    pub cash_mint: Account<'info, Mint>,
+
+    #[account(mut, token::mint = cash_mint, token::authority = wallet)]
+    pub wallet_cash: Account<'info, TokenAccount>,
+
+    #[account(mut, token::mint = mint, token::authority = wallet)]
+    pub wallet_asset: Account<'info, TokenAccount>,
+
+    #[account(mut, token::mint = cash_mint, token::authority = desk)]
+    pub desk_cash: Account<'info, TokenAccount>,
+
+    #[account(mut, token::mint = mint, token::authority = desk)]
+    pub desk_holding: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct MoveToMandate<'info> {
+    #[account(seeds = [WALLET_SEED, wallet.owner.as_ref()], bump = wallet.bump)]
+    pub wallet: Account<'info, MainWallet>,
+
+    pub signer: Signer<'info>,
+
+    #[account(seeds = [PORTFOLIO_SEED, portfolio.mandate.as_ref()], bump = portfolio.bump)]
+    pub portfolio: Account<'info, Portfolio>,
+
+    #[account(mut, token::authority = wallet)]
+    pub from: Account<'info, TokenAccount>,
+
+    #[account(mut, token::mint = from.mint, token::authority = portfolio)]
+    pub to: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct MoveFromMandate<'info> {
+    #[account(seeds = [WALLET_SEED, wallet.owner.as_ref()], bump = wallet.bump)]
+    pub wallet: Account<'info, MainWallet>,
+
+    pub owner: Signer<'info>,
+
+    #[account(seeds = [PORTFOLIO_SEED, portfolio.mandate.as_ref()], bump = portfolio.bump)]
+    pub portfolio: Account<'info, Portfolio>,
+
+    #[account(mut, token::authority = portfolio)]
+    pub from: Account<'info, TokenAccount>,
+
+    #[account(mut, token::mint = from.mint, token::authority = wallet)]
+    pub to: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+    #[account(seeds = [WALLET_SEED, wallet.owner.as_ref()], bump = wallet.bump)]
+    pub wallet: Account<'info, MainWallet>,
+
+    pub signer: Signer<'info>,
+
+    #[account(mut, token::authority = wallet)]
+    pub from: Account<'info, TokenAccount>,
+
+    #[account(mut, token::mint = from.mint)]
+    pub destination: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct WithdrawFromMandate<'info> {
+    pub mandate: Account<'info, Mandate>,
+
+    #[account(
+        seeds = [PORTFOLIO_SEED, mandate.key().as_ref()],
+        bump = portfolio.bump,
+        has_one = mandate,
+    )]
+    pub portfolio: Account<'info, Portfolio>,
+
+    pub signer: Signer<'info>,
+
+    #[account(mut, token::authority = portfolio)]
+    pub from: Account<'info, TokenAccount>,
+
+    #[account(mut, token::mint = from.mint)]
+    pub destination: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
