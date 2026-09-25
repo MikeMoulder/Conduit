@@ -1,20 +1,23 @@
 import { beforeEach, describe, it } from "node:test";
 import { expect } from "chai";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
 import {
   dueEntries,
+  getScore,
   listDecisions,
   listEntries,
   markRun,
   recordDecision,
+  saveScore,
   upsertEntry,
   type AutopilotEntry,
   type Decision,
 } from "../src/lib/autopilot/state";
 import { formatDecision } from "../src/lib/autopilot/notify";
+import { startScore, summarise } from "../src/lib/autopilot/scorecard";
 import { AUTOPILOT_TOOLS } from "../src/lib/copilot/autopilot-tools";
 
 /**
@@ -116,6 +119,43 @@ describe("the decision log", () => {
   it("stays bounded however long it runs", () => {
     for (let i = 0; i < 230; i += 1) recordDecision(decision({ at: i }));
     expect(listDecisions({}, 1_000)).to.have.length(200);
+  });
+});
+
+describe("keeping the score", () => {
+  const start = startScore({ at: 0, cash: 2_000, amounts: {}, prices: {}, spyPrice: 500 });
+
+  it("keeps a score between cycles", () => {
+    saveScore("Mandate1111111111111111111111111111111111", start);
+    expect(getScore("Mandate1111111111111111111111111111111111")).to.deep.equal(start);
+    expect(getScore("SomeOtherMandate")).to.equal(null);
+  });
+
+  it("does not lose entries or decisions when a score is saved", () => {
+    upsertEntry(entry());
+    recordDecision(decision());
+    saveScore("Mandate1111111111111111111111111111111111", start);
+    expect(listEntries()).to.have.length(1);
+    expect(listDecisions({})).to.have.length(1);
+  });
+
+  it("does not lose scores when entries or decisions are written", () => {
+    saveScore("Mandate1111111111111111111111111111111111", start);
+    upsertEntry(entry());
+    recordDecision(decision());
+    markRun("Mandate1111111111111111111111111111111111", Date.now());
+    expect(getScore("Mandate1111111111111111111111111111111111")).to.not.equal(null);
+  });
+
+  it("loads a state file written before scores existed", () => {
+    writeFileSync(process.env.AUTOPILOT_STATE_FILE!, JSON.stringify({ entries: [entry()], decisions: [] }));
+    expect(listEntries()).to.have.length(1);
+    expect(getScore("Mandate1111111111111111111111111111111111")).to.equal(null);
+  });
+
+  it("puts the score in the message", () => {
+    const text = formatDecision(decision({ score: summarise(start) }), entry());
+    expect(text).to.include("Scorecard: Since 1 Jan 00:00 UTC: flat against SPY flat, level with SPY.");
   });
 });
 

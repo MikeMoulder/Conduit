@@ -4,6 +4,7 @@ import { explorerUrl } from "../chain";
 import { CLUSTER } from "../cluster";
 import { botToken, sendMessage } from "../telegram/bot";
 import { chatFor } from "../telegram/state";
+import { describeScore } from "./scorecard";
 import type { AutopilotEntry, Decision } from "./state";
 
 /**
@@ -31,6 +32,9 @@ export function formatDecision(decision: Decision, entry: AutopilotEntry): strin
     `Conduit autopilot, mandate ${entry.mandateId}`,
     `${ICON[decision.outcome]}: ${decision.summary}`,
   ];
+  if (decision.score) {
+    lines.push(`Scorecard: ${describeScore(decision.score)}`);
+  }
   if (decision.preIpo?.length) {
     lines.push(`Pre-IPO:\n${decision.preIpo.map((note) => `- ${note}`).join("\n")}`);
   }

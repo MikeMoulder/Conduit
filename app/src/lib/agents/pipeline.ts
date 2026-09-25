@@ -55,6 +55,11 @@ export interface MandateSpec {
    * there it is told the signals without the limits.
    */
   preIpoCapBps?: number;
+  /**
+   * The autopilot's own record on this mandate: its score against SPY and its
+   * last few decisions, so it can see whether its recent choices worked.
+   */
+  trackRecord?: string;
 }
 
 export interface MarketSnapshot {
@@ -329,7 +334,8 @@ export async function runPipeline(
   const stages: StageRecord[] = [];
 
   const preIpo = preIpoBrief(market, mandate.currentPositions ?? [], mandate.preIpoCapBps);
-  const context = `${mandateBlock(mandate)}\n\nMarket data:\n${marketTable(market)}${preIpo ? `\n\n${preIpo}` : ""}`;
+  const record = mandate.trackRecord ? `\n\nYour record running this mandate:\n${mandate.trackRecord}` : "";
+  const context = `${mandateBlock(mandate)}\n\nMarket data:\n${marketTable(market)}${preIpo ? `\n\n${preIpo}` : ""}${record}`;
 
   const research = await runStage<Research>(
     "research",

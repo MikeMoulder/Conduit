@@ -4,6 +4,7 @@ import { readFileSync } from "fs";
 import path from "path";
 
 import { writeJsonAtomic } from "../atomic-write";
+import type { Score, ScoreState } from "./scorecard";
 
 /**
  * What the autopilot remembers: which mandates it runs, and what it decided.
@@ -53,11 +54,15 @@ export interface Decision {
   signatures: string[];
   /** What the pre IPO rules saw and did this cycle, one line each. */
   preIpo?: string[];
+  /** The mandate against SPY, as of the end of this cycle. */
+  score?: Score;
 }
 
 interface Stored {
   entries: AutopilotEntry[];
   decisions: Decision[];
+  /** Each mandate's running score against SPY, by mandate address. */
+  scores: Record<string, ScoreState>;
 }
 
 /** Enough history to answer "what has it done", not an archive. */
@@ -73,9 +78,10 @@ function read(): Stored {
     return {
       entries: Array.isArray(parsed.entries) ? parsed.entries : [],
       decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
+      scores: parsed.scores && typeof parsed.scores === "object" ? parsed.scores : {},
     };
   } catch {
-    return { entries: [], decisions: [] };
+    return { entries: [], decisions: [], scores: {} };
   }
 }
 
@@ -130,4 +136,13 @@ export function dueEntries(now: number): AutopilotEntry[] {
   return read().entries.filter(
     (e) => e.enabled && (e.lastRunAt === null || now - e.lastRunAt >= e.everyMinutes * 60_000),
   );
+}
+
+export function getScore(mandate: string): ScoreState | null {
+  return read().scores[mandate] ?? null;
+}
+
+export function saveScore(mandate: string, score: ScoreState): void {
+  const stored = read();
+  write({ ...stored, scores: { ...stored.scores, [mandate]: score } });
 }

@@ -8,12 +8,21 @@ import { executeRebalance, executeSettle } from "../agent-execution";
 import { runPipeline, type MandateSpec } from "../agents/pipeline";
 import { getAssetByMint, getAssetBySymbol } from "../assets";
 import { bpsToPercent, portfolioPda } from "../chain";
-import { fetchHoldings } from "../holdings";
+import { fetchHoldings, type PortfolioHoldings } from "../holdings";
 import { pricedSymbols, snapshotMarket } from "../market";
 import { evaluateProposal } from "../proposal";
-import { applyPreIpoRules, DEFAULT_PRE_IPO_CAP_BPS } from "./pre-ipo";
 import { getConnection } from "../rpc";
-import type { AutopilotEntry, Decision } from "./state";
+import { applyPreIpoRules, DEFAULT_PRE_IPO_CAP_BPS } from "./pre-ipo";
+import {
+  advanceScore,
+  describeScore,
+  recordTrade,
+  startScore,
+  summarise,
+  type ScoreState,
+} from "./scorecard";
+import { snapshotFrom, takeSnapshot } from "./snapshot";
+import { getScore, listDecisions, saveScore, type AutopilotEntry, type Decision } from "./state";
 
 /**
  * One autonomous cycle for one mandate: look, decide, act, write it down.
@@ -45,6 +54,24 @@ function describe(positions: { symbol: string; targetBps: number }[]): string {
   const parts = positions.map((p) => `${p.symbol} ${bpsToPercent(p.targetBps)}`);
   parts.push(`cash ${bpsToPercent(10_000 - invested)}`);
   return parts.join(", ");
+}
+
+/**
+ * What the analysis is told about its own record on this mandate.
+ *
+ * So it can see whether its recent choices worked. Paired with a warning,
+ * because a record of hours is mostly noise, and an agent chasing its own
+ * score would trade more to look better and do worse.
+ */
+function trackRecord(score: ScoreState, recent: Decision[]): string {
+  const lines = [describeScore(summarise(score))];
+  for (const d of recent) {
+    lines.push(`- ${new Date(d.at).toISOString().slice(0, 16).replace("T", " ")} UTC, ${d.outcome}: ${d.summary}`);
+  }
+  lines.push(
+    "Judge your recent decisions by this record. If the book has lagged SPY, say why you expect it to do better from here, or move closer to the index. A record of hours or days is mostly noise: do not chase it, and never trade only to change it.",
+  );
+  return lines.join("\n");
 }
 
 export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
@@ -83,6 +110,16 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
     return skip("The mandate holds no cash to invest yet. Move some in from the main wallet.");
   }
 
+  // Brought up to date before the agent acts, so what the market did since the
+  // last cycle is credited to the book the agent chose then. A cycle whose
+  // prices cannot be read leaves the score where it was.
+  const reading = await takeSnapshot(connection, mandate, holdings);
+  let score = getScore(entry.mandate);
+  if (reading) {
+    score = score ? advanceScore(score, reading).state : startScore(reading);
+    saveScore(entry.mandate, score);
+  }
+
   const symbols = mandate.allowedAssets
     .map((a) => getAssetByMint(a.mint)?.symbol)
     .filter((s): s is string => Boolean(s));
@@ -103,6 +140,7 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
       return known ? [{ symbol: known.symbol, targetBps: p.targetBps }] : [];
     }),
     preIpoCapBps: entry.preIpoCapBps ?? DEFAULT_PRE_IPO_CAP_BPS,
+    trackRecord: score ? trackRecord(score, listDecisions({ mandate: entry.mandate }, 3)) : undefined,
   };
 
   const run = await runPipeline(spec, tradable);
@@ -124,7 +162,11 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
     capBps: spec.preIpoCapBps!,
   });
   const proposed = rules.positions.map((p) => ({ ...p, mint: getAssetBySymbol(p.symbol)!.mint }));
-  const analysed = { ...base, preIpo: rules.notes.length > 0 ? rules.notes : undefined };
+  const analysed = {
+    ...base,
+    preIpo: rules.notes.length > 0 ? rules.notes : undefined,
+    score: score ? summarise(score) : undefined,
+  };
 
   const evaluation = evaluateProposal({
     constraints: mandate.constraints,
@@ -182,8 +224,19 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
   }
   signatures.push(String(settle.body.signature));
 
+  // The book after trading, at the prices the score just used, so any gap is
+  // the cost of the trades rather than the market moving.
+  if (score && settle.body.after) {
+    score = recordTrade(
+      score,
+      snapshotFrom(settle.body.after as PortfolioHoldings, score.last.prices, score.last.spyPrice, Date.now()),
+    );
+    saveScore(entry.mandate, score);
+  }
+
   return {
     ...analysed,
+    score: score ? summarise(score) : undefined,
     outcome: changed ? "rebalanced" : "held",
     reasoning,
     positions,
