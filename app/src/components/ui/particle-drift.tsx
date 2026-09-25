@@ -11,24 +11,23 @@ import { useEffect, useRef, type CSSProperties } from "react";
  * iframe, no network, and a transparent background so the field sits on the
  * app's own canvas colour instead of painting a second one over it.
  *
- * Three layers: characters that drift down and flicker, beams that rise fast,
- * and faint lines between characters that come close. Characters near the
- * pointer light up in the accent and reach for it. The canvas itself never
+ * Two layers: characters that drift down and flicker, and faint lines between
+ * characters that come close. Characters near the pointer light up in the
+ * accent and reach for it. A third layer of fast rising beams was removed: it
+ * pulled the eye away from the conversation. The canvas itself never
  * takes pointer events, so whatever sits on top stays clickable.
  */
 
 export type ParticleDriftProps = {
   /** Multiplies every velocity. 0 freezes the field. */
   speed?: number;
-  /** Multiplies how many characters and beams there are. */
+  /** Multiplies how many characters there are. */
   density?: number;
-  /** Multiplies beam length and the reach of the proximity lines. */
+  /** Multiplies the reach of the proximity lines. */
   length?: number;
-  /** Multiplies beam stroke width. */
-  size?: number;
   /** Opacity of the whole field. */
   opacity?: number;
-  /** Accent as "r, g, b", used for beams and anything near the pointer. */
+  /** Accent as "r, g, b", used for anything near the pointer. */
   accent?: string;
   className?: string;
   style?: CSSProperties;
@@ -38,7 +37,6 @@ const CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ@#$%&*()".split("");
 const POINTER_REACH = 180;
 
 type Node = { x: number; y: number; vy: number; char: string };
-type Beam = { x: number; y: number; length: number; speed: number; opacity: number };
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -52,7 +50,6 @@ export default function ParticleDrift({
   speed = 1,
   density = 1,
   length = 1,
-  size = 1,
   opacity = 1,
   accent = "52, 211, 153",
   className,
@@ -68,13 +65,11 @@ export default function ParticleDrift({
     const pace = clamp(speed, 0, 3);
     const count = clamp(density, 0.25, 2.5);
     const reach = Math.round(120 * clamp(length, 0.35, 2.5));
-    const stroke = 1.5 * clamp(size, 0.25, 4);
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     let width = 0;
     let height = 0;
     let nodes: Node[] = [];
-    let beams: Beam[] = [];
     const pointer = { x: -1000, y: -1000 };
     let frame = 0;
 
@@ -84,13 +79,6 @@ export default function ParticleDrift({
         y: Math.random() * height,
         vy: Math.random() * 0.4 + 0.1,
         char: pick(),
-      }));
-      beams = Array.from({ length: Math.max(4, Math.round(25 * count)) }, () => ({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        length: (Math.random() * 100 + 50) * clamp(length, 0.35, 2.5),
-        speed: Math.random() * 6 + 3,
-        opacity: Math.random() * 0.5 + 0.3,
       }));
     }
 
@@ -110,25 +98,6 @@ export default function ParticleDrift({
     function draw(move: boolean) {
       if (!ctx) return;
       ctx.clearRect(0, 0, width, height);
-
-      ctx.lineWidth = stroke;
-      for (const b of beams) {
-        if (move) {
-          b.y -= b.speed * pace;
-          if (b.y + b.length < 0) {
-            b.y = height + 100;
-            b.x = Math.random() * width;
-          }
-        }
-        const g = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.length);
-        g.addColorStop(0, `rgba(${accent}, ${b.opacity})`);
-        g.addColorStop(1, "transparent");
-        ctx.strokeStyle = g;
-        ctx.beginPath();
-        ctx.moveTo(b.x, b.y);
-        ctx.lineTo(b.x, b.y + b.length);
-        ctx.stroke();
-      }
 
       ctx.lineWidth = 0.5;
       for (let i = 0; i < nodes.length; i++) {
@@ -196,7 +165,7 @@ export default function ParticleDrift({
       observer.disconnect();
       window.removeEventListener("pointermove", onPointerMove);
     };
-  }, [speed, density, length, size, accent]);
+  }, [speed, density, length, accent]);
 
   return (
     <canvas
