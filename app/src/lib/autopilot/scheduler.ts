@@ -114,7 +114,22 @@ function equityMints(): string[] {
     .filter((m): m is string => Boolean(m));
 }
 
+/**
+ * Whether this process runs the background jobs: the autopilot, price
+ * triggers, the chart refresh and the Telegram listener.
+ *
+ * On unless CONDUIT_BACKGROUND_JOBS is "off". The site on Vercel sets it off,
+ * because a serverless function is frozen between requests and its timers
+ * would never fire, and the worker on the VPS runs them instead. Exactly one
+ * process should run them: two would each poll Telegram, which Telegram
+ * refuses.
+ */
+export function backgroundJobsEnabled(): boolean {
+  return process.env.CONDUIT_BACKGROUND_JOBS?.trim().toLowerCase() !== "off";
+}
+
 export function startScheduler(): void {
+  if (!backgroundJobsEnabled()) return;
   // The bot's listener rides along: it has its own once per process guard.
   startTelegramPoller();
   // Price triggers keep their own timer and guard, so a server whose

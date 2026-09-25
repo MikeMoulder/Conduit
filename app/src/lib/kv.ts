@@ -224,6 +224,14 @@ export function kv(): Kv {
   const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
   const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
   if (url && token) return upstash(url, token);
+  // Vercel's disk is read only and not shared between requests, so a file
+  // store there would fail on the first write, or worse, seem to work and
+  // forget. Said plainly instead.
+  if (process.env.VERCEL) {
+    throw new Error(
+      "On Vercel the shared store must be Upstash: set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.",
+    );
+  }
   return file(process.env.KV_FILE ?? path.join(process.cwd(), ".data", "kv.json"));
 }
 
