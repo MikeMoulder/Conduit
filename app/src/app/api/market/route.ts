@@ -1,4 +1,5 @@
 import { getAssetBySymbol } from "@/lib/assets";
+import { plausibleLine } from "@/lib/day-stats";
 import { snapshotMarket } from "@/lib/market";
 import { dayLines } from "@/lib/sparklines";
 
@@ -28,19 +29,6 @@ export interface MarketCard {
   points: number[];
 }
 
-/**
- * Whether a line describes the same thing as the price above it.
- *
- * A pool can be priced the wrong way up or be too thin to mean anything, and
- * the first version of these cards showed SPY up 229,828% because of it. A
- * line whose last hour is more than 10% from the live price is not drawn.
- */
-function believable(line: number[], price: number | null): boolean {
-  if (line.length === 0) return false;
-  if (price === null) return true;
-  return Math.abs(line[line.length - 1] / price - 1) <= 0.1;
-}
-
 export async function GET(): Promise<Response> {
   const snapshot = await snapshotMarket(SYMBOLS);
   const mints = SYMBOLS.map((s) => getAssetBySymbol(s)?.mainnetMint).filter(
@@ -52,7 +40,7 @@ export async function GET(): Promise<Response> {
     const asset = getAssetBySymbol(symbol);
     const price = snapshot.find((s) => s.symbol === symbol)?.price ?? null;
     const raw = asset?.mainnetMint ? (lines[asset.mainnetMint] ?? []) : [];
-    const line = believable(raw, price) ? raw : [];
+    const line = plausibleLine(raw, price) ? raw : [];
     const points = price !== null && line.length > 0 ? [...line, price] : line;
     const changePct =
       price !== null && line.length > 1 ? (price / line[0] - 1) * 100 : null;
