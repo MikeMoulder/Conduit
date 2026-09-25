@@ -38,33 +38,48 @@ const SPACING_MS = 4_000;
 const COOLDOWN_MS = 60_000;
 const TIMEOUT_MS = 8_000;
 
+/**
+ * Bumped when the rule for choosing a pool changes, so pools picked by an
+ * older rule are chosen again rather than kept for a day. Version 2 requires
+ * the token to be the pool's base.
+ */
+const POOL_RULE = 2;
+
 interface Stored {
+  poolRule?: number;
   pools: Record<string, { address: string | null; at: number }>;
-  lines: Record<string, { points: number[]; at: number }>;
+  /** `pool` is which pool the line came from, so a new pool redraws it. */
+  lines: Record<string, { points: number[]; at: number; pool?: string }>;
 }
 
 const file = () =>
-  process.env.SPARKLINE_STATE_FILE ?? path.join(process.cwd(), ".data", "sparklines.json");
+  process.env.SPARKLINE_STATE_FILE ??
+  path.join(process.cwd(), ".data", "sparklines.json");
 
 function load(): Stored {
   try {
     const parsed = JSON.parse(readFileSync(file(), "utf8")) as Partial<Stored>;
-    return { pools: parsed.pools ?? {}, lines: parsed.lines ?? {} };
+    const current = parsed.poolRule === POOL_RULE;
+    return {
+      poolRule: POOL_RULE,
+      pools: current ? (parsed.pools ?? {}) : {},
+      lines: parsed.lines ?? {},
+    };
   } catch {
-    return { pools: {}, lines: {} };
+    return { poolRule: POOL_RULE, pools: {}, lines: {} };
   }
 }
 
 // Shared on the global object: in development the module can be evaluated
 // more than once, and two refreshers would double the calls.
 const shared = globalThis as typeof globalThis & {
-  __conduitSparklines?: Stored;
+  __conduitSparklinesV2?: Stored;
   __conduitSparklineRefresh?: Promise<void> | null;
   __conduitSparklineCooldownUntil?: number;
 };
 
 class RateLimited extends Error {}
-const state = () => (shared.__conduitSparklines ??= load());
+const state = () => (shared.__conduitSparklinesV2 ??= load());
 
 function save(): void {
   try {
@@ -82,19 +97,37 @@ async function getJson(url: string): Promise<unknown> {
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-  if (response.status === 429) throw new RateLimited("geckoterminal is rate limiting");
-  if (!response.ok) throw new Error(`geckoterminal responded http ${response.status}`);
+  if (response.status === 429)
+    throw new RateLimited("geckoterminal is rate limiting");
+  if (!response.ok)
+    throw new Error(`geckoterminal responded http ${response.status}`);
   return response.json();
 }
 
-/** The deepest pool for a mint: the one whose price means the most. */
+/**
+ * The deepest pool that prices this token as its base: the one whose price
+ * means the most, read the right way up.
+ *
+ * Base only, because the candles are priced as the base token. SPY's deepest
+ * pool is STONK/SPYx, with SPY on the quote side, and its line came out at
+ * 33 cents.
+ */
 async function refreshPool(mint: string): Promise<string | null> {
   const body = (await getJson(`${API}/tokens/${mint}/pools?page=1`)) as {
-    data?: { attributes?: { address?: string; reserve_in_usd?: string } }[];
+    data?: {
+      attributes?: { address?: string; reserve_in_usd?: string };
+      relationships?: { base_token?: { data?: { id?: string } } };
+    }[];
   };
   const deepest = (body.data ?? [])
-    .map((p) => ({ address: p.attributes?.address, reserve: Number(p.attributes?.reserve_in_usd ?? 0) }))
-    .filter((p): p is { address: string; reserve: number } => Boolean(p.address))
+    .filter((p) => p.relationships?.base_token?.data?.id === `solana_${mint}`)
+    .map((p) => ({
+      address: p.attributes?.address,
+      reserve: Number(p.attributes?.reserve_in_usd ?? 0),
+    }))
+    .filter((p): p is { address: string; reserve: number } =>
+      Boolean(p.address),
+    )
     .sort((a, b) => b.reserve - a.reserve)[0];
   const address = deepest?.address ?? null;
   state().pools[mint] = { address, at: Date.now() };
@@ -104,18 +137,18 @@ async function refreshPool(mint: string): Promise<string | null> {
 /** Hourly closes for the last 24 hours, oldest first. */
 async function refreshLine(mint: string, pool: string): Promise<void> {
   const body = (await getJson(
-    // Priced as this token whichever side of the pool it sits on. Asking for
-    // the base token drew SPY upside down, from a pool where it is the quote.
-    `${API}/pools/${pool}/ohlcv/hour?aggregate=1&limit=24&currency=usd&token=${mint}`,
+    `${API}/pools/${pool}/ohlcv/hour?aggregate=1&limit=24&currency=usd&token=base`,
   )) as { data?: { attributes?: { ohlcv_list?: number[][] } } };
 
   // Each row is [time, open, high, low, close, volume], newest first.
   const points = (body.data?.attributes?.ohlcv_list ?? [])
-    .filter((row) => Array.isArray(row) && Number.isFinite(row[4]) && row[4] > 0)
+    .filter(
+      (row) => Array.isArray(row) && Number.isFinite(row[4]) && row[4] > 0,
+    )
     .sort((a, b) => a[0] - b[0])
     .map((row) => row[4]);
 
-  if (points.length > 0) state().lines[mint] = { points, at: Date.now() };
+  if (points.length > 0) state().lines[mint] = { points, at: Date.now(), pool };
 }
 
 /**
@@ -140,7 +173,11 @@ async function refreshAll(mints: string[]): Promise<void> {
         pool = { address: await refreshPool(mint), at: Date.now() };
       }
       const line = state().lines[mint];
-      if (pool.address && (!line || now - line.at > LINE_TTL_MS)) {
+      const fresh =
+        line &&
+        now - line.at <= LINE_TTL_MS &&
+        (line.pool === undefined || line.pool === pool.address);
+      if (pool.address && !fresh) {
         await pace();
         await refreshLine(mint, pool.address);
       }
@@ -175,5 +212,7 @@ export function dayLines(mints: string[]): Record<string, number[]> {
     });
   }
 
-  return Object.fromEntries(mints.map((m) => [m, state().lines[m]?.points ?? []]));
+  return Object.fromEntries(
+    mints.map((m) => [m, state().lines[m]?.points ?? []]),
+  );
 }
