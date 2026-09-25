@@ -8,8 +8,7 @@ import { CLUSTER } from "../cluster";
 import type { PortfolioHoldings } from "../holdings";
 import { getConnection } from "../rpc";
 import { readAssetPrice } from "../settlement-prices";
-import { botToken, sendMessage } from "../telegram/bot";
-import { chatFor } from "../telegram/state";
+import { sendToOwner } from "../telegram/bot";
 import { executeWalletTrade } from "../wallet-trade";
 import { describeCondition, describeTrigger, isMet, type Trigger } from "./rules";
 import { activeTriggers, transition } from "./state";
@@ -37,10 +36,7 @@ function tokensMoved(before: PortfolioHoldings | undefined, after: PortfolioHold
 }
 
 async function tell(owner: string, lines: (string | null)[]): Promise<void> {
-  if (!botToken()) return;
-  const chatId = chatFor(owner);
-  if (chatId === null) return;
-  await sendMessage(chatId, lines.filter(Boolean).join("\n\n")).catch(() => false);
+  await sendToOwner(owner, lines.filter(Boolean).join("\n\n")).catch(() => "failed");
 }
 
 async function fire(trigger: Trigger, price: number): Promise<Trigger | null> {

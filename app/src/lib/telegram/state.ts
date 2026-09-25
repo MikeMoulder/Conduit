@@ -126,6 +126,11 @@ export function chatFor(owner: string): number | null {
   return read().links.find((l) => l.owner === owner)?.chatId ?? null;
 }
 
+/** The wallet a chat is linked to, or null. */
+export function ownerForChat(chatId: number): string | null {
+  return read().links.find((l) => l.chatId === chatId)?.owner ?? null;
+}
+
 export function unlinkOwner(owner: string): boolean {
   const stored = read();
   const had = stored.links.some((l) => l.owner === owner);

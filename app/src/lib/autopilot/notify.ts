@@ -2,8 +2,7 @@ import "server-only";
 
 import { explorerUrl } from "../chain";
 import { CLUSTER } from "../cluster";
-import { botToken, sendMessage } from "../telegram/bot";
-import { chatFor } from "../telegram/state";
+import { sendToOwner } from "../telegram/bot";
 import { describeScore } from "./scorecard";
 import type { AutopilotEntry, Decision } from "./state";
 
@@ -50,8 +49,5 @@ export function formatDecision(decision: Decision, entry: AutopilotEntry): strin
 }
 
 export async function notify(decision: Decision, entry: AutopilotEntry): Promise<void> {
-  if (!botToken()) return;
-  const chatId = chatFor(decision.owner);
-  if (chatId === null) return;
-  await sendMessage(chatId, formatDecision(decision, entry));
+  await sendToOwner(decision.owner, formatDecision(decision, entry)).catch(() => "failed");
 }

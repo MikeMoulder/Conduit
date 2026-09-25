@@ -11,12 +11,13 @@ import { buildProofMessage, verifyProof, PROOF_MAX_AGE_MS } from "../src/lib/wal
 import {
   CODE_TTL_MS,
   chatFor,
+  getOffset,
   issueCode,
   redeemCode,
   spendProof,
   unlinkChat,
 } from "../src/lib/telegram/state";
-import { handleText } from "../src/lib/telegram/bot";
+import { deliver, handleText, pollOnce, sendToOwner } from "../src/lib/telegram/bot";
 import { notify } from "../src/lib/autopilot/notify";
 import { AUTOPILOT_TOOLS } from "../src/lib/copilot/autopilot-tools";
 import type { AutopilotEntry, Decision } from "../src/lib/autopilot/state";
@@ -148,8 +149,109 @@ describe("what the bot says", () => {
     expect(unlinkChat(1001)).to.equal(null);
   });
 
-  it("stays quiet on anything else", () => {
-    expect(handleText("hello", 1001, null)).to.equal(null);
+  it("answers anything else with what the chat is for, instead of silence", () => {
+    expect(handleText("hello", 1001, null)).to.include("ask Conduit's chat to connect Telegram");
+    redeemCode(issueCode("Wa11etAddressAAAAAAAAAAAAAAAAAAAAAAAAAAzz1"), 1001, null);
+    const help = handleText("/help", 1001, null);
+    expect(help).to.include("linked to wallet Wa11..Azz1");
+    expect(help).to.include("/stop");
+  });
+});
+
+describe("sending reliably", () => {
+  const realFetch = globalThis.fetch;
+  let answers: object[];
+  let calls: number;
+
+  beforeEach(() => {
+    process.env.TELEGRAM_BOT_TOKEN = "test-token-not-real";
+    calls = 0;
+    globalThis.fetch = (async () => {
+      const body = answers[Math.min(calls, answers.length - 1)];
+      calls += 1;
+      return new Response(JSON.stringify(body), { status: 200 });
+    }) as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+  });
+
+  it("sends once when Telegram accepts", async () => {
+    answers = [{ ok: true, result: {} }];
+    expect(await deliver(1001, "hi")).to.equal("sent");
+    expect(calls).to.equal(1);
+  });
+
+  it("waits and retries once when rate limited", async () => {
+    answers = [{ ok: false, error_code: 429, parameters: { retry_after: 0 } }, { ok: true, result: {} }];
+    expect(await deliver(1001, "hi")).to.equal("sent");
+    expect(calls).to.equal(2);
+  });
+
+  it("gives up after one retry rather than looping", async () => {
+    answers = [{ ok: false, error_code: 429, parameters: { retry_after: 0 } }];
+    expect(await deliver(1001, "hi")).to.equal("failed");
+    expect(calls).to.equal(2);
+  });
+
+  it("does not retry a request Telegram calls malformed", async () => {
+    answers = [{ ok: false, error_code: 400 }];
+    expect(await deliver(1001, "hi")).to.equal("failed");
+    expect(calls).to.equal(1);
+  });
+
+  it("unlinks an owner who blocked the bot, so nothing more is sent into the void", async () => {
+    redeemCode(issueCode("wallet-a"), 1001, null);
+    answers = [{ ok: false, error_code: 403 }];
+    expect(await sendToOwner("wallet-a", "hi")).to.equal("blocked");
+    expect(chatFor("wallet-a")).to.equal(null);
+  });
+
+  it("reports an owner with no chat as not linked, without calling Telegram", async () => {
+    answers = [{ ok: true, result: {} }];
+    expect(await sendToOwner("wallet-nobody", "hi")).to.equal("not-linked");
+    expect(calls).to.equal(0);
+  });
+});
+
+describe("the listener", () => {
+  const realFetch = globalThis.fetch;
+  let sent: { chat_id: number; text: string }[];
+  let updates: unknown;
+
+  beforeEach(() => {
+    process.env.TELEGRAM_BOT_TOKEN = "test-token-not-real";
+    sent = [];
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/getUpdates")) {
+        return updates === "down"
+          ? Promise.reject(new Error("unreachable"))
+          : new Response(JSON.stringify({ ok: true, result: updates }), { status: 200 });
+      }
+      sent.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 });
+    }) as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+  });
+
+  it("answers what arrived and moves past it", async () => {
+    const code = issueCode("wallet-a");
+    updates = [{ update_id: 500, message: { text: `/start ${code}`, chat: { id: 1001 } } }];
+    expect(await pollOnce(0)).to.equal(true);
+    expect(chatFor("wallet-a")).to.equal(1001);
+    expect(sent[0].text).to.include("Linked to wallet");
+    expect(getOffset()).to.equal(501);
+  });
+
+  it("reports Telegram being unreachable instead of throwing", async () => {
+    updates = "down";
+    expect(await pollOnce(0)).to.equal(false);
   });
 });
 
