@@ -15,6 +15,7 @@ import { associatedTokenAddress, desk, type PortfolioHoldings } from "@/lib/hold
 import { walletAddress } from "@/lib/main-wallet";
 import { buildProofMessage } from "@/lib/wallet-proof";
 import { describeScore, type Score } from "@/lib/autopilot/scorecard";
+import { describeTrigger, targetPrice, type Trigger } from "@/lib/triggers/rules";
 import bs58 from "bs58";
 import { createMandateInstructions, setStatusInstruction } from "@/lib/mandate-tx";
 import {
@@ -132,6 +133,13 @@ function present(action: PendingAction): Presentation {
         signer: "agent",
         button: "Run it now",
         warning: false,
+      };
+    case "price-trigger":
+      return {
+        title: `Set a price trigger on ${action.symbol}`,
+        signer: "agent",
+        button: "Set the trigger",
+        warning: action.action.kind !== "notify",
       };
     case "link-telegram":
       return { title: "Connect Telegram", signer: "owner", button: "Sign and get the link", warning: false };
@@ -304,6 +312,28 @@ async function runServerAction(action: ServerAction): Promise<Card> {
           : "Nothing it already did is undone.",
         signature: null,
         lines: [],
+      });
+    }
+
+    case "price-trigger": {
+      const data = await postJson("/api/triggers", {
+        owner: action.owner,
+        symbol: action.symbol,
+        condition: action.condition,
+        action: action.action,
+        days: action.days,
+      });
+      if (!data.ok) return failure(data, "The trigger was not set");
+      const trigger = data.trigger as Trigger;
+      return resultCard({
+        ok: true,
+        headline: `Watching ${trigger.symbol}`,
+        detail: `${describeTrigger(trigger)} Checked every minute until ${new Date(trigger.expiresAt).toLocaleString()}. It fires once.`,
+        signature: null,
+        lines: [
+          { label: "price now", value: `$${trigger.basePrice.toFixed(2)}` },
+          { label: "fires at", value: `$${targetPrice(trigger.condition, trigger.basePrice).toFixed(2)}` },
+        ],
       });
     }
 

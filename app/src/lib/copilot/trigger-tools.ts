@@ -1,0 +1,215 @@
+import "server-only";
+
+import type { PublicKey } from "@solana/web3.js";
+import { z } from "zod";
+
+import { fetchWalletBalances, walletAddress } from "../main-wallet";
+import { getConnection } from "../rpc";
+import { botToken } from "../telegram/bot";
+import { chatFor } from "../telegram/state";
+import { checkTrigger } from "../triggers/prepare";
+import {
+  DEFAULT_TTL_DAYS,
+  MAX_TTL_DAYS,
+  describeTrigger,
+  targetPrice,
+  type Condition,
+  type TriggerAction,
+} from "../triggers/rules";
+import { cancelTrigger, listTriggers } from "../triggers/state";
+import { ToolError, type CopilotTool, type ToolContext } from "./tool-types";
+
+/**
+ * The copilot's tools for price triggers: "when NVDA rises 2.5%, message me
+ * and buy $500 of it".
+ *
+ * Setting one is a card the owner approves, like any order, because a trigger
+ * that trades is an order placed in advance. Cancelling is done straight
+ * away: it only ever stops something from happening.
+ */
+
+function requireOwner(ctx: ToolContext): PublicKey {
+  if (!ctx.owner) {
+    throw new ToolError("No wallet is connected, so there is nobody to set a trigger for. Ask the person to connect one.");
+  }
+  return ctx.owner;
+}
+
+const usd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * What the main wallet lacks, today, to place the trade a trigger would place.
+ * Null when it has enough, when the trigger only messages, or when the
+ * balance cannot be read.
+ */
+async function fundingShortfall(
+  owner: PublicKey,
+  symbol: string,
+  action: TriggerAction,
+  price: number,
+): Promise<string | null> {
+  if (action.kind === "notify") return null;
+  try {
+    const balances = await fetchWalletBalances(getConnection(), walletAddress(owner));
+    if (action.kind === "buy") {
+      const cash = balances.cash?.uiAmount ?? 0;
+      return cash >= action.dollars
+        ? null
+        : `your main wallet has ${usd(cash)} of cash now, less than the ${usd(action.dollars)} this would buy. Deposit before it fires, or the buy will fail.`;
+    }
+    const held = balances.assets.find((a) => a.symbol === symbol)?.uiAmount ?? 0;
+    return held * price >= action.dollars
+      ? null
+      : `your main wallet holds about ${usd(held * price)} of ${symbol} now, less than the ${usd(action.dollars)} this would sell. The sale will fail unless you hold more by then.`;
+  } catch {
+    return null;
+  }
+}
+
+const setTrigger: CopilotTool = {
+  label: "Preparing a price trigger",
+  declaration: {
+    name: "set_price_trigger",
+    description:
+      "Prepares a price trigger: watch one asset and, the first time a condition holds, message the person on Telegram and optionally buy or sell a dollar amount in their main wallet with no further approval. Conditions: rise or fall by a percentage from the current price, or reach a price from below (above) or above (below). Use it for 'tell me when', 'alert me if', 'buy when it drops to', 'sell if it rises'. It fires once, is checked every minute against the price trades fill at, and expires after 7 days unless they say otherwise. This does NOT execute: they approve a card.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        symbol: { type: "STRING", description: "The asset to watch, such as NVDA." },
+        condition: { type: "STRING", description: "rise, fall, above or below." },
+        value: {
+          type: "NUMBER",
+          description: "For rise or fall, the percentage, such as 2.5. For above or below, the price in dollars.",
+        },
+        action: { type: "STRING", description: "notify, buy or sell. Defaults to notify." },
+        dollars: { type: "NUMBER", description: "For buy or sell, the dollar amount to trade." },
+        days: { type: "NUMBER", description: `How long to watch, in days. Defaults to ${DEFAULT_TTL_DAYS}, at most ${MAX_TTL_DAYS}.` },
+      },
+      required: ["symbol", "condition", "value"],
+    },
+  },
+  async run(args, ctx) {
+    const parsed = z
+      .object({
+        symbol: z.string().min(1).max(16),
+        condition: z.enum(["rise", "fall", "above", "below"]),
+        value: z.number().positive(),
+        action: z.enum(["notify", "buy", "sell"]).optional(),
+        dollars: z.number().positive().optional(),
+        days: z.number().positive().max(MAX_TTL_DAYS).optional(),
+      })
+      .parse({
+        ...args,
+        condition: String(args.condition ?? "").toLowerCase(),
+        action: args.action === undefined ? undefined : String(args.action).toLowerCase(),
+      });
+    const owner = requireOwner(ctx);
+
+    const condition: Condition =
+      parsed.condition === "rise" || parsed.condition === "fall"
+        ? { kind: parsed.condition, percent: parsed.value }
+        : { kind: parsed.condition, price: parsed.value };
+    const kind = parsed.action ?? "notify";
+    if (kind !== "notify" && !parsed.dollars) {
+      throw new ToolError(`A trigger that will ${kind} needs a dollar amount. Ask how much.`);
+    }
+    const action: TriggerAction = kind === "notify" ? { kind } : { kind, dollars: parsed.dollars! };
+
+    const check = await checkTrigger({ owner, symbol: parsed.symbol.toUpperCase(), condition, action });
+    if (!check.ok) throw new ToolError(check.error);
+
+    // Not a refusal: they may deposit before it fires. But a buy that will
+    // fail for want of cash should be said now, not when it fails.
+    const shortfall = await fundingShortfall(owner, check.symbol, action, check.basePrice);
+
+    const days = parsed.days ?? DEFAULT_TTL_DAYS;
+    const telegram = Boolean(botToken()) && chatFor(owner.toBase58()) !== null;
+    const sentence = describeTrigger({ symbol: check.symbol, condition, basePrice: check.basePrice, action });
+
+    return {
+      result: {
+        prepared: true,
+        trigger: sentence,
+        currentPrice: check.basePrice,
+        targetPrice: Number(targetPrice(condition, check.basePrice).toFixed(2)),
+        watchesForDays: days,
+        telegramLinked: telegram,
+        ...(shortfall ? { warning: shortfall } : {}),
+      },
+      summary: `${check.symbol} trigger ready to approve`,
+      action: {
+        kind: "price-trigger",
+        owner: owner.toBase58(),
+        symbol: check.symbol,
+        condition,
+        action,
+        days,
+        basePrice: check.basePrice,
+        summary: `${sentence} ${check.symbol} is ${usd(check.basePrice)} now, measured from the moment you approve. Checked every minute for ${days} day${days === 1 ? "" : "s"}; it fires once.${
+          action.kind === "notify"
+            ? ""
+            : ` When it fires the agent places the ${action.kind} from your main wallet straight away, at the price at that moment, with no further approval.`
+        }${telegram ? " The message goes to your Telegram." : " Telegram is not linked, so the message will only be here in the chat unless you connect it."}${shortfall ? ` Note: ${shortfall}` : ""}`,
+      },
+    };
+  },
+};
+
+const getTriggers: CopilotTool = {
+  label: "Reading your price triggers",
+  declaration: {
+    name: "get_price_triggers",
+    description:
+      "Lists the person's price triggers: those still watching, and recent ones that fired, failed, expired or were cancelled, with what happened. Use it when they ask about their alerts or triggers, or whether one has fired.",
+    parameters: { type: "OBJECT", properties: {} },
+  },
+  async run(_args, ctx) {
+    const owner = requireOwner(ctx).toBase58();
+    const triggers = listTriggers(owner).slice(0, 12);
+    return {
+      result: {
+        triggers: triggers.map((t) => ({
+          id: t.id,
+          status: t.status,
+          trigger: describeTrigger(t),
+          setAt: new Date(t.createdAt).toISOString(),
+          ...(t.status === "active" ? { expires: new Date(t.expiresAt).toISOString() } : {}),
+          ...(t.result ? { outcome: t.result } : {}),
+        })),
+      },
+      summary: `${triggers.filter((t) => t.status === "active").length} watching, ${triggers.length} in all`,
+      card: { kind: "triggers", triggers },
+    };
+  },
+};
+
+const cancel: CopilotTool = {
+  label: "Cancelling the trigger",
+  declaration: {
+    name: "cancel_price_trigger",
+    description:
+      "Cancels one of the person's active price triggers by id, straight away. Get the id from get_price_triggers. Cancelling only stops something from happening, so it needs no approval card.",
+    parameters: {
+      type: "OBJECT",
+      properties: { id: { type: "STRING", description: "The trigger id." } },
+      required: ["id"],
+    },
+  },
+  async run(args, ctx) {
+    const owner = requireOwner(ctx).toBase58();
+    const id = String(args.id ?? "");
+    const done = cancelTrigger(owner, id);
+    if (!done) throw new ToolError("There is no active trigger with that id. It may have fired, expired or been cancelled already.");
+    return {
+      result: { cancelled: true, trigger: describeTrigger(done) },
+      summary: "trigger cancelled",
+      card: { kind: "triggers", triggers: listTriggers(owner).slice(0, 12) },
+    };
+  },
+};
+
+export const TRIGGER_TOOLS: Record<string, CopilotTool> = {
+  set_price_trigger: setTrigger,
+  get_price_triggers: getTriggers,
+  cancel_price_trigger: cancel,
+};

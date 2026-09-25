@@ -9,6 +9,7 @@ import { DEFAULT_BRAKE_BPS } from "@/lib/autopilot/brakes";
 import type { Score } from "@/lib/autopilot/scorecard";
 import type { Card, StockBrief } from "@/lib/copilot/events";
 import { describeRange } from "@/lib/day-stats";
+import { describeTrigger, type Trigger } from "@/lib/triggers/rules";
 import { Sparkline } from "./market-cards";
 import type { AssetHolding, PortfolioHoldings } from "@/lib/holdings";
 
@@ -48,6 +49,8 @@ export function CardView({ card }: { card: Card }) {
       return <AutopilotCardView card={card} />;
     case "stock-brief":
       return <StockBriefView brief={card.brief} />;
+    case "triggers":
+      return <TriggersCardView triggers={card.triggers} />;
   }
 }
 
@@ -1244,6 +1247,57 @@ function StockBriefView({ brief }: { brief: StockBrief }) {
           </ul>
         )}
       </div>
+    </Shell>
+  );
+}
+
+const TRIGGER_STYLE: Record<Trigger["status"], string> = {
+  active: "bg-emerald-500/15 text-emerald-300",
+  firing: "bg-emerald-500/15 text-emerald-300",
+  fired: "bg-sky-500/15 text-sky-300",
+  failed: "bg-red-500/15 text-red-300",
+  cancelled: "bg-zinc-800 text-zinc-400",
+  expired: "bg-zinc-800 text-zinc-400",
+};
+
+/**
+ * Price triggers, watching and finished.
+ *
+ * A finished one keeps what happened and links the trade, so "did my alert
+ * fire" is answered by the card without taking the copilot's word for it.
+ */
+function TriggersCardView({ triggers }: { triggers: Trigger[] }) {
+  const watching = triggers.filter((t) => t.status === "active").length;
+  return (
+    <Shell title="Price triggers" aside={<span className="text-[11px] text-zinc-500">{watching} watching</span>}>
+      {triggers.length === 0 ? (
+        <p className="px-4 py-3 text-sm text-zinc-500">No triggers yet. Try: alert me when NVDA rises 2.5%.</p>
+      ) : (
+        triggers.map((t, i) => (
+          <div key={t.id} className={`px-4 py-2.5 ${i === triggers.length - 1 ? "" : "border-b border-zinc-900"}`}>
+            <div className="flex items-center justify-between gap-3">
+              <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${TRIGGER_STYLE[t.status]}`}>
+                {t.status === "active" ? "watching" : t.status}
+              </span>
+              <span className="font-mono text-[11px] text-zinc-600">
+                {t.id} · {t.status === "active" ? `until ${new Date(t.expiresAt).toLocaleDateString()}` : ago(t.firedAt ?? t.createdAt)}
+              </span>
+            </div>
+            <p className="mt-1.5 text-sm leading-relaxed text-zinc-300">{describeTrigger(t)}</p>
+            {t.result && t.status !== "active" ? <p className="mt-1 text-xs leading-relaxed text-zinc-500">{t.result}</p> : null}
+            {t.signature ? (
+              <a
+                href={explorerUrl(t.signature, "tx", CLUSTER)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-block font-mono text-[11px] text-emerald-400 underline underline-offset-4"
+              >
+                {t.signature.slice(0, 8)}..{t.signature.slice(-8)}
+              </a>
+            ) : null}
+          </div>
+        ))
+      )}
     </Shell>
   );
 }

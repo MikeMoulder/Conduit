@@ -4,6 +4,7 @@ import type { ProposalEvaluation } from "../proposal";
 import type { Score } from "../autopilot/scorecard";
 import type { DayStats } from "../day-stats";
 import type { Headline } from "../news";
+import type { Condition, Trigger, TriggerAction } from "../triggers/rules";
 import type { AutopilotEntry, Decision } from "../autopilot/state";
 import type { PortfolioHoldings } from "../holdings";
 
@@ -51,6 +52,7 @@ export interface StockBrief {
 }
 
 export type Card =
+  | { kind: "triggers"; triggers: Trigger[] }
   | { kind: "stock-brief"; brief: StockBrief }
   | { kind: "universe"; assets: UniverseRow[] }
   | { kind: "prices"; rows: PriceRow[] }
@@ -312,6 +314,18 @@ export type PendingAction =
       summary: string;
     }
   | {
+      kind: "price-trigger";
+      /** Recorded on the server once approved; the agent signs only if it fires. */
+      owner: string;
+      symbol: string;
+      condition: Condition;
+      action: TriggerAction;
+      days: number;
+      /** The price when prepared, for the card. Re-read at approval. */
+      basePrice: number;
+      summary: string;
+    }
+  | {
       kind: "autopilot-run";
       /** One cycle now, signed by the agent inside the mandate. */
       owner: string;
@@ -355,6 +369,8 @@ export function actionTitle(action: PendingAction): string {
         : `Stop the autopilot on ${action.mandateLabel}`;
     case "autopilot-run":
       return `Run one autopilot cycle on ${action.mandateLabel}`;
+    case "price-trigger":
+      return `Set a price trigger on ${action.symbol}`;
     case "link-telegram":
       return "Connect Telegram";
     case "unlink-telegram":

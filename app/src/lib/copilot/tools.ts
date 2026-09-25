@@ -42,6 +42,7 @@ import type { Source, UniverseRow, WeightRow } from "./events";
 import { WALLET_TOOLS } from "./wallet-tools";
 import { AUTOPILOT_TOOLS } from "./autopilot-tools";
 import { MARKET_TOOLS } from "./market-tools";
+import { TRIGGER_TOOLS } from "./trigger-tools";
 import {
   ToolError,
   type CopilotTool,
@@ -905,6 +906,7 @@ export const TOOLS: Record<string, CopilotTool> = {
   ...WALLET_TOOLS,
   ...AUTOPILOT_TOOLS,
   ...MARKET_TOOLS,
+  ...TRIGGER_TOOLS,
   list_universe: listUniverse,
   get_prices: getPrices,
   get_mandate: getMandate,
