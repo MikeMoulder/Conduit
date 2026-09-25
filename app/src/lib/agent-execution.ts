@@ -76,7 +76,8 @@ const rebalanceSchema = z.object({
         targetBps: z.number().int().min(0).max(10_000),
       }),
     )
-    .min(1)
+    // An empty list is all cash, which the program accepts and no mandate can
+    // forbid. Refusing it here meant the safety brake could never sell.
     .max(8),
 });
 
