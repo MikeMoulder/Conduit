@@ -1,6 +1,7 @@
 import type { MandateView, PortfolioView } from "../accounts";
 import type { ActivityRecord } from "../events";
 import type { ProposalEvaluation } from "../proposal";
+import type { Score } from "../autopilot/scorecard";
 import type { AutopilotEntry, Decision } from "../autopilot/state";
 import type { PortfolioHoldings } from "../holdings";
 
@@ -54,7 +55,13 @@ export type Card =
   | { kind: "settlement"; settlement: SettlementCard }
   | { kind: "wallet"; wallet: WalletCard }
   | { kind: "wallet-result"; result: WalletResultCard }
-  | { kind: "autopilot"; entries: AutopilotEntry[]; decisions: Decision[] };
+  | {
+      kind: "autopilot";
+      entries: AutopilotEntry[];
+      decisions: Decision[];
+      /** Each mandate against SPY as of when the card was made. */
+      scores?: { mandateId: number; score: Score }[];
+    };
 
 export interface UniverseRow {
   symbol: string;

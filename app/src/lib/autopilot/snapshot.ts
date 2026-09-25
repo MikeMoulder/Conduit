@@ -1,11 +1,13 @@
 import "server-only";
 
-import type { Connection } from "@solana/web3.js";
+import { PublicKey, type Connection } from "@solana/web3.js";
 
-import type { MandateView } from "../accounts";
-import { desk, type PortfolioHoldings } from "../holdings";
+import { fetchMandate, type MandateView } from "../accounts";
+import { portfolioPda } from "../chain";
+import { desk, fetchHoldings, type PortfolioHoldings } from "../holdings";
 import { readAssetPrice, readSettlementPrices } from "../settlement-prices";
-import type { Snapshot } from "./scorecard";
+import { advanceScore, summarise, type Score, type Snapshot } from "./scorecard";
+import { getScore } from "./state";
 
 /**
  * Reads a mandate's book for the scorecard.
@@ -54,4 +56,24 @@ export async function takeSnapshot(
   for (const [mint, price] of read.prices) prices[mint] = price.price;
 
   return snapshotFrom(holdings, prices, spy.price.price, at);
+}
+
+/**
+ * A mandate's score as of now, for "how am I doing" between cycles.
+ *
+ * Read only: the saved score is advanced in memory and not written back. The
+ * next cycle advances from the saved one and, with no money moved in between,
+ * arrives at the same number, because the periods multiply.
+ */
+export async function scoreNow(connection: Connection, mandateAddress: string): Promise<Score | null> {
+  const saved = getScore(mandateAddress);
+  if (!saved) return null;
+
+  const key = new PublicKey(mandateAddress);
+  const mandate = await fetchMandate(connection, key);
+  if (!mandate) return summarise(saved);
+
+  const holdings = await fetchHoldings(connection, portfolioPda(key), mandate);
+  const reading = await takeSnapshot(connection, mandate, holdings);
+  return summarise(reading ? advanceScore(saved, reading).state : saved);
 }

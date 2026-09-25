@@ -14,6 +14,7 @@ import { confirmSignature } from "@/lib/confirm";
 import { associatedTokenAddress, desk, type PortfolioHoldings } from "@/lib/holdings";
 import { walletAddress } from "@/lib/main-wallet";
 import { buildProofMessage } from "@/lib/wallet-proof";
+import { describeScore, type Score } from "@/lib/autopilot/scorecard";
 import bs58 from "bs58";
 import { createMandateInstructions, setStatusInstruction } from "@/lib/mandate-tx";
 import {
@@ -318,6 +319,7 @@ async function runServerAction(action: ServerAction): Promise<Card> {
             positions: { symbol: string; targetBps: number }[];
             signatures: string[];
             preIpo?: string[];
+            score?: Score;
           }
         | undefined;
       if (!decision) return failure(data, "The cycle did not run");
@@ -330,9 +332,13 @@ async function runServerAction(action: ServerAction): Promise<Card> {
       return resultCard({
         ok: decision.outcome !== "failed",
         headline,
-        detail: decision.preIpo?.length
-          ? `${decision.summary}\n\nPre-IPO: ${decision.preIpo.join(" ")}`
-          : decision.summary,
+        detail: [
+          decision.summary,
+          decision.preIpo?.length ? `Pre-IPO: ${decision.preIpo.join(" ")}` : null,
+          decision.score ? `Scorecard: ${describeScore(decision.score)}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
         signature: decision.signatures[decision.signatures.length - 1] ?? null,
         lines: decision.positions.map((p) => ({
           label: p.symbol,

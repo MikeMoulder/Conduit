@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CLUSTER } from "@/lib/cluster";
 import { bpsToPercent, explorerUrl } from "@/lib/chain";
 import { getAssetByMint, getAssetBySymbol } from "@/lib/assets";
+import type { Score } from "@/lib/autopilot/scorecard";
 import type { Card } from "@/lib/copilot/events";
 import type { AssetHolding, PortfolioHoldings } from "@/lib/holdings";
 
@@ -960,6 +961,41 @@ function ago(at: number): string {
   return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
 }
 
+function pct(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  return `${rounded > 0 ? "+" : ""}${rounded.toFixed(2)}%`;
+}
+
+/**
+ * One mandate against simply holding SPY.
+ *
+ * The question an owner actually has about an agent running their money, so
+ * it sits above the log rather than inside it. Deposits and withdrawals are
+ * already kept out of both returns, so the two numbers compare directly.
+ */
+function ScoreRow({ mandateId, score }: { mandateId: number; score: Score }) {
+  const lead = Math.round(score.aheadPts * 100) / 100;
+  const tone = lead > 0 ? "text-emerald-300" : lead < 0 ? "text-red-300" : "text-zinc-300";
+  return (
+    <div className="border-b border-zinc-900 px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-xs text-zinc-500">mandate {mandateId} against SPY</span>
+        <span className={`font-mono text-xs ${tone}`}>
+          {lead === 0 ? "level" : `${lead > 0 ? "ahead" : "behind"} ${Math.abs(lead).toFixed(2)} pts`}
+        </span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-5 gap-y-1">
+        <span className="font-mono text-lg text-zinc-100">{pct(score.returnPct)}</span>
+        <span className="font-mono text-sm text-zinc-500">SPY {pct(score.spyReturnPct)}</span>
+        <span className="text-xs text-zinc-500">
+          worth ${score.value.toLocaleString("en-US", { maximumFractionDigits: 2 })}, same money in SPY $
+          {score.spyValue.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * What the agent did while nobody was approving.
  *
@@ -982,6 +1018,9 @@ function AutopilotCardView({ card }: { card: Extract<Card, { kind: "autopilot" }
         </span>
       }
     >
+      {card.scores?.map(({ mandateId, score }) => (
+        <ScoreRow key={mandateId} mandateId={mandateId} score={score} />
+      ))}
       {card.decisions.length === 0 ? (
         <p className="px-4 py-3 text-sm text-zinc-500">
           No decisions yet. The first cycle runs within a minute of switching it on.

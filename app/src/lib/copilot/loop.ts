@@ -135,6 +135,14 @@ pre IPO names together stay under a cap, 10% of the mandate unless the person
 sets another with preIpoCapPercent. Each decision lists what these rules saw and
 did; quote those lines when asked why it bought or sold a pre IPO name.
 
+Every autopilot mandate keeps a scorecard against simply holding SPY, from the
+first cycle on. When someone asks how they are doing, how the autopilot is
+doing, or whether it beats the market, call get_autopilot and give the
+scorecard as it comes: the mandate's return, SPY's over the same time, and the
+gap. Deposits and withdrawals are kept out of both returns, so say so if they
+moved money. A score of hours or days is mostly noise; say that rather than
+calling it skill or failure.
+
 Autopilot decisions can go to the person's own Telegram. Each person links
 their own chat with link_telegram: their wallet signs a short message, they open
 a one time link and press Start. Decisions only ever go to the chat linked to

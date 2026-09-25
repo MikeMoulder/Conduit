@@ -6,6 +6,8 @@ import { z } from "zod";
 import { fetchMandate } from "../accounts";
 import { getAgentIdentity } from "../agent-identity";
 import { DEFAULT_PRE_IPO_CAP_BPS } from "../autopilot/pre-ipo";
+import { describeScore, type Score } from "../autopilot/scorecard";
+import { scoreNow } from "../autopilot/snapshot";
 import { listDecisions, listEntries } from "../autopilot/state";
 import { bpsToPercent, mandatePda, portfolioPda } from "../chain";
 import { fetchHoldings } from "../holdings";
@@ -136,18 +138,33 @@ const getAutopilot: CopilotTool = {
   declaration: {
     name: "get_autopilot",
     description:
-      "Reports which of the person's mandates run on autopilot, how often, and the most recent decisions it made on its own, with what it did and why. Use it whenever they ask what the agent has been doing.",
+      "Reports which of the person's mandates run on autopilot, how often, the most recent decisions it made on its own with what it did and why, and each mandate's scorecard: its return since the autopilot started against simply holding SPY, as of right now. Deposits and withdrawals are kept out of the return. Use it whenever they ask what the agent has been doing, or how they are doing.",
     parameters: { type: "OBJECT", properties: {} },
   },
   async run(_args, ctx) {
     const owner = requireOwner(ctx).toBase58();
     const entries = listEntries(owner);
     const decisions = listDecisions({ owner }, 8);
+    const connection = getConnection();
+    const scores = (
+      await Promise.all(
+        entries.map(async (e) => {
+          const score = await scoreNow(connection, e.mandate).catch(() => null);
+          return score ? { mandateId: e.mandateId, score } : null;
+        }),
+      )
+    ).filter((s): s is { mandateId: number; score: Score } => s !== null);
 
     return {
       result: {
         telegramLinked: chatFor(owner) !== null,
         running: entries.filter((e) => e.enabled).map((e) => ({ mandateId: e.mandateId, everyMinutes: e.everyMinutes, preIpoCap: bpsToPercent(e.preIpoCapBps ?? DEFAULT_PRE_IPO_CAP_BPS) })),
+        scorecards: scores.map((s) => ({
+          mandateId: s.mandateId,
+          scorecard: describeScore(s.score),
+          returnPercent: Number(s.score.returnPct.toFixed(2)),
+          spyReturnPercent: Number(s.score.spyReturnPct.toFixed(2)),
+        })),
         recent: decisions.slice(0, 5).map((d) => ({
           at: new Date(d.at).toISOString(),
           outcome: d.outcome,
@@ -159,7 +176,7 @@ const getAutopilot: CopilotTool = {
         entries.length === 0
           ? "no autopilot yet"
           : `${entries.filter((e) => e.enabled).length} running, ${decisions.length} recent decisions`,
-      card: { kind: "autopilot", entries, decisions },
+      card: { kind: "autopilot", entries, decisions, scores },
     };
   },
 };
