@@ -13,7 +13,7 @@ import { listDecisions, listEntries } from "../autopilot/state";
 import { bpsToPercent, mandatePda, portfolioPda } from "../chain";
 import { fetchHoldings } from "../holdings";
 import { getConnection } from "../rpc";
-import { botToken } from "../telegram/bot";
+import { botToken, sendToOwner } from "../telegram/bot";
 import { chatFor } from "../telegram/state";
 import { ToolError, type CopilotTool, type ToolContext } from "./tool-types";
 
@@ -294,7 +294,37 @@ const unlinkTelegram: CopilotTool = {
   },
 };
 
+const testTelegram: CopilotTool = {
+  label: "Sending a test to Telegram",
+  declaration: {
+    name: "test_telegram",
+    description:
+      "Sends a test message to the person's own linked Telegram chat, straight away, so they can see that alerts arrive. Use it when they ask to test Telegram, check it works, or send them a test. It only ever writes to the chat linked to their own wallet.",
+    parameters: { type: "OBJECT", properties: {} },
+  },
+  async run(_args, ctx) {
+    const owner = requireOwner(ctx).toBase58();
+    const outcome = await sendToOwner(
+      owner,
+      `Conduit test message. Telegram is linked to wallet ${owner.slice(0, 4)}..${owner.slice(-4)}, and your price alerts and autopilot decisions will arrive here.`,
+    );
+    const said: Record<typeof outcome, string> = {
+      sent: "Delivered. It should be in their Telegram now.",
+      "not-linked": botToken()
+        ? "No Telegram chat is linked to this wallet. Offer link_telegram."
+        : "Telegram is not set up on this server: the operator needs to add a bot token.",
+      blocked: "Telegram refused it because they blocked the bot, so the link was removed. Offer link_telegram after they unblock it.",
+      failed: "Telegram did not accept it even after a retry. It may be down; try again shortly.",
+    };
+    return {
+      result: { outcome, meaning: said[outcome] },
+      summary: outcome === "sent" ? "test delivered" : `test ${outcome}`,
+    };
+  },
+};
+
 export const AUTOPILOT_TOOLS: Record<string, CopilotTool> = {
+  test_telegram: testTelegram,
   link_telegram: linkTelegram,
   unlink_telegram: unlinkTelegram,
   set_autopilot: setAutopilot,

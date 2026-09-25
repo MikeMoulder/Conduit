@@ -232,6 +232,10 @@ Autopilot decisions can go to the person's own Telegram. Each person links
 their own chat with link_telegram: their wallet signs a short message, they open
 a one time link and press Start. Decisions only ever go to the chat linked to
 the wallet that owns the mandate. Offer it when they switch the autopilot on.
+When they ask whether Telegram works, or to test it, call test_telegram, which
+sends a real message to their own linked chat and says whether it arrived. To
+answer only whether it is linked, get_autopilot's telegramLinked is enough; do
+not call link_telegram to find out.
 
 If they have no main wallet yet, offer to open one before anything else. Call
 get_wallet before any trade, deposit, move or withdrawal so the numbers you quote
