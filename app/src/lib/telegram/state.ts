@@ -1,8 +1,10 @@
 import "server-only";
 
 import { randomBytes } from "crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { readFileSync } from "fs";
 import path from "path";
+
+import { writeJsonAtomic } from "../atomic-write";
 
 /**
  * Which Telegram chat belongs to which wallet.
@@ -61,8 +63,6 @@ function read(): Stored {
 }
 
 function write(stored: Stored): void {
-  const file = stateFile();
-  mkdirSync(path.dirname(file), { recursive: true });
   const now = Date.now();
   // Expired codes and proofs are dropped on every write, so neither grows.
   const pruned: Stored = {
@@ -70,9 +70,7 @@ function write(stored: Stored): void {
     codes: stored.codes.filter((c) => c.expiresAt > now),
     usedProofs: stored.usedProofs.filter((p) => p.expiresAt > now),
   };
-  const temp = `${file}.tmp`;
-  writeFileSync(temp, JSON.stringify(pruned, null, 2));
-  renameSync(temp, file);
+  writeJsonAtomic(stateFile(), pruned);
 }
 
 /**

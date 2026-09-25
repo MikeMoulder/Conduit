@@ -1,7 +1,9 @@
 import "server-only";
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { readFileSync } from "fs";
 import path from "path";
+
+import { writeJsonAtomic } from "../atomic-write";
 
 /**
  * What the autopilot remembers: which mandates it runs, and what it decided.
@@ -69,11 +71,7 @@ function read(): Stored {
 }
 
 function write(stored: Stored): void {
-  const file = stateFile();
-  mkdirSync(path.dirname(file), { recursive: true });
-  const temp = `${file}.tmp`;
-  writeFileSync(temp, JSON.stringify(stored, null, 2));
-  renameSync(temp, file);
+  writeJsonAtomic(stateFile(), stored);
 }
 
 export function listEntries(owner?: string): AutopilotEntry[] {
