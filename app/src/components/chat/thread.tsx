@@ -143,7 +143,7 @@ function AssistantTurn({
         <p className="font-mono text-[10px] text-zinc-700">
           {turn.meta.toolCalls} tool
           {turn.meta.toolCalls === 1 ? "" : "s"} ·{" "}
-          {(turn.meta.totalMs / 1000).toFixed(1)}s · {turn.meta.model}
+          {(turn.meta.totalMs / 1000).toFixed(1)}s
         </p>
       ) : null}
 
