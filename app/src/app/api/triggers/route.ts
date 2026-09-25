@@ -46,7 +46,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!check.ok) return Response.json({ error: check.error }, { status: 409 });
 
   const now = Date.now();
-  const trigger = addTrigger({
+  const trigger = await addTrigger({
     owner: owner.toBase58(),
     symbol: check.symbol,
     condition: parsed.data.condition,
@@ -61,5 +61,5 @@ export async function POST(request: Request): Promise<Response> {
 export async function GET(request: Request): Promise<Response> {
   const owner = new URL(request.url).searchParams.get("owner");
   if (!owner || !parseAddress(owner)) return Response.json({ error: "owner is required" }, { status: 400 });
-  return Response.json({ triggers: listTriggers(owner) });
+  return Response.json({ triggers: await listTriggers(owner) });
 }

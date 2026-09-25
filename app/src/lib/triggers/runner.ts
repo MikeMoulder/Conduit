@@ -40,13 +40,13 @@ async function tell(owner: string, lines: (string | null)[]): Promise<void> {
 }
 
 async function fire(trigger: Trigger, price: number): Promise<Trigger | null> {
-  const claimed = transition(trigger.id, "active", "firing", { firedAt: Date.now(), firedPrice: price });
+  const claimed = await transition(trigger.id, "active", "firing", { firedAt: Date.now(), firedPrice: price });
   if (!claimed) return null;
 
   const moved = `${trigger.symbol} ${describeCondition(trigger.condition, trigger.basePrice).replace(/ \(to .*\)$/, "")}: now ${usd(price)}, set at ${usd(trigger.basePrice)}.`;
 
   if (trigger.action.kind === "notify") {
-    const done = transition(trigger.id, "firing", "fired", { result: moved, signature: null });
+    const done = await transition(trigger.id, "firing", "fired", { result: moved, signature: null });
     await tell(trigger.owner, ["Conduit price alert", moved]);
     return done;
   }
@@ -77,7 +77,7 @@ async function fire(trigger: Trigger, price: number): Promise<Trigger | null> {
     result = `Tried to ${kind} ${usd(dollars)} of ${trigger.symbol}, but it stopped: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}. Nothing was traded.`;
   }
 
-  const done = transition(trigger.id, "firing", ok ? "fired" : "failed", { result: `${moved} ${result}`, signature });
+  const done = await transition(trigger.id, "firing", ok ? "fired" : "failed", { result: `${moved} ${result}`, signature });
   await tell(trigger.owner, [
     ok ? "Conduit price trigger fired" : "Conduit price trigger: the trade failed",
     moved,
@@ -98,10 +98,10 @@ export async function checkTriggers(now = Date.now()): Promise<Trigger[]> {
 
   const finished: Trigger[] = [];
   try {
-    const active = activeTriggers();
+    const active = await activeTriggers();
 
     for (const t of active.filter((t) => t.expiresAt <= now)) {
-      const done = transition(t.id, "active", "expired", { result: "Expired without the condition being met." });
+      const done = await transition(t.id, "active", "expired", { result: "Expired without the condition being met." });
       if (done) {
         finished.push(done);
         await tell(t.owner, ["Conduit price trigger expired", describeTrigger(t), "The condition was never met, so nothing happened."]);

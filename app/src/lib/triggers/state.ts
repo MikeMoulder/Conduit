@@ -1,56 +1,50 @@
 import "server-only";
 
 import { randomUUID } from "crypto";
-import { readFileSync } from "fs";
-import path from "path";
 
-import { writeJsonAtomic } from "../atomic-write";
+import { hgetJson, hsetJson, hvaluesJson, kv, withLock } from "../kv";
 import type { Trigger, TriggerStatus } from "./rules";
 
 /**
  * Where price triggers are kept.
  *
- * A file on the server, like the autopilot's state, and for the same reason:
+ * In the shared store, like the autopilot's state, and for the same reason:
  * nothing here is authority. A trigger that fires places a main wallet trade
  * the owner could have placed from the chat, checked by the program like any
- * other, so the file only remembers what the owner asked to be watched.
+ * other, so the store only remembers what the owner asked to be watched.
+ *
+ * Shared because the site sets and cancels triggers while the worker fires
+ * them. One record per trigger in `tr:all`, and every change of status is
+ * made under that trigger's lock, so a cancel from the site and a fire from
+ * the worker at the same moment cannot both succeed.
  */
-
-const file = () => process.env.TRIGGER_STATE_FILE ?? path.join(process.cwd(), ".data", "triggers.json");
 
 /** Finished triggers kept for the record, not an archive. */
 const MAX_FINISHED = 200;
 
-function read(): Trigger[] {
-  try {
-    const parsed = JSON.parse(readFileSync(file(), "utf8")) as { triggers?: Trigger[] };
-    return Array.isArray(parsed.triggers) ? parsed.triggers : [];
-  } catch {
-    return [];
-  }
-}
+const finished = (t: Trigger) => t.status !== "active" && t.status !== "firing";
 
-function write(triggers: Trigger[]): void {
-  const live = triggers.filter((t) => t.status === "active" || t.status === "firing");
-  const done = triggers.filter((t) => t.status !== "active" && t.status !== "firing").slice(0, MAX_FINISHED);
-  writeJsonAtomic(file(), { triggers: [...live, ...done] });
-}
-
-export function addTrigger(trigger: Omit<Trigger, "id" | "status">): Trigger {
+export async function addTrigger(trigger: Omit<Trigger, "id" | "status">): Promise<Trigger> {
   const created: Trigger = { ...trigger, id: randomUUID().slice(0, 8), status: "active" };
-  write([created, ...read()]);
+  await hsetJson("tr:all", created.id, created);
+
+  // Old finished triggers are dropped as new ones arrive, so the record stays
+  // small without a separate clean up job.
+  const all = await hvaluesJson<Trigger>("tr:all");
+  const done = all.filter(finished).sort((a, b) => b.createdAt - a.createdAt);
+  for (const old of done.slice(MAX_FINISHED)) await kv().hdel("tr:all", old.id);
   return created;
 }
 
 /** Newest first. */
-export function listTriggers(owner: string): Trigger[] {
-  return read()
+export async function listTriggers(owner: string): Promise<Trigger[]> {
+  return (await hvaluesJson<Trigger>("tr:all"))
     .filter((t) => t.owner === owner)
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export function activeTriggers(): Trigger[] {
-  return read().filter((t) => t.status === "active");
+export async function activeTriggers(): Promise<Trigger[]> {
+  return (await hvaluesJson<Trigger>("tr:all")).filter((t) => t.status === "active");
 }
 
 /**
@@ -58,26 +52,37 @@ export function activeTriggers(): Trigger[] {
  * expected one.
  *
  * The compare is what makes firing once safe: the runner claims a trigger by
- * moving it from active to firing before it trades, and a second pass that
- * finds it already moved leaves it alone.
+ * moving it from active to firing before it trades, and a second pass, or a
+ * cancel from the site, that finds it already moved leaves it alone. Made
+ * under the trigger's lock, retried briefly while someone else holds it.
  */
-export function transition(
+export async function transition(
   id: string,
   from: TriggerStatus,
   to: TriggerStatus,
   patch: Partial<Trigger> = {},
-): Trigger | null {
-  const all = read();
-  const index = all.findIndex((t) => t.id === id);
-  if (index === -1 || all[index].status !== from) return null;
-  all[index] = { ...all[index], ...patch, status: to };
-  write(all);
-  return all[index];
+): Promise<Trigger | null> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const outcome = await withLock(
+      `tr:${id}`,
+      async () => {
+        const current = await hgetJson<Trigger>("tr:all", id);
+        if (!current || current.status !== from) return { moved: null };
+        const next: Trigger = { ...current, ...patch, status: to };
+        await hsetJson("tr:all", id, next);
+        return { moved: next };
+      },
+      10,
+    );
+    if (outcome) return outcome.moved;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return null;
 }
 
 /** Cancels one of the owner's active triggers. Null if there is no such trigger. */
-export function cancelTrigger(owner: string, id: string): Trigger | null {
-  const found = read().find((t) => t.id === id && t.owner === owner);
-  if (!found) return null;
+export async function cancelTrigger(owner: string, id: string): Promise<Trigger | null> {
+  const found = await hgetJson<Trigger>("tr:all", id);
+  if (!found || found.owner !== owner) return null;
   return transition(id, "active", "cancelled");
 }

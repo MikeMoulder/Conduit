@@ -190,7 +190,7 @@ const getTriggers: CopilotTool = {
   },
   async run(_args, ctx) {
     const owner = requireOwner(ctx).toBase58();
-    const triggers = listTriggers(owner).slice(0, 12);
+    const triggers = (await listTriggers(owner)).slice(0, 12);
     return {
       result: {
         triggers: triggers.map((t) => ({
@@ -223,12 +223,12 @@ const cancel: CopilotTool = {
   async run(args, ctx) {
     const owner = requireOwner(ctx).toBase58();
     const id = String(args.id ?? "");
-    const done = cancelTrigger(owner, id);
+    const done = await cancelTrigger(owner, id);
     if (!done) throw new ToolError("There is no active trigger with that id. It may have fired, expired or been cancelled already.");
     return {
       result: { cancelled: true, trigger: describeTrigger(done) },
       summary: "trigger cancelled",
-      card: { kind: "triggers", triggers: listTriggers(owner).slice(0, 12) },
+      card: { kind: "triggers", triggers: (await listTriggers(owner)).slice(0, 12) },
     };
   },
 };
