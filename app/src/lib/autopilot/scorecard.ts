@@ -48,6 +48,12 @@ export interface ScoreState {
   spyStart: number;
   /** What one dollar left in the mandate since the start is worth now. */
   index: number;
+  /**
+   * The highest the index has been, for the safety brake. Optional so scores
+   * saved before the brake existed still load; those start from the better
+   * of 1 and their index.
+   */
+  peakIndex?: number;
   /** SPY the same money would hold, counting every deposit and withdrawal. */
   shadowSpyUnits: number;
   /** The starting value plus deposits, minus withdrawals. */
@@ -67,6 +73,8 @@ export interface Score {
   spyReturnPct: number;
   /** returnPct minus spyReturnPct, in percentage points. */
   aheadPts: number;
+  /** How far below its best the index is, in percent. Zero at a new high. */
+  drawdownPct: number;
 }
 
 /** Below a cent, a difference is rounding, not money moving. */
@@ -86,6 +94,7 @@ export function startScore(snapshot: Snapshot): ScoreState {
     startedAt: snapshot.at,
     spyStart: snapshot.spyPrice,
     index: 1,
+    peakIndex: 1,
     shadowSpyUnits: value / snapshot.spyPrice,
     netInvested: value,
     last: snapshot,
@@ -118,6 +127,7 @@ export function advanceScore(state: ScoreState, reading: Snapshot): { state: Sco
     state: {
       ...state,
       index,
+      peakIndex: Math.max(peakOf(state), index),
       shadowSpyUnits: state.shadowSpyUnits + flow / now.spyPrice,
       netInvested: state.netInvested + flow,
       last: now,
@@ -132,7 +142,27 @@ export function advanceScore(state: ScoreState, reading: Snapshot): { state: Sco
 export function recordTrade(state: ScoreState, after: Snapshot): ScoreState {
   const before = valueOf(state.last);
   const index = before > 0 ? state.index * (valueOf(after) / before) : state.index;
-  return { ...state, index, last: after };
+  return { ...state, index, peakIndex: Math.max(peakOf(state), index), last: after };
+}
+
+export function peakOf(state: ScoreState): number {
+  return state.peakIndex ?? Math.max(1, state.index);
+}
+
+/** How far below its best the mandate is, in basis points. */
+export function drawdownBps(state: ScoreState): number {
+  return Math.max(0, Math.round((1 - state.index / peakOf(state)) * 10_000));
+}
+
+/**
+ * Starts the brake's measure again from today.
+ *
+ * Done when the owner switches a braked autopilot back on. Without it the
+ * brake would trip again on the first cycle, because the fall that tripped it
+ * is still there; the owner resuming is them accepting it.
+ */
+export function resetPeak(state: ScoreState): ScoreState {
+  return { ...state, peakIndex: state.index };
 }
 
 export function summarise(state: ScoreState): Score {
@@ -146,6 +176,7 @@ export function summarise(state: ScoreState): Score {
     returnPct,
     spyReturnPct,
     aheadPts: returnPct - spyReturnPct,
+    drawdownPct: drawdownBps(state) / 100,
   };
 }
 
