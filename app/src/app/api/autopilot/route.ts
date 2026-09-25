@@ -67,18 +67,18 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const existing = getEntry(mandateKey.toBase58());
+  const existing = await getEntry(mandateKey.toBase58());
 
   // Switching a braked autopilot back on is the owner accepting the fall that
   // tripped it, so the brake measures from today. Otherwise it would trip
   // again on the first cycle.
   const resuming = parsed.data.on && Boolean(existing?.brakedAt);
   if (resuming) {
-    const score = getScore(mandateKey.toBase58());
-    if (score) saveScore(mandateKey.toBase58(), resetPeak(score));
+    const score = await getScore(mandateKey.toBase58());
+    if (score) await saveScore(mandateKey.toBase58(), resetPeak(score));
   }
 
-  const entry = upsertEntry({
+  const entry = await upsertEntry({
     mandate: mandateKey.toBase58(),
     owner: owner.toBase58(),
     mandateId: parsed.data.mandateId,
@@ -104,7 +104,7 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: "owner is required" }, { status: 400 });
   }
   return Response.json({
-    entries: listEntries(owner),
-    decisions: listDecisions({ owner }, 20),
+    entries: await listEntries(owner),
+    decisions: await listDecisions({ owner }, 20),
   });
 }

@@ -66,7 +66,7 @@ export async function takeSnapshot(
  * arrives at the same number, because the periods multiply.
  */
 export async function scoreNow(connection: Connection, mandateAddress: string): Promise<Score | null> {
-  const saved = getScore(mandateAddress);
+  const saved = await getScore(mandateAddress);
   if (!saved) return null;
 
   const key = new PublicKey(mandateAddress);

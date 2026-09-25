@@ -79,8 +79,8 @@ export async function runNow(entry: AutopilotEntry): Promise<Decision> {
     running.delete(entry.mandate);
   }
 
-  markRun(entry.mandate, decision.at);
-  recordDecision(decision);
+  await markRun(entry.mandate, decision.at);
+  await recordDecision(decision);
   await notify(decision, entry);
   return decision;
 }
@@ -91,7 +91,7 @@ export async function runDue(): Promise<void> {
   if (shared.__conduitAutopilotTicking) return;
   shared.__conduitAutopilotTicking = true;
   try {
-    for (const entry of dueEntries(Date.now())) {
+    for (const entry of await dueEntries(Date.now())) {
       await runNow(entry);
     }
   } finally {

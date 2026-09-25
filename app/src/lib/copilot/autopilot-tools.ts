@@ -156,8 +156,8 @@ const getAutopilot: CopilotTool = {
   },
   async run(_args, ctx) {
     const owner = requireOwner(ctx).toBase58();
-    const entries = listEntries(owner);
-    const decisions = listDecisions({ owner }, 8);
+    const entries = await listEntries(owner);
+    const decisions = await listDecisions({ owner }, 8);
     const connection = getConnection();
     const scores = (
       await Promise.all(

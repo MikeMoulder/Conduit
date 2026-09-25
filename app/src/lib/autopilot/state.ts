@@ -1,23 +1,27 @@
 import "server-only";
 
-import { readFileSync } from "fs";
-import path from "path";
-
-import { writeJsonAtomic } from "../atomic-write";
+import { hgetJson, hsetJson, hvaluesJson, kv, withLock } from "../kv";
 import type { Score, ScoreState } from "./scorecard";
 
 /**
  * What the autopilot remembers: which mandates it runs, and what it decided.
  *
- * A file on the server rather than an account on chain, on purpose. Nothing
- * here is authority. Whether the agent may act on a mandate was settled when
- * the owner signed it, and the program re-checks every transaction the
- * autopilot sends. This only records that the owner asked for the agent to act
- * on a schedule, and keeps a readable log of what it did, so the copilot can
- * answer "what has it been doing" without replaying the chain.
+ * In the shared store rather than on chain, on purpose. Nothing here is
+ * authority. Whether the agent may act on a mandate was settled when the owner
+ * signed it, and the program re-checks every transaction the autopilot sends.
+ * This only records that the owner asked for the agent to act on a schedule,
+ * and keeps a readable log of what it did, so the copilot can answer "what has
+ * it been doing" without replaying the chain.
  *
- * Written whole and renamed into place, so a crash mid write leaves the last
- * good file rather than half of one.
+ * Shared because the site and the worker both write it: the site switches a
+ * mandate on or off, the worker records each run and decision. One record per
+ * mandate, and a change to one takes a short lock, so a setting changed on the
+ * site and a run recorded by the worker at the same moment cannot undo each
+ * other.
+ *
+ *   ap:entries    mandate to its autopilot settings
+ *   ap:decisions  the log, newest first, capped
+ *   ap:scores     mandate to its score against SPY
  */
 
 export interface AutopilotEntry {
@@ -66,105 +70,82 @@ export interface Decision {
   score?: Score;
 }
 
-interface Stored {
-  entries: AutopilotEntry[];
-  decisions: Decision[];
-  /** Each mandate's running score against SPY, by mandate address. */
-  scores: Record<string, ScoreState>;
-}
-
 /** Enough history to answer "what has it done", not an archive. */
 const MAX_DECISIONS = 200;
 
-/** Resolved on each use so tests can point it at a temporary file. */
-const stateFile = () =>
-  process.env.AUTOPILOT_STATE_FILE ?? path.join(process.cwd(), ".data", "autopilot.json");
-
-function read(): Stored {
-  try {
-    const parsed = JSON.parse(readFileSync(stateFile(), "utf8")) as Stored;
-    return {
-      entries: Array.isArray(parsed.entries) ? parsed.entries : [],
-      decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
-      scores: parsed.scores && typeof parsed.scores === "object" ? parsed.scores : {},
-    };
-  } catch {
-    return { entries: [], decisions: [], scores: {} };
+/**
+ * Changes one mandate's entry as a single step. Retries briefly when the other
+ * process holds the lock, and gives up with an error rather than write over
+ * a change it never saw.
+ */
+async function mutateEntry(
+  mandate: string,
+  change: (entry: AutopilotEntry | null) => AutopilotEntry | null,
+): Promise<AutopilotEntry | null> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const done = await withLock(`ap:entry:${mandate}`, async () => {
+      const next = change(await hgetJson<AutopilotEntry>("ap:entries", mandate));
+      if (next) await hsetJson("ap:entries", mandate, next);
+      return { next };
+    }, 10);
+    if (done) return done.next;
+    await new Promise((r) => setTimeout(r, 100));
   }
+  throw new Error(`the autopilot entry for ${mandate} is busy; try again`);
 }
 
-function write(stored: Stored): void {
-  writeJsonAtomic(stateFile(), stored);
-}
-
-export function listEntries(owner?: string): AutopilotEntry[] {
-  const { entries } = read();
+export async function listEntries(owner?: string): Promise<AutopilotEntry[]> {
+  const entries = await hvaluesJson<AutopilotEntry>("ap:entries");
   return owner ? entries.filter((e) => e.owner === owner) : entries;
 }
 
-export function getEntry(mandate: string): AutopilotEntry | null {
-  return read().entries.find((e) => e.mandate === mandate) ?? null;
+export async function getEntry(mandate: string): Promise<AutopilotEntry | null> {
+  return hgetJson<AutopilotEntry>("ap:entries", mandate);
 }
 
-export function upsertEntry(entry: AutopilotEntry): AutopilotEntry {
-  const stored = read();
-  const others = stored.entries.filter((e) => e.mandate !== entry.mandate);
-  write({ ...stored, entries: [...others, entry] });
+export async function upsertEntry(entry: AutopilotEntry): Promise<AutopilotEntry> {
+  await mutateEntry(entry.mandate, () => entry);
   return entry;
 }
 
-export function markRun(mandate: string, at: number): void {
-  const stored = read();
-  write({
-    ...stored,
-    entries: stored.entries.map((e) => (e.mandate === mandate ? { ...e, lastRunAt: at } : e)),
-  });
+export async function markRun(mandate: string, at: number): Promise<void> {
+  await mutateEntry(mandate, (e) => (e ? { ...e, lastRunAt: at } : null));
 }
 
 /**
  * Stops a mandate's autopilot because its safety brake tripped.
  *
- * Read fresh and written whole, like every other change here, so a cycle
- * holding an older copy of the entry cannot switch it back on.
+ * Under the entry's lock like every other change, so a cycle holding an older
+ * copy of the entry cannot switch it back on.
  */
-export function brakeEntry(mandate: string, at: number): void {
-  const stored = read();
-  write({
-    ...stored,
-    entries: stored.entries.map((e) => (e.mandate === mandate ? { ...e, enabled: false, brakedAt: at } : e)),
-  });
+export async function brakeEntry(mandate: string, at: number): Promise<void> {
+  await mutateEntry(mandate, (e) => (e ? { ...e, enabled: false, brakedAt: at } : null));
 }
 
-export function recordDecision(decision: Decision): void {
-  const stored = read();
-  write({
-    ...stored,
-    decisions: [decision, ...stored.decisions].slice(0, MAX_DECISIONS),
-  });
+export async function recordDecision(decision: Decision): Promise<void> {
+  await kv().lpush("ap:decisions", JSON.stringify(decision));
+  await kv().ltrim("ap:decisions", 0, MAX_DECISIONS - 1);
 }
 
-export function listDecisions(filter: { owner?: string; mandate?: string }, limit = 10): Decision[] {
-  return read()
-    .decisions.filter(
-      (d) =>
-        (!filter.owner || d.owner === filter.owner) &&
-        (!filter.mandate || d.mandate === filter.mandate),
-    )
+export async function listDecisions(filter: { owner?: string; mandate?: string }, limit = 10): Promise<Decision[]> {
+  const all = (await kv().lrange("ap:decisions", 0, MAX_DECISIONS - 1)).map((raw) => JSON.parse(raw) as Decision);
+  return all
+    .filter((d) => (!filter.owner || d.owner === filter.owner) && (!filter.mandate || d.mandate === filter.mandate))
     .slice(0, limit);
 }
 
 /** Entries whose next run is due. */
-export function dueEntries(now: number): AutopilotEntry[] {
-  return read().entries.filter(
+export async function dueEntries(now: number): Promise<AutopilotEntry[]> {
+  return (await listEntries()).filter(
     (e) => e.enabled && (e.lastRunAt === null || now - e.lastRunAt >= e.everyMinutes * 60_000),
   );
 }
 
-export function getScore(mandate: string): ScoreState | null {
-  return read().scores[mandate] ?? null;
+export async function getScore(mandate: string): Promise<ScoreState | null> {
+  return hgetJson<ScoreState>("ap:scores", mandate);
 }
 
-export function saveScore(mandate: string, score: ScoreState): void {
-  const stored = read();
-  write({ ...stored, scores: { ...stored.scores, [mandate]: score } });
+/** Only the worker's cycle and the owner resuming write a score, never both at once for one mandate. */
+export async function saveScore(mandate: string, score: ScoreState): Promise<void> {
+  await hsetJson("ap:scores", mandate, score);
 }

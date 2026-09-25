@@ -37,7 +37,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "no such mandate for this owner" }, { status: 404 });
   }
 
-  const entry = getEntry(mandateKey.toBase58()) ?? {
+  const entry = (await getEntry(mandateKey.toBase58())) ?? {
     mandate: mandateKey.toBase58(),
     owner: owner.toBase58(),
     mandateId: parsed.data.mandateId,

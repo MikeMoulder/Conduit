@@ -107,7 +107,7 @@ async function applyBrake(input: {
   const named = (weights: { symbol: string; targetBps: number }[]) =>
     weights.map((w) => ({ symbol: getAssetByMint(w.symbol)?.symbol ?? w.symbol, targetBps: w.targetBps }));
 
-  brakeEntry(entry.mandate, Date.now());
+  await brakeEntry(entry.mandate, Date.now());
 
   const stopped = (summary: string, signatures: string[], final: ScoreState): Decision => ({
     ...base,
@@ -147,7 +147,7 @@ async function applyBrake(input: {
   const final = settle.body.after
     ? recordTrade(score, snapshotFrom(settle.body.after as PortfolioHoldings, score.last.prices, score.last.spyPrice, Date.now()))
     : score;
-  saveScore(entry.mandate, final);
+  await saveScore(entry.mandate, final);
 
   return stopped(describeBrake({ drawdownBps: fall, brakeBps, after }), signatures, final);
 }
@@ -192,10 +192,10 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
   // last cycle is credited to the book the agent chose then. A cycle whose
   // prices cannot be read leaves the score where it was.
   const reading = await takeSnapshot(connection, mandate, holdings);
-  let score = getScore(entry.mandate);
+  let score = await getScore(entry.mandate);
   if (reading) {
     score = score ? advanceScore(score, reading).state : startScore(reading);
-    saveScore(entry.mandate, score);
+    await saveScore(entry.mandate, score);
   }
 
   // A braked mandate stays braked however the cycle was started, including
@@ -234,7 +234,7 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
       return known ? [{ symbol: known.symbol, targetBps: p.targetBps }] : [];
     }),
     preIpoCapBps: entry.preIpoCapBps ?? DEFAULT_PRE_IPO_CAP_BPS,
-    trackRecord: score ? trackRecord(score, listDecisions({ mandate: entry.mandate }, 3)) : undefined,
+    trackRecord: score ? trackRecord(score, await listDecisions({ mandate: entry.mandate }, 3)) : undefined,
   };
 
   const run = await runPipeline(spec, tradable);
@@ -325,7 +325,7 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
       score,
       snapshotFrom(settle.body.after as PortfolioHoldings, score.last.prices, score.last.spyPrice, Date.now()),
     );
-    saveScore(entry.mandate, score);
+    await saveScore(entry.mandate, score);
   }
 
   return {
