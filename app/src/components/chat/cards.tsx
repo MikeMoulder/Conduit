@@ -7,7 +7,9 @@ import { bpsToPercent, explorerUrl } from "@/lib/chain";
 import { getAssetByMint, getAssetBySymbol } from "@/lib/assets";
 import { DEFAULT_BRAKE_BPS } from "@/lib/autopilot/brakes";
 import type { Score } from "@/lib/autopilot/scorecard";
-import type { Card } from "@/lib/copilot/events";
+import type { Card, StockBrief } from "@/lib/copilot/events";
+import { describeRange } from "@/lib/day-stats";
+import { Sparkline } from "./market-cards";
 import type { AssetHolding, PortfolioHoldings } from "@/lib/holdings";
 
 /**
@@ -44,6 +46,8 @@ export function CardView({ card }: { card: Card }) {
       return <WalletResultView card={card} />;
     case "autopilot":
       return <AutopilotCardView card={card} />;
+    case "stock-brief":
+      return <StockBriefView brief={card.brief} />;
   }
 }
 
@@ -1098,6 +1102,148 @@ function AutopilotCardView({ card }: { card: Extract<Card, { kind: "autopilot" }
           </div>
         ))
       )}
+    </Shell>
+  );
+}
+
+function briefMoney(value: number): string {
+  return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function billions(value: number): string {
+  return value >= 1e12 ? `$${(value / 1e12).toFixed(2)}T` : `$${Math.round(value / 1e9)}B`;
+}
+
+function age(at: number): string {
+  const hours = Math.round((Date.now() - at) / 3_600_000);
+  if (hours < 1) return "just now";
+  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
+}
+
+/**
+ * One asset, briefly but completely: the day, the gap to what it tracks,
+ * the person's position, and what is being reported about it.
+ *
+ * The headlines are links and carry their source and age, because they are
+ * what was reported, not what Conduit checked, and a person should be able to
+ * read the story rather than take the summary on trust.
+ */
+function StockBriefView({ brief }: { brief: StockBrief }) {
+  const day = brief.day;
+  const up = (day?.changePct ?? 0) >= 0;
+  const spread = brief.reference?.spreadBps ?? null;
+
+  return (
+    <Shell
+      title={`${brief.symbol} brief`}
+      aside={<span className="text-[11px] text-zinc-500">{brief.assetClass === "preipo" ? "pre-IPO" : brief.assetClass}</span>}
+    >
+      <div className="px-4 pt-3.5">
+        <div className="flex items-center gap-3">
+          {brief.logo ? (
+            // eslint-disable-next-line @next/next/no-img-element -- as above: small files already sized
+            <img src={brief.logo} alt="" width={32} height={32} className="h-8 w-8 rounded-full bg-zinc-900 object-cover" />
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-zinc-100">
+              {brief.symbol} <span className="font-normal text-zinc-500">{brief.name}</span>
+            </p>
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2.5">
+              <span className="font-mono text-xl text-zinc-50">{brief.price === null ? "n/a" : briefMoney(brief.price)}</span>
+              {day ? (
+                <span className={`font-mono text-sm ${up ? "text-emerald-400" : "text-red-400"}`}>
+                  {up ? "+" : ""}
+                  {day.changePct.toFixed(2)}% <span className="text-zinc-500">24h</span>
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {brief.points.length > 1 ? (
+          <div className="mt-3">
+            <Sparkline points={brief.points} up={up} />
+          </div>
+        ) : null}
+
+        {day ? (
+          <div className="mt-3">
+            <div className="flex justify-between font-mono text-[11px] text-zinc-500">
+              <span>low {briefMoney(day.low)}</span>
+              <span>high {briefMoney(day.high)}</span>
+            </div>
+            <div className="relative mt-1 h-1.5 rounded-full bg-zinc-800">
+              <span
+                className={`absolute top-1/2 h-3 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full ${up ? "bg-emerald-400" : "bg-red-400"}`}
+                style={{ left: `${day.rangePosition}%` }}
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-zinc-500">{describeRange(day.rangePosition)}</p>
+          </div>
+        ) : null}
+      </div>
+
+      <dl className="mt-3 grid grid-cols-2 gap-px border-y border-zinc-900 bg-zinc-900 text-xs">
+        {brief.reference ? (
+          <div className="bg-zinc-950 px-4 py-2.5">
+            <dt className="text-zinc-500">vs {brief.reference.label}</dt>
+            <dd className="mt-0.5 font-mono text-zinc-200">
+              {briefMoney(brief.reference.price)}
+              {spread !== null ? (
+                <span className={spread < 0 ? " text-emerald-400" : spread > 0 ? " text-amber-300" : " text-zinc-400"}>
+                  {" "}
+                  {spread > 0 ? "+" : ""}
+                  {(spread / 100).toFixed(2)}%
+                </span>
+              ) : null}
+            </dd>
+          </div>
+        ) : null}
+        {brief.valuation ? (
+          <div className="bg-zinc-950 px-4 py-2.5">
+            <dt className="text-zinc-500">company value</dt>
+            <dd className="mt-0.5 font-mono text-zinc-200">
+              {billions(brief.valuation.atMark)} <span className="text-zinc-500">mark</span> · {billions(brief.valuation.atToken)}{" "}
+              <span className="text-zinc-500">token</span>
+            </dd>
+          </div>
+        ) : null}
+        <div className="bg-zinc-950 px-4 py-2.5">
+          <dt className="text-zinc-500">you hold</dt>
+          <dd className="mt-0.5 font-mono text-zinc-200">
+            {brief.held === null
+              ? "no main wallet"
+              : brief.held === 0
+                ? "none"
+                : `${brief.held.toLocaleString("en-US", { maximumFractionDigits: 4 })}${brief.price !== null ? ` · ${briefMoney(brief.held * brief.price)}` : ""}`}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="px-4 py-3">
+        <p className="text-[11px] uppercase tracking-wider text-zinc-500">In the news</p>
+        {brief.headlines.length === 0 ? (
+          <p className="mt-1.5 text-xs text-zinc-500">No headlines naming it in the last three days.</p>
+        ) : (
+          <ul className="mt-1.5 flex flex-col gap-2">
+            {brief.headlines.map((h) => (
+              <li key={h.url}>
+                <a
+                  href={h.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[13px] leading-snug text-zinc-200 hover:text-emerald-300"
+                >
+                  {h.title}
+                </a>
+                <p className="text-[11px] text-zinc-500">
+                  {h.source} · {age(h.publishedAt)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </Shell>
   );
 }

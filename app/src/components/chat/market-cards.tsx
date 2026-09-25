@@ -151,7 +151,7 @@ function Card({
  * Stretched to the card's width rather than drawn at a fixed size, with a
  * stroke that does not stretch with it, so it stays a hairline at any width.
  */
-function Sparkline({ points, up }: { points: number[]; up: boolean }) {
+export function Sparkline({ points, up }: { points: number[]; up: boolean }) {
   const id = useId();
   const min = Math.min(...points);
   const max = Math.max(...points);

@@ -2,6 +2,8 @@ import type { MandateView, PortfolioView } from "../accounts";
 import type { ActivityRecord } from "../events";
 import type { ProposalEvaluation } from "../proposal";
 import type { Score } from "../autopilot/scorecard";
+import type { DayStats } from "../day-stats";
+import type { Headline } from "../news";
 import type { AutopilotEntry, Decision } from "../autopilot/state";
 import type { PortfolioHoldings } from "../holdings";
 
@@ -29,7 +31,27 @@ export interface Source {
   ok: boolean;
 }
 
+/** Everything the stock brief card shows about one asset. */
+export interface StockBrief {
+  symbol: string;
+  name: string;
+  logo: string | null;
+  assetClass: string;
+  price: number | null;
+  /** The listed share for an equity, the company's mark for a pre IPO name. */
+  reference: { label: string; price: number; spreadBps: number | null } | null;
+  day: DayStats | null;
+  /** The last 24 hours, oldest first, ending at the price. Empty without a line. */
+  points: number[];
+  /** Pre IPO only: what the company is worth at its mark and at the token price. */
+  valuation: { atMark: number; atToken: number } | null;
+  /** Units in their main wallet; 0 for none, null when it could not be read. */
+  held: number | null;
+  headlines: Headline[];
+}
+
 export type Card =
+  | { kind: "stock-brief"; brief: StockBrief }
   | { kind: "universe"; assets: UniverseRow[] }
   | { kind: "prices"; rows: PriceRow[] }
   | { kind: "mandate"; mandate: MandateView }
