@@ -1,6 +1,7 @@
 import "server-only";
 
 import { startTelegramPoller } from "../telegram/bot";
+import { checkTriggers } from "../triggers/runner";
 import { runCycle } from "./cycle";
 import { notify } from "./notify";
 import {
@@ -38,6 +39,7 @@ const TICK_MS = 60_000;
  */
 const shared = globalThis as unknown as {
   __conduitAutopilot?: ReturnType<typeof setInterval>;
+  __conduitTriggerTimer?: ReturnType<typeof setInterval>;
   __conduitAutopilotRunning?: Set<string>;
   __conduitAutopilotTicking?: boolean;
 };
@@ -106,6 +108,16 @@ export async function runDue(): Promise<void> {
 export function startScheduler(): void {
   // The bot's listener rides along: it has its own once per process guard.
   startTelegramPoller();
+  // Price triggers keep their own timer and guard, so a server whose
+  // autopilot timer was started by older code still starts this one.
+  if (!shared.__conduitTriggerTimer) {
+    shared.__conduitTriggerTimer = setInterval(() => {
+      void checkTriggers().catch(() => {
+        // Each trigger records its own outcome; a failure here must not take
+        // the timer down.
+      });
+    }, TICK_MS);
+  }
   if (shared.__conduitAutopilot) return;
   shared.__conduitAutopilot = setInterval(() => {
     void runDue().catch(() => {
