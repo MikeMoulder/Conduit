@@ -187,7 +187,7 @@ function StepList({
           {streaming ? (
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
           ) : null}
-          {streaming ? "Working" : `${steps.length} steps`}
+          {streaming ? "Working" : `${steps.length} ${steps.length === 1 ? "step" : "steps"}`}
           {failed > 0 ? (
             <span className="text-amber-500/80">
               · {failed} unavailable
