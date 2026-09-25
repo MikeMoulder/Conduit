@@ -26,6 +26,13 @@ export interface AutopilotEntry {
   /** In the owner's words, handed to the analysis each cycle. */
   objective: string;
   everyMinutes: number;
+  /**
+   * Most the pre IPO names may hold together, in basis points.
+   *
+   * Optional so entries written before the pre IPO strategy still load; those
+   * run with the default cap.
+   */
+  preIpoCapBps?: number;
   enabled: boolean;
   createdAt: number;
   lastRunAt: number | null;
@@ -44,6 +51,8 @@ export interface Decision {
   reasoning: string | null;
   positions: { symbol: string; targetBps: number }[];
   signatures: string[];
+  /** What the pre IPO rules saw and did this cycle, one line each. */
+  preIpo?: string[];
 }
 
 interface Stored {

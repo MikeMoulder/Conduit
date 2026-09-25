@@ -31,6 +31,9 @@ export function formatDecision(decision: Decision, entry: AutopilotEntry): strin
     `Conduit autopilot, mandate ${entry.mandateId}`,
     `${ICON[decision.outcome]}: ${decision.summary}`,
   ];
+  if (decision.preIpo?.length) {
+    lines.push(`Pre-IPO:\n${decision.preIpo.map((note) => `- ${note}`).join("\n")}`);
+  }
   if (decision.reasoning) {
     const why = decision.reasoning.replace(/\s+/g, " ").trim();
     lines.push(`Why: ${why.length > 400 ? `${why.slice(0, 397)}...` : why}`);

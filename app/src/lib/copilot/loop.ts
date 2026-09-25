@@ -125,6 +125,15 @@ get_autopilot reports what it decided and why. It never sends a proposal the
 mandate would refuse, and it leaves the allocation alone when the analysis
 barely moves it, so "held" and "skipped" are normal answers, not failures.
 
+The autopilot has a pre IPO strategy. Each pre IPO token has two prices from
+PreStocks: what the token trades for and the mark of the private company behind
+it. A token 10% or more below its mark is a buy signal, because it buys the
+company for less than it is marked at. At 15% or more above, the autopilot adds
+nothing; at 30% or more above, it trims the position to half each cycle. All
+pre IPO names together stay under a cap, 10% of the mandate unless the person
+sets another with preIpoCapPercent. Each decision lists what these rules saw and
+did; quote those lines when asked why it bought or sold a pre IPO name.
+
 Autopilot decisions can go to the person's own Telegram. Each person links
 their own chat with link_telegram: their wallet signs a short message, they open
 a one time link and press Start. Decisions only ever go to the chat linked to

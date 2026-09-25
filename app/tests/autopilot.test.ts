@@ -139,6 +139,23 @@ describe("what the person is told", () => {
     expect(text).to.include("Skipped: The mandate would refuse it. Nothing was sent.");
   });
 
+  it("lists what the pre IPO rules saw and did", () => {
+    const text = formatDecision(
+      decision({
+        preIpo: [
+          "SPACEX trades 21% below its mark: holding 6%.",
+          "OPENAI trades 31% above its mark, so it was not bought.",
+        ],
+      }),
+      entry(),
+    );
+    expect(text).to.include("Pre-IPO:\n- SPACEX trades 21% below its mark: holding 6%.\n- OPENAI");
+  });
+
+  it("says nothing about pre IPO when the rules had nothing to say", () => {
+    expect(formatDecision(decision({}), entry())).to.not.include("Pre-IPO");
+  });
+
   it("shortens long reasoning rather than flooding a phone", () => {
     const text = formatDecision(decision({ reasoning: "x".repeat(2_000) }), entry());
     expect(text.length).to.be.below(700);

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { fetchMandate } from "@/lib/accounts";
 import { parseAddress } from "@/lib/agent-actions";
 import { getAgentIdentity } from "@/lib/agent-identity";
+import { DEFAULT_PRE_IPO_CAP_BPS } from "@/lib/autopilot/pre-ipo";
 import { startScheduler } from "@/lib/autopilot/scheduler";
 import { listDecisions, listEntries, getEntry, upsertEntry } from "@/lib/autopilot/state";
 import { mandatePda } from "@/lib/chain";
@@ -31,6 +32,7 @@ const setSchema = z.object({
   on: z.boolean(),
   everyMinutes: z.number().int().min(5).max(24 * 60).optional(),
   objective: z.string().min(1).max(2000).optional(),
+  preIpoCapBps: z.number().int().min(0).max(10_000).optional(),
 });
 
 export async function POST(request: Request): Promise<Response> {
@@ -62,6 +64,7 @@ export async function POST(request: Request): Promise<Response> {
     mandateId: parsed.data.mandateId,
     objective: parsed.data.objective ?? existing?.objective ?? DEFAULT_OBJECTIVE,
     everyMinutes: parsed.data.everyMinutes ?? existing?.everyMinutes ?? 30,
+    preIpoCapBps: parsed.data.preIpoCapBps ?? existing?.preIpoCapBps ?? DEFAULT_PRE_IPO_CAP_BPS,
     enabled: parsed.data.on,
     createdAt: existing?.createdAt ?? Date.now(),
     // Turning it on makes the first cycle due straight away rather than a full

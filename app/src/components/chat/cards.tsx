@@ -1001,6 +1001,18 @@ function AutopilotCardView({ card }: { card: Extract<Card, { kind: "autopilot" }
               <span className="text-[11px] text-zinc-600">{ago(d.at)}</span>
             </div>
             <p className="mt-1.5 text-sm leading-relaxed text-zinc-300">{d.summary}</p>
+            {d.preIpo?.length ? (
+              <ul className="mt-1.5 flex flex-col gap-0.5">
+                {d.preIpo.map((note) => (
+                  <li key={note} className="text-xs leading-relaxed text-zinc-400">
+                    <span className="mr-1.5 font-mono text-[10px] uppercase tracking-wider text-violet-300">
+                      pre-ipo
+                    </span>
+                    {note}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {d.signatures.length > 0 ? (
               <div className="mt-1 flex flex-wrap gap-3">
                 {d.signatures.map((sig) => (

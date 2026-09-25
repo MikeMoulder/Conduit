@@ -11,6 +11,7 @@ import { bpsToPercent, portfolioPda } from "../chain";
 import { fetchHoldings } from "../holdings";
 import { pricedSymbols, snapshotMarket } from "../market";
 import { evaluateProposal } from "../proposal";
+import { applyPreIpoRules, DEFAULT_PRE_IPO_CAP_BPS } from "./pre-ipo";
 import { getConnection } from "../rpc";
 import type { AutopilotEntry, Decision } from "./state";
 
@@ -101,17 +102,29 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
       const known = getAssetByMint(p.mint);
       return known ? [{ symbol: known.symbol, targetBps: p.targetBps }] : [];
     }),
+    preIpoCapBps: entry.preIpoCapBps ?? DEFAULT_PRE_IPO_CAP_BPS,
   };
 
   const run = await runPipeline(spec, tradable);
   const reasoning = run.proposal.reasoning;
 
   const allowed = new Set(mandate.allowedAssets.map((a) => a.mint));
-  const proposed = run.proposal.positions
-    .map((p) => ({ symbol: p.symbol, targetBps: p.targetBps, mint: getAssetBySymbol(p.symbol)?.mint }))
-    .filter((p): p is { symbol: string; targetBps: number; mint: string } =>
-      Boolean(p.mint) && allowed.has(p.mint!) && p.targetBps > 0,
-    );
+  const permitted = run.proposal.positions.filter((p) => {
+    const mint = getAssetBySymbol(p.symbol)?.mint;
+    return Boolean(mint) && allowed.has(mint!) && p.targetBps > 0;
+  });
+
+  // The analysis was told the pre IPO limits. This is the backstop in case it
+  // did not keep to them, and it reads the whole snapshot, not only what is
+  // priced, so a held name that lost its price cannot grow.
+  const rules = applyPreIpoRules({
+    proposed: permitted.map((p) => ({ symbol: p.symbol, targetBps: p.targetBps })),
+    current: spec.currentPositions ?? [],
+    market: snapshot,
+    capBps: spec.preIpoCapBps!,
+  });
+  const proposed = rules.positions.map((p) => ({ ...p, mint: getAssetBySymbol(p.symbol)!.mint }));
+  const analysed = { ...base, preIpo: rules.notes.length > 0 ? rules.notes : undefined };
 
   const evaluation = evaluateProposal({
     constraints: mandate.constraints,
@@ -124,7 +137,7 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
 
   if (!evaluation.compliant) {
     return {
-      ...base,
+      ...analysed,
       outcome: "skipped",
       reasoning,
       positions,
@@ -143,7 +156,7 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
     if (!rebalance.body.accepted) {
       const error = rebalance.body.programError as { name?: string } | null;
       return {
-        ...base,
+        ...analysed,
         outcome: "failed",
         reasoning,
         positions,
@@ -159,7 +172,7 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
   if (!settle.body.settled) {
     const error = settle.body.programError as { name?: string } | null;
     return {
-      ...base,
+      ...analysed,
       outcome: "failed",
       reasoning,
       positions,
@@ -170,7 +183,7 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
   signatures.push(String(settle.body.signature));
 
   return {
-    ...base,
+    ...analysed,
     outcome: changed ? "rebalanced" : "held",
     reasoning,
     positions,

@@ -289,6 +289,7 @@ async function runServerAction(action: ServerAction): Promise<Card> {
         on: action.on,
         everyMinutes: action.everyMinutes,
         objective: action.objective ?? undefined,
+        preIpoCapBps: action.preIpoCapBps ?? undefined,
       });
       if (!data.ok) return failure(data, "The autopilot was not changed");
       return resultCard({
@@ -316,6 +317,7 @@ async function runServerAction(action: ServerAction): Promise<Card> {
             reasoning: string | null;
             positions: { symbol: string; targetBps: number }[];
             signatures: string[];
+            preIpo?: string[];
           }
         | undefined;
       if (!decision) return failure(data, "The cycle did not run");
@@ -328,7 +330,9 @@ async function runServerAction(action: ServerAction): Promise<Card> {
       return resultCard({
         ok: decision.outcome !== "failed",
         headline,
-        detail: decision.summary,
+        detail: decision.preIpo?.length
+          ? `${decision.summary}\n\nPre-IPO: ${decision.preIpo.join(" ")}`
+          : decision.summary,
         signature: decision.signatures[decision.signatures.length - 1] ?? null,
         lines: decision.positions.map((p) => ({
           label: p.symbol,

@@ -5,8 +5,9 @@ import { z } from "zod";
 
 import { fetchMandate } from "../accounts";
 import { getAgentIdentity } from "../agent-identity";
+import { DEFAULT_PRE_IPO_CAP_BPS } from "../autopilot/pre-ipo";
 import { listDecisions, listEntries } from "../autopilot/state";
-import { mandatePda, portfolioPda } from "../chain";
+import { bpsToPercent, mandatePda, portfolioPda } from "../chain";
 import { fetchHoldings } from "../holdings";
 import { getConnection } from "../rpc";
 import { botToken } from "../telegram/bot";
@@ -72,6 +73,11 @@ const setAutopilot: CopilotTool = {
           type: "STRING",
           description: "What the agent should aim for, in the person's words.",
         },
+        preIpoCapPercent: {
+          type: "NUMBER",
+          description:
+            "Most of the mandate the pre IPO names (SpaceX, OpenAI and the rest) may hold together, in percent. Only if the person says. Defaults to 10. 0 keeps the autopilot out of pre IPO entirely.",
+        },
       },
       required: ["on"],
     },
@@ -83,12 +89,16 @@ const setAutopilot: CopilotTool = {
         on: z.boolean(),
         everyMinutes: z.number().int().min(5).max(1440).optional(),
         objective: z.string().min(1).max(2000).optional(),
+        preIpoCapPercent: z.number().min(0).max(100).optional(),
       })
       .parse(args);
     const owner = requireOwner(ctx);
     const mandateId = parsed.mandateId ?? 0;
     const everyMinutes = parsed.everyMinutes ?? 30;
     const label = `mandate ${mandateId}`;
+    const preIpoCapBps =
+      parsed.preIpoCapPercent === undefined ? null : Math.round(parsed.preIpoCapPercent * 100);
+    const capText = bpsToPercent(preIpoCapBps ?? DEFAULT_PRE_IPO_CAP_BPS);
 
     if (parsed.on) {
       const { funded } = await requireRunnableMandate(owner, mandateId);
@@ -112,8 +122,9 @@ const setAutopilot: CopilotTool = {
         on: parsed.on,
         everyMinutes,
         objective: parsed.objective ?? null,
+        preIpoCapBps,
         summary: parsed.on
-          ? `Let the agent run ${label} on its own every ${everyMinutes} minutes${parsed.objective ? `, aiming to ${parsed.objective.replace(/\.$/, "")}` : ""}. It analyses, rebalances and settles without asking you each time. The program checks every transaction against the mandate's rules, so it can only do what you already allowed. The first cycle starts within a minute.`
+          ? `Let the agent run ${label} on its own every ${everyMinutes} minutes${parsed.objective ? `, aiming to ${parsed.objective.replace(/\.$/, "")}` : ""}. It analyses, rebalances and settles without asking you each time. The program checks every transaction against the mandate's rules, so it can only do what you already allowed. Pre-IPO names are bought only when their token trades below the company's mark, never added to at a premium, and kept to ${capText} of the mandate together. The first cycle starts within a minute.`
           : `Stop the autopilot on ${label}. Nothing it already did is undone, and you can switch it back on at any time.`,
       },
     };
@@ -136,11 +147,12 @@ const getAutopilot: CopilotTool = {
     return {
       result: {
         telegramLinked: chatFor(owner) !== null,
-        running: entries.filter((e) => e.enabled).map((e) => ({ mandateId: e.mandateId, everyMinutes: e.everyMinutes })),
+        running: entries.filter((e) => e.enabled).map((e) => ({ mandateId: e.mandateId, everyMinutes: e.everyMinutes, preIpoCap: bpsToPercent(e.preIpoCapBps ?? DEFAULT_PRE_IPO_CAP_BPS) })),
         recent: decisions.slice(0, 5).map((d) => ({
           at: new Date(d.at).toISOString(),
           outcome: d.outcome,
           summary: d.summary,
+          preIpo: d.preIpo ?? [],
         })),
       },
       summary:

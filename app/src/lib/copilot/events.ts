@@ -270,6 +270,8 @@ export type PendingAction =
       on: boolean;
       everyMinutes: number;
       objective: string | null;
+      /** Null keeps the one already set, or the default for a new entry. */
+      preIpoCapBps: number | null;
       summary: string;
     }
   | {
