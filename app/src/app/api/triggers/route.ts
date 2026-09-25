@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { parseAddress } from "@/lib/agent-actions";
 import { startScheduler } from "@/lib/autopilot/scheduler";
-import { DEFAULT_TTL_DAYS, MAX_TTL_DAYS } from "@/lib/triggers/rules";
+import { MAX_TTL_DAYS, MIN_DELAY_MINUTES, expiryFor } from "@/lib/triggers/rules";
 import { checkTrigger } from "@/lib/triggers/prepare";
 import { addTrigger, listTriggers } from "@/lib/triggers/state";
 
@@ -24,6 +24,7 @@ const schema = z.object({
     z.object({ kind: z.literal("fall"), percent: z.number().positive().max(99.99) }),
     z.object({ kind: z.literal("above"), price: z.number().positive() }),
     z.object({ kind: z.literal("below"), price: z.number().positive() }),
+    z.object({ kind: z.literal("after"), minutes: z.number().min(MIN_DELAY_MINUTES).max(MAX_TTL_DAYS * 1440) }),
   ]),
   action: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("notify") }),
@@ -53,7 +54,8 @@ export async function POST(request: Request): Promise<Response> {
     basePrice: check.basePrice,
     action: parsed.data.action,
     createdAt: now,
-    expiresAt: now + (parsed.data.days ?? DEFAULT_TTL_DAYS) * 86_400_000,
+    // A timed trigger's clock starts here, at approval, not when it was prepared.
+    expiresAt: expiryFor(parsed.data.condition, now, parsed.data.days),
   });
   return Response.json({ ok: true, trigger });
 }

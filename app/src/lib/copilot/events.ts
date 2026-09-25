@@ -378,7 +378,9 @@ export function actionTitle(action: PendingAction): string {
     case "autopilot-run":
       return `Run one autopilot cycle on ${action.mandateLabel}`;
     case "price-trigger":
-      return `Set a price trigger on ${action.symbol}`;
+      return action.condition.kind === "after"
+        ? `Set a timed trigger on ${action.symbol}`
+        : `Set a price trigger on ${action.symbol}`;
     case "link-telegram":
       return "Connect Telegram";
     case "unlink-telegram":

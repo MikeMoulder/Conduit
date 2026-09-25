@@ -327,7 +327,7 @@ const placeOrder: CopilotTool = {
   declaration: {
     name: "place_order",
     description:
-      "Prepares a trade in the person's main wallet: buy or sell a dollar amount of one asset, for example buy $3,000 of NVDA. Use this whenever they name an amount of money. No mandate applies: the main wallet is theirs to direct. The agent signs once they approve, so there is no wallet prompt. The price is the settlement price the program will use. This does NOT execute.",
+      "Prepares a trade in the person's main wallet: buy or sell a dollar amount of one asset, for example buy $3,000 of NVDA. Use this whenever they name an amount of money. No mandate applies: the main wallet is theirs to direct. The agent signs once they approve, so there is no wallet prompt. The price is the settlement price the program will use. It trades now: for a trade at a later time ('in 2 minutes', 'in an hour') use set_price_trigger with condition after instead. This does NOT execute.",
     parameters: {
       type: "OBJECT",
       properties: {

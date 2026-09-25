@@ -10,7 +10,7 @@ import { getConnection } from "../rpc";
 import { readAssetPrice } from "../settlement-prices";
 import { sendToOwner } from "../telegram/bot";
 import { executeWalletTrade } from "../wallet-trade";
-import { describeCondition, describeTrigger, isMet, type Trigger } from "./rules";
+import { describeCondition, describeTrigger, describeWait, fireTime, isMet, type Trigger } from "./rules";
 import { activeTriggers, transition } from "./state";
 
 /**
@@ -24,6 +24,9 @@ import { activeTriggers, transition } from "./state";
  * already passed is how a small alert becomes a large surprise.
  *
  * One price read per asset per pass, however many triggers watch it.
+ *
+ * A timed trigger due before the next minute's pass gets its own wake up at
+ * its time, so "in 2 minutes" means two minutes, not up to three.
  */
 
 const usd = (n: number) =>
@@ -43,11 +46,15 @@ async function fire(trigger: Trigger, price: number): Promise<Trigger | null> {
   const claimed = await transition(trigger.id, "active", "firing", { firedAt: Date.now(), firedPrice: price });
   if (!claimed) return null;
 
-  const moved = `${trigger.symbol} ${describeCondition(trigger.condition, trigger.basePrice).replace(/ \(to .*\)$/, "")}: now ${usd(price)}, set at ${usd(trigger.basePrice)}.`;
+  const timed = trigger.condition.kind === "after";
+  const moved = timed
+    ? `${describeWait((trigger.condition as { minutes: number }).minutes)} are up: ${trigger.symbol} is ${usd(price)} now, ${usd(trigger.basePrice)} when set.`
+    : `${trigger.symbol} ${describeCondition(trigger.condition, trigger.basePrice).replace(/ \(to .*\)$/, "")}: now ${usd(price)}, set at ${usd(trigger.basePrice)}.`;
+  const name = timed ? "timed trigger" : "price trigger";
 
   if (trigger.action.kind === "notify") {
     const done = await transition(trigger.id, "firing", "fired", { result: moved, signature: null });
-    await tell(trigger.owner, ["Conduit price alert", moved]);
+    await tell(trigger.owner, [timed ? "Conduit timed alert" : "Conduit price alert", moved]);
     return done;
   }
 
@@ -79,7 +86,7 @@ async function fire(trigger: Trigger, price: number): Promise<Trigger | null> {
 
   const done = await transition(trigger.id, "firing", ok ? "fired" : "failed", { result: `${moved} ${result}`, signature });
   await tell(trigger.owner, [
-    ok ? "Conduit price trigger fired" : "Conduit price trigger: the trade failed",
+    ok ? `Conduit ${name} fired` : `Conduit ${name}: the trade failed`,
     moved,
     result,
     signature ? explorerUrl(signature, "tx", CLUSTER) : null,
@@ -87,7 +94,33 @@ async function fire(trigger: Trigger, price: number): Promise<Trigger | null> {
   return done;
 }
 
-const shared = globalThis as typeof globalThis & { __conduitTriggerPass?: boolean };
+const shared = globalThis as typeof globalThis & {
+  __conduitTriggerPass?: boolean;
+  __conduitTriggerWake?: ReturnType<typeof setTimeout>;
+};
+
+/** The minute timer's period. A timed trigger due sooner than this gets its own wake up. */
+const PASS_MS = 60_000;
+
+/**
+ * Sets one wake up for the earliest timed trigger due before the next regular
+ * pass. Replaced on every pass, so there is never more than one waiting.
+ */
+function wakeForTimed(active: Trigger[], now: number): void {
+  if (shared.__conduitTriggerWake) clearTimeout(shared.__conduitTriggerWake);
+  shared.__conduitTriggerWake = undefined;
+  const due = active
+    .map((t) => fireTime(t))
+    .filter((at): at is number => at !== null && at > now && at - now < PASS_MS);
+  if (due.length === 0) return;
+  // A little after the time, so the clock check in isMet is already true.
+  const delay = Math.min(...due) - now + 250;
+  shared.__conduitTriggerWake = setTimeout(() => {
+    shared.__conduitTriggerWake = undefined;
+    void checkTriggers().catch(() => {});
+  }, delay);
+  shared.__conduitTriggerWake.unref?.();
+}
 
 /** One pass over every active trigger. Returns the ones it finished. */
 export async function checkTriggers(now = Date.now()): Promise<Trigger[]> {
@@ -104,7 +137,12 @@ export async function checkTriggers(now = Date.now()): Promise<Trigger[]> {
       const done = await transition(t.id, "active", "expired", { result: "Expired without the condition being met." });
       if (done) {
         finished.push(done);
-        await tell(t.owner, ["Conduit price trigger expired", describeTrigger(t), "The condition was never met, so nothing happened."]);
+        await tell(
+          t.owner,
+          t.condition.kind === "after"
+            ? ["Conduit timed trigger expired", describeTrigger(t), "No fresh price could be read in time, so nothing happened."]
+            : ["Conduit price trigger expired", describeTrigger(t), "The condition was never met, so nothing happened."],
+        );
       }
     }
 
@@ -117,11 +155,12 @@ export async function checkTriggers(now = Date.now()): Promise<Trigger[]> {
       // A price that cannot be read, or is stale, fires nothing. The next pass
       // tries again.
       if (!read || !read.ok) continue;
-      for (const t of live.filter((t) => t.symbol === symbol && isMet(t, read.price.price))) {
+      for (const t of live.filter((t) => t.symbol === symbol && isMet(t, read.price.price, Date.now()))) {
         const done = await fire(t, read.price.price);
         if (done) finished.push(done);
       }
     }
+    wakeForTimed(live.filter((t) => !finished.some((f) => f.id === t.id)), Date.now());
   } finally {
     shared.__conduitTriggerPass = false;
   }

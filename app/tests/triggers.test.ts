@@ -6,6 +6,9 @@ import path from "path";
 
 import {
   describeTrigger,
+  describeWait,
+  expiryFor,
+  fireTime,
   isMet,
   targetPrice,
   validate,
@@ -94,6 +97,68 @@ describe("what can be set", () => {
     expect(
       describeTrigger({ symbol: "SPY", condition: { kind: "above", price: 780 }, basePrice: 769, action: { kind: "notify" } }),
     ).to.equal("When SPY reaches $780.00 or more, message you.");
+  });
+});
+
+describe("timed triggers", () => {
+  const setAt = 1_000_000;
+  const timed = (minutes: number) => ({ condition: { kind: "after", minutes } as Condition, basePrice: 338.68, createdAt: setAt });
+
+  it("fires at its time and not a moment before, whatever the price", async () => {
+    const t = timed(2);
+    expect(isMet(t, 338.68, setAt + 119_999)).to.equal(false);
+    expect(isMet(t, 338.68, setAt + 120_000)).to.equal(true);
+    expect(isMet(t, 1, setAt + 180_000)).to.equal(true);
+    expect(isMet(t, 9_999, setAt + 180_000)).to.equal(true);
+  });
+
+  it("never fires without knowing when it was set", async () => {
+    expect(isMet({ condition: { kind: "after", minutes: 2 }, basePrice: 338.68 }, 338.68, Date.now() + 1e12)).to.equal(false);
+  });
+
+  it("knows when it is due, and a price trigger has no time", async () => {
+    expect(fireTime({ condition: { kind: "after", minutes: 2 }, createdAt: setAt })).to.equal(setAt + 120_000);
+    expect(fireTime({ condition: { kind: "rise", percent: 2 }, createdAt: setAt })).to.equal(null);
+  });
+
+  it("expires ten minutes after its time rather than days later", async () => {
+    expect(expiryFor({ kind: "after", minutes: 2 }, setAt)).to.equal(setAt + 120_000 + 600_000);
+    expect(expiryFor({ kind: "rise", percent: 2 }, setAt, 7)).to.equal(setAt + 7 * 86_400_000);
+  });
+
+  it("refuses a wait under a minute or over thirty days", async () => {
+    expect(validate({ kind: "after", minutes: 0.5 }, 338.68)).to.not.equal(null);
+    expect(validate({ kind: "after", minutes: 30 * 1440 + 1 }, 338.68)).to.not.equal(null);
+    expect(validate({ kind: "after", minutes: 2 }, 338.68)).to.equal(null);
+  });
+
+  it("says the wait in plain words", async () => {
+    expect(describeWait(1)).to.equal("1 minute");
+    expect(describeWait(2)).to.equal("2 minutes");
+    expect(describeWait(90)).to.equal("1 hour 30 minutes");
+    expect(describeWait(1440 * 3)).to.equal("3 days");
+    expect(
+      describeTrigger({ symbol: "AAPL", condition: { kind: "after", minutes: 2 }, basePrice: 338.68, action: { kind: "buy", dollars: 50 } }),
+    ).to.equal("2 minutes after it is set, message you and buy $50.00 of AAPL.");
+    expect(
+      describeTrigger({ symbol: "TSLA", condition: { kind: "after", minutes: 30 }, basePrice: 376, action: { kind: "notify" } }),
+    ).to.equal("30 minutes after it is set, message you the price of TSLA.");
+  });
+
+  it("is kept and claimed once like any other trigger", async () => {
+    const now = Date.now();
+    const t = await addTrigger({
+      owner: "owner-a",
+      symbol: "AAPL",
+      condition: { kind: "after", minutes: 2 },
+      basePrice: 338.68,
+      action: { kind: "buy", dollars: 50 },
+      createdAt: now,
+      expiresAt: expiryFor({ kind: "after", minutes: 2 }, now),
+    });
+    expect(fireTime(t)).to.equal(now + 120_000);
+    expect(await transition(t.id, "active", "firing")).to.not.equal(null);
+    expect(await transition(t.id, "active", "firing")).to.equal(null);
   });
 });
 

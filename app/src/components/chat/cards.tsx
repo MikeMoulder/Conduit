@@ -9,7 +9,7 @@ import { DEFAULT_BRAKE_BPS } from "@/lib/autopilot/brakes";
 import type { Score } from "@/lib/autopilot/scorecard";
 import type { Card, StockBrief } from "@/lib/copilot/events";
 import { describeRange } from "@/lib/day-stats";
-import { describeTrigger, type Trigger } from "@/lib/triggers/rules";
+import { describeTrigger, fireTime, type Trigger } from "@/lib/triggers/rules";
 import { Sparkline } from "./market-cards";
 import type { AssetHolding, PortfolioHoldings } from "@/lib/holdings";
 
@@ -1273,9 +1273,9 @@ const TRIGGER_STYLE: Record<Trigger["status"], string> = {
 function TriggersCardView({ triggers }: { triggers: Trigger[] }) {
   const watching = triggers.filter((t) => t.status === "active").length;
   return (
-    <Shell title="Price triggers" aside={<span className="text-[11px] text-zinc-500">{watching} watching</span>}>
+    <Shell title="Triggers" aside={<span className="text-[11px] text-zinc-500">{watching} watching</span>}>
       {triggers.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-zinc-500">No triggers yet. Try: alert me when NVDA rises 2.5%.</p>
+        <p className="px-4 py-3 text-sm text-zinc-500">No triggers yet. Try: alert me when NVDA rises 2.5%, or in 10 minutes buy $50 of AAPL.</p>
       ) : (
         triggers.map((t, i) => (
           <div key={t.id} className={`px-4 py-2.5 ${i === triggers.length - 1 ? "" : "border-b border-zinc-900"}`}>
@@ -1284,7 +1284,12 @@ function TriggersCardView({ triggers }: { triggers: Trigger[] }) {
                 {t.status === "active" ? "watching" : t.status}
               </span>
               <span className="font-mono text-[11px] text-zinc-600">
-                {t.id} · {t.status === "active" ? `until ${new Date(t.expiresAt).toLocaleDateString()}` : ago(t.firedAt ?? t.createdAt)}
+                {t.id} ·{" "}
+                {t.status !== "active"
+                  ? ago(t.firedAt ?? t.createdAt)
+                  : fireTime(t) !== null
+                    ? `at ${new Date(fireTime(t)!).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                    : `until ${new Date(t.expiresAt).toLocaleDateString()}`}
               </span>
             </div>
             <p className="mt-1.5 text-sm leading-relaxed text-zinc-300">{describeTrigger(t)}</p>

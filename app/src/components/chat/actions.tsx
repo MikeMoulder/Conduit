@@ -15,7 +15,7 @@ import { associatedTokenAddress, desk, type PortfolioHoldings } from "@/lib/hold
 import { walletAddress } from "@/lib/main-wallet";
 import { buildProofMessage } from "@/lib/wallet-proof";
 import { describeScore, type Score } from "@/lib/autopilot/scorecard";
-import { describeTrigger, targetPrice, type Trigger } from "@/lib/triggers/rules";
+import { describeTrigger, fireTime, targetPrice, type Trigger } from "@/lib/triggers/rules";
 import bs58 from "bs58";
 import { createMandateInstructions, setStatusInstruction } from "@/lib/mandate-tx";
 import {
@@ -136,7 +136,10 @@ function present(action: PendingAction): Presentation {
       };
     case "price-trigger":
       return {
-        title: `Set a price trigger on ${action.symbol}`,
+        title:
+          action.condition.kind === "after"
+            ? `Set a timed trigger on ${action.symbol}`
+            : `Set a price trigger on ${action.symbol}`,
         signer: "agent",
         button: "Set the trigger",
         warning: action.action.kind !== "notify",
@@ -325,6 +328,20 @@ async function runServerAction(action: ServerAction): Promise<Card> {
       });
       if (!data.ok) return failure(data, "The trigger was not set");
       const trigger = data.trigger as Trigger;
+      const due = fireTime(trigger);
+      if (due !== null) {
+        const when = new Date(due).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+        return resultCard({
+          ok: true,
+          headline: `Set for ${when}`,
+          detail: `${describeTrigger(trigger)} It fires once, at ${when}, at the price at that moment.`,
+          signature: null,
+          lines: [
+            { label: "price now", value: `$${trigger.basePrice.toFixed(2)}` },
+            { label: "fires at", value: when },
+          ],
+        });
+      }
       return resultCard({
         ok: true,
         headline: `Watching ${trigger.symbol}`,

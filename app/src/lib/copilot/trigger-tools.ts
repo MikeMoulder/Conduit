@@ -11,7 +11,9 @@ import { checkTrigger } from "../triggers/prepare";
 import {
   DEFAULT_TTL_DAYS,
   MAX_TTL_DAYS,
+  MIN_DELAY_MINUTES,
   describeTrigger,
+  describeWait,
   targetPrice,
   type Condition,
   type TriggerAction,
@@ -22,7 +24,7 @@ import { fundFirst } from "./wallet-tools";
 
 /**
  * The copilot's tools for price triggers: "when NVDA rises 2.5%, message me
- * and buy $500 of it".
+ * and buy $500 of it", and timed ones: "in 2 minutes, buy $50 of AAPL".
  *
  * Setting one is a card the owner approves, like any order, because a trigger
  * that trades is an order placed in advance. Cancelling is done straight
@@ -72,15 +74,16 @@ const setTrigger: CopilotTool = {
   declaration: {
     name: "set_price_trigger",
     description:
-      "Prepares a price trigger: watch one asset and, the first time a condition holds, message the person on Telegram and optionally buy or sell a dollar amount in their main wallet with no further approval. Conditions: rise or fall by a percentage from the current price, or reach a price from below (above) or above (below). Use it for 'tell me when', 'alert me if', 'buy when it drops to', 'sell if it rises'. It fires once, is checked every minute against the price trades fill at, and expires after 7 days unless they say otherwise. This does NOT execute: they approve a card.",
+      "Prepares a price or timed trigger: watch one asset and, the first time a condition holds, message the person on Telegram and optionally buy or sell a dollar amount in their main wallet with no further approval. Conditions: rise or fall by a percentage from the current price, reach a price from below (above) or above (below), or after, a wait in minutes from the moment they approve. Use it for 'tell me when', 'alert me if', 'buy when it drops to', 'sell if it rises', and for anything timed: 'in 2 minutes buy', 'sell in an hour', 'remind me of the price in 30 minutes'. For a timed request use condition after with value in minutes (an hour is 60, a day is 1440). It fires once, and expires after 7 days unless they say otherwise; a timed one fires at its time. This does NOT execute: they approve a card.",
     parameters: {
       type: "OBJECT",
       properties: {
         symbol: { type: "STRING", description: "The asset to watch, such as NVDA." },
-        condition: { type: "STRING", description: "rise, fall, above or below." },
+        condition: { type: "STRING", description: "rise, fall, above, below or after." },
         value: {
           type: "NUMBER",
-          description: "For rise or fall, the percentage, such as 2.5. For above or below, the price in dollars.",
+          description:
+            "For rise or fall, the percentage, such as 2.5. For above or below, the price in dollars. For after, the wait in minutes, such as 2.",
         },
         action: { type: "STRING", description: "notify, buy or sell. Defaults to notify." },
         dollars: { type: "NUMBER", description: "For buy or sell, the dollar amount to trade." },
@@ -93,7 +96,7 @@ const setTrigger: CopilotTool = {
     const parsed = z
       .object({
         symbol: z.string().min(1).max(16),
-        condition: z.enum(["rise", "fall", "above", "below"]),
+        condition: z.enum(["rise", "fall", "above", "below", "after"]),
         value: z.number().positive(),
         action: z.enum(["notify", "buy", "sell"]).optional(),
         dollars: z.number().positive().optional(),
@@ -106,10 +109,18 @@ const setTrigger: CopilotTool = {
       });
     const owner = requireOwner(ctx);
 
+    if (parsed.condition === "after" && parsed.value < MIN_DELAY_MINUTES) {
+      throw new ToolError(
+        `A timed trigger waits at least ${MIN_DELAY_MINUTES} minute. For anything sooner, offer to place the order now with place_order.`,
+      );
+    }
     const condition: Condition =
-      parsed.condition === "rise" || parsed.condition === "fall"
-        ? { kind: parsed.condition, percent: parsed.value }
-        : { kind: parsed.condition, price: parsed.value };
+      parsed.condition === "after"
+        ? { kind: "after", minutes: parsed.value }
+        : parsed.condition === "rise" || parsed.condition === "fall"
+          ? { kind: parsed.condition, percent: parsed.value }
+          : { kind: parsed.condition, price: parsed.value };
+    const timed = condition.kind === "after";
     const kind = parsed.action ?? "notify";
     if (kind !== "notify" && !parsed.dollars) {
       throw new ToolError(`A trigger that will ${kind} needs a dollar amount. Ask how much.`);
@@ -146,7 +157,7 @@ const setTrigger: CopilotTool = {
     // fail for want of cash or holding should be said now, not when it fails.
     const shortfall = await fundingShortfall(owner, check.symbol, action, check.basePrice);
 
-    const days = parsed.days ?? DEFAULT_TTL_DAYS;
+    const days = timed ? Math.max(1, Math.ceil(parsed.value / 1440)) : (parsed.days ?? DEFAULT_TTL_DAYS);
     const telegram = Boolean(botToken()) && (await chatFor(owner.toBase58())) !== null;
     const sentence = describeTrigger({ symbol: check.symbol, condition, basePrice: check.basePrice, action });
 
@@ -156,12 +167,13 @@ const setTrigger: CopilotTool = {
         notDoneYet: "The trigger is NOT set yet. Tell them to press Set the trigger on the card to switch it on. Never say it is set.",
         trigger: sentence,
         currentPrice: check.basePrice,
-        targetPrice: Number(targetPrice(condition, check.basePrice).toFixed(2)),
-        watchesForDays: days,
+        ...(timed
+          ? { firesAfter: `${describeWait(parsed.value)} from the moment they approve` }
+          : { targetPrice: Number(targetPrice(condition, check.basePrice).toFixed(2)), watchesForDays: days }),
         telegramLinked: telegram,
         ...(shortfall ? { warning: shortfall } : {}),
       },
-      summary: `${check.symbol} trigger ready to approve`,
+      summary: `${check.symbol} ${timed ? "timed " : ""}trigger ready to approve`,
       action: {
         kind: "price-trigger",
         owner: owner.toBase58(),
@@ -170,7 +182,11 @@ const setTrigger: CopilotTool = {
         action,
         days,
         basePrice: check.basePrice,
-        summary: `${sentence} ${check.symbol} is ${usd(check.basePrice)} now, measured from the moment you approve. Checked every minute for ${days} day${days === 1 ? "" : "s"}; it fires once.${
+        summary: `${sentence} ${check.symbol} is ${usd(check.basePrice)} now. ${
+          timed
+            ? `The clock starts the moment you approve, and it fires once, ${describeWait(parsed.value)} later.`
+            : `Measured from the moment you approve. Checked every minute for ${days} day${days === 1 ? "" : "s"}; it fires once.`
+        }${
           action.kind === "notify"
             ? ""
             : ` When it fires the agent places the ${action.kind} from your main wallet straight away, at the price at that moment, with no further approval.`
