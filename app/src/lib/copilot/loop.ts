@@ -41,6 +41,21 @@ export const MAX_TURNS = 6;
 /** How many tool calls in total, across all turns. */
 export const MAX_TOOL_CALLS = 10;
 
+/**
+ * A reply that says a card is ready. Checked against what actually happened,
+ * because a model sometimes writes "I have prepared the proposal" after only
+ * checking it, and the person is then told to approve a card that is not there.
+ */
+const CLAIMS_A_CARD =
+  /\b(?:i have|i've|i)\s+(?:now\s+|just\s+|also\s+)?prepared\b|\bhere is the card\b|\bthe card (?:is )?(?:ready|below)\b/i;
+
+export function claimsACard(prose: string): boolean {
+  return CLAIMS_A_CARD.test(prose);
+}
+
+const NO_CARD_CORRECTION =
+  "[Check] Your reply says a card is ready to approve, but no tool prepared one in this answer, so nothing is showing. Call the tool that prepares it now, with the same details (for a rebalance that is propose_rebalance). If you cannot, reply again and say plainly that nothing was prepared and why.";
+
 const SYSTEM = `You are Conduit, a portfolio copilot for tokenized equities on Solana.
 
 What this system is
@@ -346,6 +361,8 @@ export async function runCopilot(
   }));
 
   let toolCalls = 0;
+  let actions = 0;
+  let corrected = false;
   let model = "unknown";
   let totalTokens: number | null = null;
 
@@ -381,6 +398,15 @@ export async function runCopilot(
       .map((p) => p.text)
       .filter((t): t is string => Boolean(t))
       .join("");
+
+    // A final answer that promises a card nobody prepared is sent back once,
+    // before anyone reads it, rather than shown and corrected afterwards.
+    if (calls.length === 0 && actions === 0 && !corrected && claimsACard(prose) && turn < MAX_TURNS - 1) {
+      corrected = true;
+      contents.push({ role: "model", parts: reply.parts });
+      contents.push({ role: "user", parts: [{ text: NO_CARD_CORRECTION }] });
+      continue;
+    }
 
     // Prose that arrives alongside tool calls is the model narrating what it is
     // about to do. The step list already says that, so it is dropped rather
@@ -456,7 +482,10 @@ export async function runCopilot(
           sources: outcome.sources,
         });
 
-        if (outcome.action) emit({ type: "action", action: outcome.action });
+        if (outcome.action) {
+          actions += 1;
+          emit({ type: "action", action: outcome.action });
+        }
 
         responseParts.push({
           functionResponse: { name: call.name, response: outcome.result },

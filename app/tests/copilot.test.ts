@@ -54,6 +54,7 @@ import { readCopilotStream } from "../src/lib/copilot/stream";
 import {
   MAX_TOOL_CALLS,
   MAX_TURNS,
+  claimsACard,
   runCopilot,
   type TurnGenerator,
 } from "../src/lib/copilot/loop";
@@ -362,6 +363,60 @@ describe("the copilot loop", () => {
       events.find((e) => e.type === "submission" as never),
       "nothing should have been submitted",
     );
+  });
+
+  it("sends back a reply that promises a card no tool prepared", async () => {
+    // Seen live: after check_proposal alone the model wrote "I have prepared
+    // the rebalance proposal for you to approve", and no card appeared.
+    const { events, generatorCalls, contents } = await run([
+      turn(text("I have prepared the rebalance proposal for you to approve.")),
+      turn(text("Nothing was prepared yet. Say send it and I will prepare it.")),
+    ]);
+
+    assert.equal(generatorCalls, 2, "the false claim should have been sent back once");
+    const said = events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta);
+    assert.deepEqual(said, ["Nothing was prepared yet. Say send it and I will prepare it."]);
+    assert.include(JSON.stringify(contents[1]), "no tool prepared one");
+  });
+
+  it("lets a card claim through when a card really was prepared", async () => {
+    const { events, generatorCalls } = await run(
+      [
+        turn([
+          call("prepare_mandate", {
+            maxPositionBps: 2500,
+            minCashBps: 1000,
+            maxTurnoverBps: 4000,
+            maxAssets: 6,
+            symbols: ["BTC", "ETH", "SOL"],
+          }),
+        ]),
+        turn(text("I have prepared the mandate for you to sign.")),
+      ],
+      OWNER,
+    );
+
+    assert.equal(generatorCalls, 2);
+    assert.isDefined(events.find((e) => e.type === "action"));
+    assert.isDefined(events.find((e) => e.type === "text"));
+  });
+
+  it("sends a false claim back only once", async () => {
+    const { events, generatorCalls } = await run([
+      turn(text("I've prepared the order.")),
+      turn(text("I've prepared the order.")),
+    ]);
+
+    assert.equal(generatorCalls, 2, "a second false claim is shown rather than looping");
+    assert.lengthOf(events.filter((e) => e.type === "text"), 1);
+  });
+
+  it("recognises the ways a model claims a card", () => {
+    assert.isTrue(claimsACard("Because you asked, I have prepared the rebalance proposal."));
+    assert.isTrue(claimsACard("I've prepared a card to buy $500 of AAPL."));
+    assert.isTrue(claimsACard("Here is the card for your deposit."));
+    assert.isFalse(claimsACard("Would you like me to prepare a card?"));
+    assert.isFalse(claimsACard("Once prepared, the card waits for you."));
   });
 
   it("refuses an invalid wallet address before doing any work", async () => {
