@@ -20,6 +20,7 @@
  * Usage
  * -----
  *   npm run demo:mandate -- <agent-pubkey> [--id N] [--cash 25000]
+ *                          [--symbols NVDA,SPACEX,OPENAI] [--max-assets 3]
  *
  * The agent public key comes from the app, at /api/agent/identity. Passing the
  * wrong one produces a mandate the app cannot act on, which the program will
@@ -76,7 +77,7 @@ async function main(): Promise<void> {
   const agentArg = process.argv[2];
   if (!agentArg || agentArg.startsWith("--")) {
     console.error(
-      "usage: npm run demo:mandate -- <agent-pubkey> [--id N] [--cash 25000]",
+      "usage: npm run demo:mandate -- <agent-pubkey> [--id N] [--cash 25000] [--symbols A,B,C] [--max-assets 3]",
     );
     console.error("get the agent key from the running app at /api/agent/identity");
     process.exit(1);
@@ -103,6 +104,20 @@ async function main(): Promise<void> {
 
   const desk = JSON.parse(fs.readFileSync(DESK_CONFIG, "utf8")) as DeskConfig;
   const cashMint = new PublicKey(desk.cashMint);
+
+  // The desk settles eighteen assets and a mandate may list at most eight, so
+  // the list is chosen. The default is the first eight; --symbols picks, which
+  // is how a mandate mixing equities with pre IPO names is made.
+  const wanted = arg("--symbols")?.split(",").map((s) => s.trim().toUpperCase());
+  const assets = wanted
+    ? wanted.map((symbol) => {
+        const found = desk.settleable.find((a) => a.symbol === symbol);
+        if (!found) throw new Error(`${symbol} is not settleable on this desk`);
+        return found;
+      })
+    : desk.settleable.slice(0, 8);
+  if (assets.length > 8) throw new Error("a mandate may list at most 8 assets");
+  const maxAssets = Number(arg("--max-assets") ?? 3);
   const owner = provider.wallet.publicKey;
 
   const mandate = mandatePda(owner, mandateId, program.programId);
@@ -115,7 +130,7 @@ async function main(): Promise<void> {
   console.log(`agent     ${agent.toBase58()}`);
   console.log(`mandate   ${mandate.toBase58()}  (id ${mandateId})`);
   console.log(`portfolio ${portfolio.toBase58()}`);
-  console.log(`assets    ${desk.settleable.map((a) => a.symbol).join(", ")}`);
+  console.log(`assets    ${assets.map((a) => a.symbol).join(", ")}`);
 
   const already = await provider.connection.getAccountInfo(mandate);
 
@@ -131,9 +146,9 @@ async function main(): Promise<void> {
           maxPositionBps: 5000,
           minCashBps: 1000,
           maxTurnoverBps: 9000,
-          maxAssets: 3,
+          maxAssets,
         },
-        desk.settleable.map((a) => ({
+        assets.map((a) => ({
           mint: new PublicKey(a.mint),
           feedId: hex(a.feedId),
         })),
@@ -162,7 +177,7 @@ async function main(): Promise<void> {
   /* ---- token accounts, and the cash to trade with ---- */
 
   const cashAta = getAssociatedTokenAddressSync(cashMint, portfolio, true);
-  const assetAtas = desk.settleable.map((a) => ({
+  const assetAtas = assets.map((a) => ({
     symbol: a.symbol,
     ata: getAssociatedTokenAddressSync(new PublicKey(a.mint), portfolio, true),
     mint: new PublicKey(a.mint),
