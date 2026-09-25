@@ -1,6 +1,8 @@
 import "server-only";
 
 import { startTelegramPoller } from "../telegram/bot";
+import { listAssetsOfClass } from "../assets";
+import { refreshDayLines } from "../sparklines";
 import { checkTriggers } from "../triggers/runner";
 import { runCycle } from "./cycle";
 import { notify } from "./notify";
@@ -105,18 +107,31 @@ export async function runDue(): Promise<void> {
  * Guarded on the global object because in development the module can be
  * evaluated more than once, and two timers would double every cycle.
  */
+/** Every tokenized equity with a mainnet token, whose day line the cards and briefs draw. */
+function equityMints(): string[] {
+  return listAssetsOfClass("equity")
+    .map((a) => a.mainnetMint)
+    .filter((m): m is string => Boolean(m));
+}
+
 export function startScheduler(): void {
   // The bot's listener rides along: it has its own once per process guard.
   startTelegramPoller();
   // Price triggers keep their own timer and guard, so a server whose
   // autopilot timer was started by older code still starts this one.
   if (!shared.__conduitTriggerTimer) {
-    shared.__conduitTriggerTimer = setInterval(() => {
+    const tick = () => {
       void checkTriggers().catch(() => {
         // Each trigger records its own outcome; a failure here must not take
         // the timer down.
       });
-    }, TICK_MS);
+      // The market cards' day lines are refreshed here and nowhere else: a
+      // page only reads them, and on Vercel a page could not finish a spaced
+      // run of requests anyway.
+      void refreshDayLines(equityMints()).catch(() => {});
+    };
+    shared.__conduitTriggerTimer = setInterval(tick, TICK_MS);
+    tick();
   }
   if (shared.__conduitAutopilot) return;
   shared.__conduitAutopilot = setInterval(() => {

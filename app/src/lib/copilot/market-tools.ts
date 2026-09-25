@@ -79,7 +79,7 @@ const getStockBrief: CopilotTool = {
     const { headlines, provider } = news;
     const row = snapshot[0];
     const price = row?.price ?? null;
-    const rawLine = mint ? (dayLines([mint])[mint] ?? []) : [];
+    const rawLine = mint ? ((await dayLines([mint]))[mint] ?? []) : [];
     const line = plausibleLine(rawLine, price) ? rawLine : [];
     const day = dayStats(line, price);
     const record = preStocks?.status === "ok" ? preStocks.assets.get(asset.symbol) : undefined;

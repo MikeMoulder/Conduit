@@ -34,7 +34,7 @@ export async function GET(): Promise<Response> {
   const mints = SYMBOLS.map((s) => getAssetBySymbol(s)?.mainnetMint).filter(
     (m): m is string => Boolean(m),
   );
-  const lines = dayLines(mints);
+  const lines = await dayLines(mints);
 
   const cards = SYMBOLS.map((symbol): MarketCard => {
     const asset = getAssetBySymbol(symbol);
