@@ -219,17 +219,24 @@ function file(filePath: string): Kv {
 
 /* ------------------------------------------------------------------------ */
 
+/** A setting, trimmed, with any quotes a copy and paste left around it removed. */
+function setting(name: string): string | undefined {
+  const value = process.env[name]?.trim().replace(/^["']|["']$/g, "");
+  return value ? value : undefined;
+}
+
 /** The store, chosen by configuration each time so tests can switch it. */
 export function kv(): Kv {
-  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  // Upstash's own names, or the ones Vercel's Upstash integration injects.
+  const url = setting("UPSTASH_REDIS_REST_URL") ?? setting("KV_REST_API_URL");
+  const token = setting("UPSTASH_REDIS_REST_TOKEN") ?? setting("KV_REST_API_TOKEN");
   if (url && token) return upstash(url, token);
   // Vercel's disk is read only and not shared between requests, so a file
   // store there would fail on the first write, or worse, seem to work and
   // forget. Said plainly instead.
   if (process.env.VERCEL) {
     throw new Error(
-      "On Vercel the shared store must be Upstash: set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.",
+      "On Vercel the shared store must be Upstash: set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN, or add the Upstash integration, which sets KV_REST_API_URL and KV_REST_API_TOKEN.",
     );
   }
   return file(process.env.KV_FILE ?? path.join(process.cwd(), ".data", "kv.json"));

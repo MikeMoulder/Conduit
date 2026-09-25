@@ -23,6 +23,8 @@ beforeEach(() => {
   process.env.KV_FILE = path.join(dir, "kv.json");
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  delete process.env.KV_REST_API_URL;
+  delete process.env.KV_REST_API_TOKEN;
 });
 
 describe("the file store", () => {
@@ -111,6 +113,16 @@ describe("the Upstash store", () => {
 
   it("is chosen when both settings are present", () => {
     expect(kv().backend).to.equal("upstash");
+  });
+
+  it("accepts the names Vercel's Upstash integration uses, with quotes", async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.KV_REST_API_URL = '"https://example.upstash.io"';
+    process.env.KV_REST_API_TOKEN = '"test-token-not-real"';
+    expect(kv().backend).to.equal("upstash");
+    await kv().get("k");
+    expect(sent[0]).to.deep.equal(["GET", "conduit:k"]);
   });
 
   it("sends SET with NX and EX, prefixed", async () => {

@@ -18,9 +18,9 @@
 # again after one.
 #
 # It needs app/.env on the host with the same keys as the site on Vercel,
-# including UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN, and without
-# CONDUIT_BACKGROUND_JOBS=off. And it must be the only process running the
-# background jobs: Telegram refuses a second listener for one bot.
+# including the Upstash settings. The jobs are forced on here whatever the
+# file says. And it must be the only process running the background jobs:
+# Telegram refuses a second listener for one bot.
 #
 # Usage
 # -----
@@ -44,6 +44,10 @@ running() {
 
 supervise() {
   export PATH="${NODE_BIN}:${PATH}"
+  # app/.env is shared with local development and Vercel, where the jobs are
+  # off. This process is the one place they run, and a value set here wins
+  # over the file.
+  export CONDUIT_BACKGROUND_JOBS=on
   cd app
 
   while true; do
