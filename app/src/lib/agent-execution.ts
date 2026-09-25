@@ -1,7 +1,14 @@
 import "server-only";
 
 import { Program } from "@coral-xyz/anchor";
-import { PublicKey, Transaction } from "@solana/web3.js";
+import {
+  PublicKey,
+  Transaction,
+  TransactionMessage,
+  VersionedTransaction,
+  type AddressLookupTableAccount,
+  type Connection,
+} from "@solana/web3.js";
 import { z } from "zod";
 
 import { fetchMandate, fetchPortfolio } from "@/lib/accounts";
@@ -30,6 +37,23 @@ import { getConnection } from "@/lib/rpc";
  * the only edit to the moved code is that it returns a status and a body
  * rather than a Response.
  */
+
+let lookupCache: { address: string; account: AddressLookupTableAccount } | null = null;
+
+/**
+ * The desk's address lookup table, or null to send a legacy transaction.
+ *
+ * Cached for the life of the process: the table only changes when the desk is
+ * rebuilt, and that rewrites the config the address comes from.
+ */
+async function deskLookupTable(connection: Connection): Promise<AddressLookupTableAccount | null> {
+  if (!desk.lookupTable) return null;
+  if (lookupCache?.address === desk.lookupTable) return lookupCache.account;
+  const { value } = await connection.getAddressLookupTable(new PublicKey(desk.lookupTable));
+  if (!value) return null;
+  lookupCache = { address: desk.lookupTable, account: value };
+  return value;
+}
 
 export interface ExecutionResult {
   status: number;
@@ -400,32 +424,50 @@ export async function executeSettle(body: unknown): Promise<ExecutionResult> {
     const latest = await connection.getLatestBlockhash("confirmed");
     lastValidBlockHeight = latest.lastValidBlockHeight;
 
-    const transaction = new Transaction({
-      feePayer: keypair.publicKey,
-      blockhash: latest.blockhash,
-      lastValidBlockHeight: latest.lastValidBlockHeight,
-    }).add(
-      await program.methods
-        .settle()
-        .accountsStrict({
-          mandate: mandateAddress,
-          portfolio: portfolioAddress,
-          desk: new PublicKey(desk.desk),
-          agent: keypair.publicKey,
-          cashMint: new PublicKey(desk.cashMint),
-          portfolioCash: associatedTokenAddress(
-            portfolioAddress,
-            new PublicKey(desk.cashMint),
-          ),
-          deskCash: new PublicKey(desk.deskCash),
-          tokenProgram: TOKEN_PROGRAM,
-        })
-        .remainingAccounts(remaining)
-        .instruction(),
-    );
+    const instruction = await program.methods
+      .settle()
+      .accountsStrict({
+        mandate: mandateAddress,
+        portfolio: portfolioAddress,
+        desk: new PublicKey(desk.desk),
+        agent: keypair.publicKey,
+        cashMint: new PublicKey(desk.cashMint),
+        portfolioCash: associatedTokenAddress(
+          portfolioAddress,
+          new PublicKey(desk.cashMint),
+        ),
+        deskCash: new PublicKey(desk.deskCash),
+        tokenProgram: TOKEN_PROGRAM,
+      })
+      .remainingAccounts(remaining)
+      .instruction();
 
-    transaction.sign(keypair);
-    signature = await connection.sendRawTransaction(transaction.serialize());
+    // Four accounts per asset outgrow a legacy transaction at about six
+    // assets. With the desk's lookup table the shared accounts cost a byte
+    // each, and the program receives exactly the same accounts either way.
+    const table = await deskLookupTable(connection);
+    let raw: Uint8Array;
+    if (table) {
+      const versioned = new VersionedTransaction(
+        new TransactionMessage({
+          payerKey: keypair.publicKey,
+          recentBlockhash: latest.blockhash,
+          instructions: [instruction],
+        }).compileToV0Message([table]),
+      );
+      versioned.sign([keypair]);
+      raw = versioned.serialize();
+    } else {
+      const transaction = new Transaction({
+        feePayer: keypair.publicKey,
+        blockhash: latest.blockhash,
+        lastValidBlockHeight: latest.lastValidBlockHeight,
+      }).add(instruction);
+      transaction.sign(keypair);
+      raw = transaction.serialize();
+    }
+
+    signature = await connection.sendRawTransaction(raw);
   } catch (error) {
     const programError = extractProgramError(error);
     return result({

@@ -49,6 +49,11 @@ export interface DeskConfig {
   cashDecimals: number;
   desk: string;
   deskCash: string;
+  /**
+   * Address lookup table holding the desk's shared accounts, so a settlement
+   * of many assets fits in one transaction. Made by `desk:lookup-table`.
+   */
+  lookupTable?: string;
   settleable: DeskAsset[];
 }
 

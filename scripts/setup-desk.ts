@@ -370,6 +370,7 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(CONFIG, `${JSON.stringify(config, null, 2)}\n`);
   console.log(`\nwrote ${path.relative(process.cwd(), CONFIG)}`);
+  console.log("the lookup table is not carried over: run npm run desk:lookup-table");
   console.log(`the desk can settle: ${stocked.map((s) => s.symbol).join(", ")}`);
   console.log(
     "a published price must be written before those assets will settle: npm run publish:prices",

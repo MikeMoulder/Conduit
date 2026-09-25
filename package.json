@@ -11,7 +11,8 @@
     "desk": "npm run build:ts && node .test-build/scripts/setup-desk.js",
     "demo:mandate": "npm run build:ts && node .test-build/scripts/demo-mandate.js",
     "publish:prices": "npm run build:ts && node .test-build/scripts/publish-prices.js",
-    "faucet": "npm run build:ts && node .test-build/scripts/fund-faucet.js"
+    "faucet": "npm run build:ts && node .test-build/scripts/fund-faucet.js",
+    "desk:lookup-table": "npm run build:ts && node .test-build/scripts/create-lookup-table.js"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
