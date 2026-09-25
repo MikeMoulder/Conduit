@@ -419,7 +419,15 @@ function outcomeMessage(action: PendingAction, card: Card): string {
   if (card.kind === "wallet-result") {
     const r = card.result;
     const lines = r.lines.map((l) => `${l.label}: ${l.value}`).join("; ");
-    return `[Card result] ${title}: ${r.ok ? "done" : "failed"}. ${r.headline}.${r.detail ? ` ${r.detail}` : ""}${lines ? ` (${lines})` : ""}`;
+    // A deposit made to fund another request says what that request was, so
+    // the copilot carries on with it rather than asking a second time.
+    const next =
+      action.kind === "deposit" && action.then
+        ? r.ok
+          ? ` This deposit was the funding step for another request. Prepare the card for ${action.then} now, straight away and without asking. That request is not done: it only happens when they approve its card too.`
+          : ` The request it was funding, ${action.then}, is still waiting.`
+        : "";
+    return `[Card result] ${title}: ${r.ok ? "done" : "failed"}. ${r.headline}.${r.detail ? ` ${r.detail}` : ""}${lines ? ` (${lines})` : ""}${next}`;
   }
   if (card.kind === "submission") {
     const s = card.submission;

@@ -256,6 +256,12 @@ export type PendingAction =
       mandate: string | null;
       destinationLabel: string;
       dollars: number;
+      /**
+       * What this deposit was prepared to make possible, when it is a funding
+       * step for another request. Sent back with the card result so the
+       * copilot carries on with that request without asking again.
+       */
+      then?: string | null;
       summary: string;
     }
   | {

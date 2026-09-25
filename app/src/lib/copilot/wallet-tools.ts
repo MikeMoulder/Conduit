@@ -11,7 +11,7 @@ import { FUND_UNITS } from "../faucet";
 import { fetchMainWallet, fetchWalletBalances, walletAddress } from "../main-wallet";
 import { getConnection } from "../rpc";
 import { readAssetPrice } from "../settlement-prices";
-import { ToolError, type CopilotTool, type ToolContext } from "./tool-types";
+import { ToolError, type CopilotTool, type ToolContext, type ToolOutcome } from "./tool-types";
 import type { WalletCard } from "./events";
 
 /**
@@ -210,6 +210,62 @@ const getDemoCash: CopilotTool = {
   },
 };
 
+/**
+ * The step before a request that the main wallet cannot pay for yet.
+ *
+ * Refusing "buy $500 of NVDA" because the main wallet is empty is correct and
+ * unhelpful. When the person's own wallet can cover the gap, the answer is the
+ * card that closes it: a deposit of exactly what is missing, carrying what it
+ * is for, so once they approve it the copilot carries straight on to the
+ * request itself. When their own wallet cannot cover it either, the error says
+ * so and points at demo cash.
+ *
+ * `then` names the request as a noun ("a buy of $500 of NVDA"), and `retry`
+ * is the tool call that prepares it, so the copilot can repeat it exactly.
+ * Named, not commanded: a small model handed "buy $500 of NVDA" as an
+ * instruction reported the buy as done when it had only prepared a card.
+ */
+export async function fundFirst(input: {
+  owner: PublicKey;
+  needed: number;
+  have: number;
+  purpose: string;
+  then: string;
+  retry: { tool: string; args: Record<string, unknown> };
+}): Promise<ToolOutcome> {
+  const short = Math.ceil((input.needed - input.have) * 100) / 100;
+  const own = await fetchWalletBalances(getConnection(), input.owner);
+  const available = own.cash?.uiAmount ?? 0;
+
+  if (available < short) {
+    throw new ToolError(
+      `The main wallet holds ${usd(input.have)} of cash and ${input.purpose} needs ${usd(input.needed)}. Their own wallet holds ${usd(available)}, not enough to cover the ${usd(short)} gap either. Offer get_demo_cash, then a deposit.`,
+    );
+  }
+
+  return {
+    result: {
+      fundingFirst: true,
+      mainWalletCash: input.have,
+      needed: input.needed,
+      depositPrepared: short,
+      then: input.then,
+      afterTheDepositCall: input.retry,
+      notDoneYet: `Nothing is deposited and nothing is set up yet. Tell them their main wallet is short, to approve the deposit card first, and that the card for ${input.then} comes right after, for them to approve too.`,
+      note: "The deposit card is showing. When its card result says it landed, call afterTheDepositCall straight away with those exact arguments. Do not ask again.",
+    },
+    summary: `main wallet short by ${usd(short)}, deposit prepared first`,
+    action: {
+      kind: "deposit",
+      mandate: null,
+      destinationLabel: "your main wallet",
+      dollars: short,
+      then: input.then,
+      summary: `Your main wallet has ${usd(input.have)} of cash, so ${input.purpose} cannot go through yet. Approve moving ${usd(short)} in from your own wallet first. You sign this one, because the money is leaving your wallet. As soon as it lands, the card for ${input.then} comes next, for you to approve.`,
+    },
+  };
+}
+
 const deposit: CopilotTool = {
   label: "Preparing the deposit",
   declaration: {
@@ -306,9 +362,14 @@ const placeOrder: CopilotTool = {
     const heldValue = heldTokens * price.price.price;
 
     if (side === "buy" && parsed.dollars > cash) {
-      throw new ToolError(
-        `The main wallet holds ${usd(cash)} in cash, less than ${usd(parsed.dollars)}. Offer a deposit, or a smaller order.`,
-      );
+      return fundFirst({
+        owner,
+        needed: parsed.dollars,
+        have: cash,
+        purpose: `this ${usd(parsed.dollars)} buy of ${asset.symbol}`,
+        then: `a buy of ${usd(parsed.dollars)} of ${asset.symbol} in your main wallet`,
+        retry: { tool: "place_order", args: { side: "BUY", symbol: asset.symbol, dollars: parsed.dollars } },
+      });
     }
     if (side === "sell" && parsed.dollars > heldValue) {
       throw new ToolError(
@@ -376,9 +437,14 @@ const fundMandate: CopilotTool = {
     const balances = await fetchWalletBalances(getConnection(), walletAddress(owner));
     const cash = balances.cash?.uiAmount ?? 0;
     if (dollars > cash) {
-      throw new ToolError(
-        `The main wallet holds ${usd(cash)} in cash, less than ${usd(dollars)}.`,
-      );
+      return fundFirst({
+        owner,
+        needed: dollars,
+        have: cash,
+        purpose: `moving ${usd(dollars)} into mandate ${mandateId}`,
+        then: `moving ${usd(dollars)} from your main wallet into mandate ${mandateId}`,
+        retry: { tool: "fund_mandate", args: { mandateId, dollars } },
+      });
     }
 
     const label = `mandate ${mandateId}`;

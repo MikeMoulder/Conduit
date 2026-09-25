@@ -18,6 +18,7 @@ import {
 } from "../triggers/rules";
 import { cancelTrigger, listTriggers } from "../triggers/state";
 import { ToolError, type CopilotTool, type ToolContext } from "./tool-types";
+import { fundFirst } from "./wallet-tools";
 
 /**
  * The copilot's tools for price triggers: "when NVDA rises 2.5%, message me
@@ -118,8 +119,31 @@ const setTrigger: CopilotTool = {
     const check = await checkTrigger({ owner, symbol: parsed.symbol.toUpperCase(), condition, action });
     if (!check.ok) throw new ToolError(check.error);
 
-    // Not a refusal: they may deposit before it fires. But a buy that will
-    // fail for want of cash should be said now, not when it fails.
+    // A buy the main wallet cannot pay for is funded first, when their own
+    // wallet can cover it: the deposit card comes now, and the trigger after.
+    if (action.kind === "buy") {
+      const balances = await fetchWalletBalances(getConnection(), walletAddress(owner)).catch(() => null);
+      const cash = balances?.cash?.uiAmount ?? 0;
+      if (balances && cash < action.dollars) {
+        const sentence = describeTrigger({ symbol: check.symbol, condition, basePrice: check.basePrice, action });
+        try {
+          return await fundFirst({
+            owner,
+            needed: action.dollars,
+            have: cash,
+            purpose: `a trigger that buys ${usd(action.dollars)} of ${check.symbol}`,
+            then: `the trigger (${sentence.replace(/\.$/, "")})`,
+            retry: { tool: "set_price_trigger", args: { ...args } },
+          });
+        } catch {
+          // Their own wallet cannot cover it either. Fall through: the trigger
+          // can still be set, and the card says what it lacks.
+        }
+      }
+    }
+
+    // Not a refusal: they may fund it before it fires. But a trade that will
+    // fail for want of cash or holding should be said now, not when it fails.
     const shortfall = await fundingShortfall(owner, check.symbol, action, check.basePrice);
 
     const days = parsed.days ?? DEFAULT_TTL_DAYS;
@@ -129,6 +153,7 @@ const setTrigger: CopilotTool = {
     return {
       result: {
         prepared: true,
+        notDoneYet: "The trigger is NOT set yet. Tell them to press Set the trigger on the card to switch it on. Never say it is set.",
         trigger: sentence,
         currentPrice: check.basePrice,
         targetPrice: Number(targetPrice(condition, check.basePrice).toFixed(2)),
