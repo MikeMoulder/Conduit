@@ -8,6 +8,12 @@
 
 Built for **Stocklana** (Solana Foundation) with **PreStocks** and **Pyth**. Tokenized stocks, crypto and pre IPO companies, all in one conversation.
 
+| 29 | 27 | 5 | 18 | 16 | 28 | 392 |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| agent tools | kinds of live card | AI analysts per decision | assets in 3 classes | on chain instructions | named refusals | automated tests |
+
+**Jump to:** [Meet the copilot](#meet-the-copilot) · [Why it stands out](#why-conduit-stands-out) · [Why Solana](#why-this-needs-solana) · [Sponsors](#sponsor-integrations) · [Proof](#proof-you-can-click) · [Tests](#tested-and-every-failure-closed) · [Try it](#try-it)
+
 ---
 
 ## The problem
@@ -44,6 +50,79 @@ Everything below is a real message you can type in the live app. Anything that m
 ![An approval card: buy $50.00 of AAPL, the tokens you receive, the price and where it came from](assets/screenshots/approval-card.png)
 
 ![After approval: the trade settled on chain, with its transaction linked and the wallet updated](assets/screenshots/trade-settled.png)
+
+## Meet the copilot
+
+Conduit's agent is not a chatbot with a buy button. It is a Gemini agent with **29 tools** reaching real prices, real news, real wallets and a real Solana program. It reasons over up to 6 rounds and 10 tool calls per message, and it answers with live cards you can act on, not walls of text. Here is what it does that most AI trading assistants do not.
+
+### 1. It shows its work, every time
+
+![The step list: each tool the agent used, what it found and how long it took, then the data sources](assets/screenshots/step-list.png)
+
+Every answer streams in with a **step list**: each tool it called, what the tool found, and how many milliseconds it took. Underneath, a **sources strip** names where the figures came from: Solana accounts, Jupiter, PreStocks, Pyth, GeckoTerminal, Gemini, or the news service it used. Its first rule, from [`loop.ts`](app/src/lib/copilot/loop.ts): *every number it states must come from a tool in this conversation.* If it could not fetch a price, it says so instead of estimating, because a plausible invented price is worse than none.
+
+### 2. It knows where your money is, and fixes the gaps for you
+
+Money lives in three places: **your own wallet**, your **main wallet** (where the agent trades on your word, no signing popups), and your **mandates** (where the agent invests on its own judgement, inside your rules). The copilot keeps them straight. Ask for a $500 buy with $50 in your main wallet, and it does not fail: it prepares a **deposit card for exactly the $450 shortfall**, and the moment you approve, it **carries on with the original buy without asking you to repeat yourself**. This "fund first" chain works for buys, triggers and mandate funding ([`wallet-tools.ts`](app/src/lib/copilot/wallet-tools.ts)).
+
+### 3. It explains the market like an analyst
+
+Ask "how is Tesla doing?" and you get a **stock brief**, not a price quote, built by [`market-tools.ts`](app/src/lib/copilot/market-tools.ts):
+
+- **The verdict:** the day's move, copied exactly from the data, and where the price sits in the day's range, with a 24 hour chart of the token's own trades for the tokenized stocks (GeckoTerminal).
+- **The why:** real headlines with their source and age: Finnhub company news for stocks, Yahoo for crypto, Google News for private companies. The copilot says "reported", never presents a headline as a checked fact, and never invents a cause.
+- **What is special about owning it on chain:** the token's premium or discount to the real share, or for a pre IPO name, the valuation the company's mark implies against the valuation the token price implies.
+- **Your position and your next move:** what you hold, and one or two things it can do next.
+
+### 4. It thinks like an investment committee
+
+`run_analysis` convenes **five AI analysts** over live prices ([`pipeline.ts`](app/src/lib/agents/pipeline.ts)). **Research** gathers the facts. **Bull** and **Bear** argue opposite sides **at the same time and blind to each other**, so the manager weighs two independent views instead of a negotiated middle. **Risk** applies your limits, and the **Portfolio Manager** decides a split with a thesis per position. Every stage's output is checked against a schema. It works on any stocks you name, **with or without a mandate**, and ends by offering to act: a dollar order, or handing the portfolio to the autopilot.
+
+### 5. It knows the program's answer before the program does
+
+`check_proposal` runs a line for line mirror of the program's own rule check ([`proposal.ts`](app/src/lib/proposal.ts)), turnover included, and reports **the exact on chain error** a proposal would hit before anything is sent. And if you want to send it anyway, it lets you, because **watching the program refuse the agent by name** is the clearest proof that the limits are real. The refusal is recorded on chain where anyone can check it.
+
+### 6. Its memory is the blockchain
+
+"What has the agent done?" is answered by `get_history`, which **rebuilds the mandate's whole history from Solana transactions** ([`events.ts`](app/src/lib/events.ts)): every accepted rebalance with its turnover, and every refusal with the rule that stopped it. There is no database behind it, so the history cannot drift from what actually happened.
+
+### 7. It keeps working when you close the tab
+
+- **Orders on your terms:** "in 2 minutes buy", "every 10 minutes buy", "when NVDA rises 2.5%, buy", "every 10 minutes, if NVDA is above $150, buy". Each is claimed before it trades so it can never fire twice, and each shows its maximum spend up front.
+- **Autopilot:** the five analyst committee runs on a schedule (every 5 minutes to once a day), then rebalances and settles on its own. Every transaction is still checked by the program.
+- **A pre IPO strategy** that buys private companies below their mark and refuses to chase premiums.
+- **A safety brake** that moves the portfolio to cash and stops the agent after a set fall from its best point.
+- **A scorecard** against simply holding SPY.
+- **Telegram:** every trade, trigger and decision reaches your phone. You link your chat by signing a message with your wallet, so nobody else can claim it.
+
+### 8. It is honest by design, not by hope
+
+- **A card is not a trade.** Until the card reports success, the agent may not say "done" or "bought".
+- **Targets are not holdings.** It only says you own something once it has settled into real token balances.
+- **Approve versus sign.** It tells you exactly which key signs each action: yours, or the agent's.
+- **Its style is enforced in code, not just requested.** Every reply passes through [`style.ts`](app/src/lib/copilot/style.ts) before it reaches you, which strips dashes and fixes list numbering.
+- **Research, not advice.** It explains and offers. It never tells you to buy or sell, and it says it is not a licensed adviser.
+
+### 9. It meets you where you are
+
+Say "hi" and it greets you for your exact stage ([`welcome-tools.ts`](app/src/lib/copilot/welcome-tools.ts)): **not connected**, **brand new** (a numbered first three steps), **ready** (your idle cash and what to say next), or **holding** (your largest position's move today, copied exactly, and its top headline). Your conversations stay in your own browser, searchable from the sidebar, and are never sent anywhere to be stored.
+
+### 10. It stays up when the AI provider does not
+
+Gemini models come and go: during the build, whole model families returned 404, 429 or 503. [`gemini.ts`](app/src/lib/gemini.ts) walks a **model ladder**, puts a failing model in a 60 second cooldown, and retries once with the exact schema complaint when an answer comes back malformed. A **turn budget** stops a confused model from looping against a paid API.
+
+## Why Conduit stands out
+
+| | A typical AI trading assistant | Conduit |
+|---|---|---|
+| Where your limits live | In the prompt, where a model can ignore them | In a Solana account, re-checked by a program on every move |
+| What the agent can do with your money | Whatever its key allows | Trade at the on chain price, fund your mandates, or send money back to you. Nothing else |
+| Taking money out of your rules | Possible if the agent holds the key | Impossible: `move_from_mandate` accepts only the owner's signature |
+| Who sets the price | Often the caller | Never the agent: the program reads a price account bound to each asset and refuses anything stale |
+| Where numbers come from | The model, sometimes from memory | A tool call in this conversation, with the source shown |
+| How you know what it did | Its own logs | Solana transactions anyone can open, including its refusals |
+| How it talks to you | Dashboards and order tickets | A chat, with a card for every action and a Telegram message for every result |
+| Pre IPO companies | Rarely offered | 8 PreStocks names, traded on the gap between token and company mark |
 
 ## Why this needs Solana
 
