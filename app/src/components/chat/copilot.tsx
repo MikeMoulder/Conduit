@@ -11,6 +11,7 @@ import { CLUSTER } from "@/lib/cluster";
 import { useCopilot } from "@/hooks/use-copilot";
 import { useIsDesktop, useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { Composer } from "./composer";
+import { MarketCards } from "./market-cards";
 import { Sidebar } from "./sidebar";
 import { Thread } from "./thread";
 
@@ -97,7 +98,7 @@ export function Copilot() {
             onEvent={(message) => void send(message, { event: true })}
           />
         ) : (
-          <Welcome connected={connected} />
+          <Welcome connected={connected} onAsk={(q) => void send(q)} />
         )}
 
         <Composer
@@ -114,7 +115,7 @@ export function Copilot() {
   );
 }
 
-function Welcome({ connected }: { connected: boolean }) {
+function Welcome({ connected, onAsk }: { connected: boolean; onAsk: (question: string) => void }) {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-16 sm:px-6">
@@ -167,6 +168,8 @@ function Welcome({ connected }: { connected: boolean }) {
             reach.
           </p>
         </div>
+
+        <MarketCards enabled={connected} onAsk={onAsk} />
 
         {!connected ? (
           <p className="text-[13px] text-ink-faint">
