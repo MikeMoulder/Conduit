@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { fetchMandate } from "../accounts";
 import { getAgentIdentity } from "../agent-identity";
+import { DEFAULT_BRAKE_BPS } from "../autopilot/brakes";
 import { DEFAULT_PRE_IPO_CAP_BPS } from "../autopilot/pre-ipo";
 import { describeScore, type Score } from "../autopilot/scorecard";
 import { scoreNow } from "../autopilot/snapshot";
@@ -80,6 +81,11 @@ const setAutopilot: CopilotTool = {
           description:
             "Most of the mandate the pre IPO names (SpaceX, OpenAI and the rest) may hold together, in percent. Only if the person says. Defaults to 10. 0 keeps the autopilot out of pre IPO entirely.",
         },
+        brakePercent: {
+          type: "NUMBER",
+          description:
+            "The safety brake, in percent: if the mandate falls this far below its best point, the autopilot moves to cash and stops until they switch it back on. Only if the person says. Defaults to 10. 0 switches the brake off, which you should advise against.",
+        },
       },
       required: ["on"],
     },
@@ -92,6 +98,7 @@ const setAutopilot: CopilotTool = {
         everyMinutes: z.number().int().min(5).max(1440).optional(),
         objective: z.string().min(1).max(2000).optional(),
         preIpoCapPercent: z.number().min(0).max(100).optional(),
+        brakePercent: z.number().min(0).max(50).optional(),
       })
       .parse(args);
     const owner = requireOwner(ctx);
@@ -101,6 +108,11 @@ const setAutopilot: CopilotTool = {
     const preIpoCapBps =
       parsed.preIpoCapPercent === undefined ? null : Math.round(parsed.preIpoCapPercent * 100);
     const capText = bpsToPercent(preIpoCapBps ?? DEFAULT_PRE_IPO_CAP_BPS);
+    const brakeBps = parsed.brakePercent === undefined ? null : Math.round(parsed.brakePercent * 100);
+    const brakeText =
+      (brakeBps ?? DEFAULT_BRAKE_BPS) === 0
+        ? "There is no safety brake, so nothing stops it after a fall."
+        : `If the mandate falls ${bpsToPercent(brakeBps ?? DEFAULT_BRAKE_BPS)} below its best point, it moves to cash and stops until you switch it back on.`;
 
     if (parsed.on) {
       const { funded } = await requireRunnableMandate(owner, mandateId);
@@ -125,8 +137,9 @@ const setAutopilot: CopilotTool = {
         everyMinutes,
         objective: parsed.objective ?? null,
         preIpoCapBps,
+        brakeBps,
         summary: parsed.on
-          ? `Let the agent run ${label} on its own every ${everyMinutes} minutes${parsed.objective ? `, aiming to ${parsed.objective.replace(/\.$/, "")}` : ""}. It analyses, rebalances and settles without asking you each time. The program checks every transaction against the mandate's rules, so it can only do what you already allowed. Pre-IPO names are bought only when their token trades below the company's mark, never added to at a premium, and kept to ${capText} of the mandate together. The first cycle starts within a minute.`
+          ? `Let the agent run ${label} on its own every ${everyMinutes} minutes${parsed.objective ? `, aiming to ${parsed.objective.replace(/\.$/, "")}` : ""}. It analyses, rebalances and settles without asking you each time. The program checks every transaction against the mandate's rules, so it can only do what you already allowed. Pre-IPO names are bought only when their token trades below the company's mark, never added to at a premium, and kept to ${capText} of the mandate together. ${brakeText} The first cycle starts within a minute.`
           : `Stop the autopilot on ${label}. Nothing it already did is undone, and you can switch it back on at any time.`,
       },
     };
@@ -158,10 +171,19 @@ const getAutopilot: CopilotTool = {
     return {
       result: {
         telegramLinked: chatFor(owner) !== null,
-        running: entries.filter((e) => e.enabled).map((e) => ({ mandateId: e.mandateId, everyMinutes: e.everyMinutes, preIpoCap: bpsToPercent(e.preIpoCapBps ?? DEFAULT_PRE_IPO_CAP_BPS) })),
+        running: entries.filter((e) => e.enabled).map((e) => ({
+          mandateId: e.mandateId,
+          everyMinutes: e.everyMinutes,
+          preIpoCap: bpsToPercent(e.preIpoCapBps ?? DEFAULT_PRE_IPO_CAP_BPS),
+          safetyBrake: (e.brakeBps ?? DEFAULT_BRAKE_BPS) === 0 ? "off" : `${bpsToPercent(e.brakeBps ?? DEFAULT_BRAKE_BPS)} below the best point`,
+        })),
+        braked: entries
+          .filter((e) => e.brakedAt)
+          .map((e) => ({ mandateId: e.mandateId, at: new Date(e.brakedAt!).toISOString(), resume: "set_autopilot on" })),
         scorecards: scores.map((s) => ({
           mandateId: s.mandateId,
           scorecard: describeScore(s.score),
+          belowBestPercent: Number(s.score.drawdownPct.toFixed(2)),
           returnPercent: Number(s.score.returnPct.toFixed(2)),
           spyReturnPercent: Number(s.score.spyReturnPct.toFixed(2)),
         })),

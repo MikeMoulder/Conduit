@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CLUSTER } from "@/lib/cluster";
 import { bpsToPercent, explorerUrl } from "@/lib/chain";
 import { getAssetByMint, getAssetBySymbol } from "@/lib/assets";
+import { DEFAULT_BRAKE_BPS } from "@/lib/autopilot/brakes";
 import type { Score } from "@/lib/autopilot/scorecard";
 import type { Card } from "@/lib/copilot/events";
 import type { AssetHolding, PortfolioHoldings } from "@/lib/holdings";
@@ -951,6 +952,7 @@ const OUTCOME_STYLE: Record<string, string> = {
   held: "bg-zinc-800 text-zinc-300",
   skipped: "bg-amber-500/10 text-amber-300",
   failed: "bg-red-500/15 text-red-300",
+  braked: "bg-red-500/25 text-red-200",
 };
 
 function ago(at: number): string {
@@ -973,7 +975,17 @@ function pct(value: number): string {
  * it sits above the log rather than inside it. Deposits and withdrawals are
  * already kept out of both returns, so the two numbers compare directly.
  */
-function ScoreRow({ mandateId, score }: { mandateId: number; score: Score }) {
+function ScoreRow({
+  mandateId,
+  score,
+  brakeBps,
+  braked,
+}: {
+  mandateId: number;
+  score: Score;
+  brakeBps: number;
+  braked: boolean;
+}) {
   const lead = Math.round(score.aheadPts * 100) / 100;
   const tone = lead > 0 ? "text-emerald-300" : lead < 0 ? "text-red-300" : "text-zinc-300";
   return (
@@ -992,6 +1004,13 @@ function ScoreRow({ mandateId, score }: { mandateId: number; score: Score }) {
           {score.spyValue.toLocaleString("en-US", { maximumFractionDigits: 2 })}
         </span>
       </div>
+      <p className={`mt-1.5 text-[11px] ${braked ? "text-red-300" : "text-zinc-500"}`}>
+        {braked
+          ? "Safety brake on: moved to cash and paused. Switch the autopilot back on to resume."
+          : brakeBps === 0
+            ? `${score.drawdownPct.toFixed(2)}% below its best point. No safety brake.`
+            : `${score.drawdownPct.toFixed(2)}% below its best point. Safety brake at ${bpsToPercent(brakeBps)}.`}
+      </p>
     </div>
   );
 }
@@ -1018,9 +1037,18 @@ function AutopilotCardView({ card }: { card: Extract<Card, { kind: "autopilot" }
         </span>
       }
     >
-      {card.scores?.map(({ mandateId, score }) => (
-        <ScoreRow key={mandateId} mandateId={mandateId} score={score} />
-      ))}
+      {card.scores?.map(({ mandateId, score }) => {
+        const entry = card.entries.find((e) => e.mandateId === mandateId);
+        return (
+          <ScoreRow
+            key={mandateId}
+            mandateId={mandateId}
+            score={score}
+            brakeBps={entry?.brakeBps ?? DEFAULT_BRAKE_BPS}
+            braked={Boolean(entry?.brakedAt)}
+          />
+        );
+      })}
       {card.decisions.length === 0 ? (
         <p className="px-4 py-3 text-sm text-zinc-500">
           No decisions yet. The first cycle runs within a minute of switching it on.

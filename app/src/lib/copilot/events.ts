@@ -279,6 +279,8 @@ export type PendingAction =
       objective: string | null;
       /** Null keeps the one already set, or the default for a new entry. */
       preIpoCapBps: number | null;
+      /** The safety brake. Null keeps the one already set, or the default. */
+      brakeBps: number | null;
       summary: string;
     }
   | {

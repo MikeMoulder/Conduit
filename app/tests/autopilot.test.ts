@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import path from "path";
 
 import {
+  brakeEntry,
   dueEntries,
   getScore,
   listDecisions,
@@ -156,6 +157,39 @@ describe("keeping the score", () => {
   it("puts the score in the message", () => {
     const text = formatDecision(decision({ score: summarise(start) }), entry());
     expect(text).to.include("Scorecard: Since 1 Jan 00:00 UTC: flat against SPY flat, level with SPY.");
+  });
+});
+
+describe("the safety brake in the log", () => {
+  it("switches the autopilot off and records when", () => {
+    upsertEntry(entry());
+    brakeEntry("Mandate1111111111111111111111111111111111", 1_234);
+    const [braked] = listEntries();
+    expect(braked.enabled).to.equal(false);
+    expect(braked.brakedAt).to.equal(1_234);
+  });
+
+  it("stops a braked mandate from being due again", () => {
+    upsertEntry(entry());
+    brakeEntry("Mandate1111111111111111111111111111111111", Date.now());
+    expect(dueEntries(Date.now() + 24 * 60 * MINUTE)).to.have.length(0);
+  });
+
+  it("leaves other mandates running", () => {
+    upsertEntry(entry());
+    upsertEntry(entry({ mandate: "Mandate2222222222222222222222222222222222" }));
+    brakeEntry("Mandate1111111111111111111111111111111111", Date.now());
+    expect(dueEntries(Date.now()).map((e) => e.mandate)).to.deep.equal([
+      "Mandate2222222222222222222222222222222222",
+    ]);
+  });
+
+  it("says so plainly in the message", () => {
+    const text = formatDecision(
+      decision({ outcome: "braked", summary: "Safety brake: the mandate fell 10.40% from its best point." }),
+      entry(),
+    );
+    expect(text).to.include("Stopped: Safety brake: the mandate fell 10.40%");
   });
 });
 

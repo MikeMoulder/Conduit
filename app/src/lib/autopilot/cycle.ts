@@ -2,7 +2,7 @@ import "server-only";
 
 import { PublicKey } from "@solana/web3.js";
 
-import { fetchMandate, fetchPortfolio } from "../accounts";
+import { fetchMandate, fetchPortfolio, type MandateView } from "../accounts";
 import { getAgentIdentity } from "../agent-identity";
 import { executeRebalance, executeSettle } from "../agent-execution";
 import { runPipeline, type MandateSpec } from "../agents/pipeline";
@@ -12,17 +12,26 @@ import { fetchHoldings, type PortfolioHoldings } from "../holdings";
 import { pricedSymbols, snapshotMarket } from "../market";
 import { evaluateProposal } from "../proposal";
 import { getConnection } from "../rpc";
+import { DEFAULT_BRAKE_BPS, describeBrake, isTripped, towardCash } from "./brakes";
 import { applyPreIpoRules, DEFAULT_PRE_IPO_CAP_BPS } from "./pre-ipo";
 import {
   advanceScore,
   describeScore,
+  drawdownBps,
   recordTrade,
   startScore,
   summarise,
   type ScoreState,
 } from "./scorecard";
 import { snapshotFrom, takeSnapshot } from "./snapshot";
-import { getScore, listDecisions, saveScore, type AutopilotEntry, type Decision } from "./state";
+import {
+  brakeEntry,
+  getScore,
+  listDecisions,
+  saveScore,
+  type AutopilotEntry,
+  type Decision,
+} from "./state";
 
 /**
  * One autonomous cycle for one mandate: look, decide, act, write it down.
@@ -74,6 +83,75 @@ function trackRecord(score: ScoreState, recent: Decision[]): string {
   return lines.join("\n");
 }
 
+/**
+ * Moves the book toward cash and stops the autopilot.
+ *
+ * The autopilot is paused whether or not the trades go through. A brake that
+ * tripped and then failed to sell must still stop the agent from buying more
+ * on the next cycle, and the owner is told exactly what did and did not happen.
+ */
+async function applyBrake(input: {
+  entry: AutopilotEntry;
+  mandate: MandateView;
+  positions: { mint: string; targetBps: number }[];
+  score: ScoreState;
+  brakeBps: number;
+  base: Pick<Decision, "mandate" | "owner" | "at" | "reasoning" | "positions" | "signatures">;
+}): Promise<Decision> {
+  const { entry, mandate, score, brakeBps, base } = input;
+  const fall = drawdownBps(score);
+  const after = towardCash(
+    input.positions.map((p) => ({ symbol: p.mint, targetBps: p.targetBps })),
+    mandate.constraints.maxTurnoverBps,
+  );
+  const named = (weights: { symbol: string; targetBps: number }[]) =>
+    weights.map((w) => ({ symbol: getAssetByMint(w.symbol)?.symbol ?? w.symbol, targetBps: w.targetBps }));
+
+  brakeEntry(entry.mandate, Date.now());
+
+  const stopped = (summary: string, signatures: string[], final: ScoreState): Decision => ({
+    ...base,
+    outcome: "braked",
+    positions: named(after),
+    signatures,
+    summary,
+    score: summarise(final),
+  });
+
+  const signatures: string[] = [];
+  if (input.positions.length > 0) {
+    const rebalance = await executeRebalance({
+      mandate: entry.mandate,
+      positions: after.map((w) => ({ mint: w.symbol, targetBps: w.targetBps })),
+    });
+    if (!rebalance.body.accepted) {
+      return stopped(
+        `Safety brake: the mandate fell ${bpsToPercent(fall)} from its best point, past your ${bpsToPercent(brakeBps)} limit. The autopilot is paused, but the move to cash was not accepted (${String(rebalance.body.detail ?? rebalance.body.error ?? "no detail")}). Your holdings are unchanged; sell from the chat if you want out.`,
+        signatures,
+        score,
+      );
+    }
+    signatures.push(String(rebalance.body.signature));
+  }
+
+  const settle = await executeSettle({ mandate: entry.mandate });
+  if (!settle.body.settled) {
+    return stopped(
+      `Safety brake: the mandate fell ${bpsToPercent(fall)} from its best point, past your ${bpsToPercent(brakeBps)} limit. The autopilot is paused and the targets now point to cash, but the settlement did not go through (${String(settle.body.detail ?? settle.body.error ?? "no detail")}). Ask for a settlement to finish the move.`,
+      signatures,
+      score,
+    );
+  }
+  signatures.push(String(settle.body.signature));
+
+  const final = settle.body.after
+    ? recordTrade(score, snapshotFrom(settle.body.after as PortfolioHoldings, score.last.prices, score.last.spyPrice, Date.now()))
+    : score;
+  saveScore(entry.mandate, final);
+
+  return stopped(describeBrake({ drawdownBps: fall, brakeBps, after }), signatures, final);
+}
+
 export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
   const base = {
     mandate: entry.mandate,
@@ -118,6 +196,22 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
   if (reading) {
     score = score ? advanceScore(score, reading).state : startScore(reading);
     saveScore(entry.mandate, score);
+  }
+
+  // A braked mandate stays braked however the cycle was started, including
+  // by hand, until the owner switches the autopilot back on.
+  if (entry.brakedAt) {
+    return {
+      ...skip("The safety brake is on, so the agent does not trade this mandate. Switch the autopilot back on to resume; the brake then measures from that day."),
+      score: score ? summarise(score) : undefined,
+    };
+  }
+
+  // Checked before the analysis, and not by it. The brake is for when the
+  // analysis may be what is going wrong.
+  const brakeBps = entry.brakeBps ?? DEFAULT_BRAKE_BPS;
+  if (score && isTripped(score, brakeBps)) {
+    return applyBrake({ entry, mandate, positions: portfolio.positions, score, brakeBps, base });
   }
 
   const symbols = mandate.allowedAssets

@@ -3,9 +3,18 @@ import { z } from "zod";
 import { fetchMandate } from "@/lib/accounts";
 import { parseAddress } from "@/lib/agent-actions";
 import { getAgentIdentity } from "@/lib/agent-identity";
+import { DEFAULT_BRAKE_BPS } from "@/lib/autopilot/brakes";
 import { DEFAULT_PRE_IPO_CAP_BPS } from "@/lib/autopilot/pre-ipo";
 import { startScheduler } from "@/lib/autopilot/scheduler";
-import { listDecisions, listEntries, getEntry, upsertEntry } from "@/lib/autopilot/state";
+import { resetPeak } from "@/lib/autopilot/scorecard";
+import {
+  getEntry,
+  getScore,
+  listDecisions,
+  listEntries,
+  saveScore,
+  upsertEntry,
+} from "@/lib/autopilot/state";
 import { mandatePda } from "@/lib/chain";
 import { getConnection } from "@/lib/rpc";
 
@@ -33,6 +42,7 @@ const setSchema = z.object({
   everyMinutes: z.number().int().min(5).max(24 * 60).optional(),
   objective: z.string().min(1).max(2000).optional(),
   preIpoCapBps: z.number().int().min(0).max(10_000).optional(),
+  brakeBps: z.number().int().min(0).max(5_000).optional(),
 });
 
 export async function POST(request: Request): Promise<Response> {
@@ -58,6 +68,16 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const existing = getEntry(mandateKey.toBase58());
+
+  // Switching a braked autopilot back on is the owner accepting the fall that
+  // tripped it, so the brake measures from today. Otherwise it would trip
+  // again on the first cycle.
+  const resuming = parsed.data.on && Boolean(existing?.brakedAt);
+  if (resuming) {
+    const score = getScore(mandateKey.toBase58());
+    if (score) saveScore(mandateKey.toBase58(), resetPeak(score));
+  }
+
   const entry = upsertEntry({
     mandate: mandateKey.toBase58(),
     owner: owner.toBase58(),
@@ -65,6 +85,8 @@ export async function POST(request: Request): Promise<Response> {
     objective: parsed.data.objective ?? existing?.objective ?? DEFAULT_OBJECTIVE,
     everyMinutes: parsed.data.everyMinutes ?? existing?.everyMinutes ?? 30,
     preIpoCapBps: parsed.data.preIpoCapBps ?? existing?.preIpoCapBps ?? DEFAULT_PRE_IPO_CAP_BPS,
+    brakeBps: parsed.data.brakeBps ?? existing?.brakeBps ?? DEFAULT_BRAKE_BPS,
+    brakedAt: parsed.data.on ? null : (existing?.brakedAt ?? null),
     enabled: parsed.data.on,
     createdAt: existing?.createdAt ?? Date.now(),
     // Turning it on makes the first cycle due straight away rather than a full

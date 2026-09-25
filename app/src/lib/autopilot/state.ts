@@ -34,12 +34,20 @@ export interface AutopilotEntry {
    * run with the default cap.
    */
   preIpoCapBps?: number;
+  /**
+   * The safety brake: how far below its best point the mandate may fall, in
+   * basis points, before the autopilot moves to cash and stops. Zero means
+   * no brake. Optional so older entries load; those get the default.
+   */
+  brakeBps?: number;
+  /** When the brake tripped. Set, the autopilot stays off until resumed. */
+  brakedAt?: number | null;
   enabled: boolean;
   createdAt: number;
   lastRunAt: number | null;
 }
 
-export type DecisionOutcome = "rebalanced" | "held" | "skipped" | "failed";
+export type DecisionOutcome = "rebalanced" | "held" | "skipped" | "failed" | "braked";
 
 export interface Decision {
   mandate: string;
@@ -110,6 +118,20 @@ export function markRun(mandate: string, at: number): void {
   write({
     ...stored,
     entries: stored.entries.map((e) => (e.mandate === mandate ? { ...e, lastRunAt: at } : e)),
+  });
+}
+
+/**
+ * Stops a mandate's autopilot because its safety brake tripped.
+ *
+ * Read fresh and written whole, like every other change here, so a cycle
+ * holding an older copy of the entry cannot switch it back on.
+ */
+export function brakeEntry(mandate: string, at: number): void {
+  const stored = read();
+  write({
+    ...stored,
+    entries: stored.entries.map((e) => (e.mandate === mandate ? { ...e, enabled: false, brakedAt: at } : e)),
   });
 }
 

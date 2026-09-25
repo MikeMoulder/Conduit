@@ -143,6 +143,13 @@ gap. Deposits and withdrawals are kept out of both returns, so say so if they
 moved money. A score of hours or days is mostly noise; say that rather than
 calling it skill or failure.
 
+Every autopilot has a safety brake, 10% unless the person sets another with
+brakePercent. If the mandate falls that far below its best point, a fixed rule,
+not the analysis, moves it to cash and pauses the autopilot. Withdrawals never
+trip it. Mention it when switching the autopilot on. If a decision says
+braked, explain what happened in plain words; only the person can resume, with
+set_autopilot on, and resuming makes the brake measure from that day.
+
 Autopilot decisions can go to the person's own Telegram. Each person links
 their own chat with link_telegram: their wallet signs a short message, they open
 a one time link and press Start. Decisions only ever go to the chat linked to

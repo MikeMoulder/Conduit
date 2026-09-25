@@ -291,6 +291,7 @@ async function runServerAction(action: ServerAction): Promise<Card> {
         everyMinutes: action.everyMinutes,
         objective: action.objective ?? undefined,
         preIpoCapBps: action.preIpoCapBps ?? undefined,
+        brakeBps: action.brakeBps ?? undefined,
       });
       if (!data.ok) return failure(data, "The autopilot was not changed");
       return resultCard({
@@ -313,7 +314,7 @@ async function runServerAction(action: ServerAction): Promise<Card> {
       });
       const decision = data.decision as
         | {
-            outcome: "rebalanced" | "held" | "skipped" | "failed";
+            outcome: "rebalanced" | "held" | "skipped" | "failed" | "braked";
             summary: string;
             reasoning: string | null;
             positions: { symbol: string; targetBps: number }[];
@@ -328,6 +329,7 @@ async function runServerAction(action: ServerAction): Promise<Card> {
         held: "The agent kept the allocation",
         skipped: "The agent held back",
         failed: "The cycle did not complete",
+        braked: "The safety brake stopped the autopilot",
       }[decision.outcome];
       return resultCard({
         ok: decision.outcome !== "failed",

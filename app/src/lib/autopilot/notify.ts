@@ -25,6 +25,7 @@ const ICON: Record<Decision["outcome"], string> = {
   held: "Held",
   skipped: "Skipped",
   failed: "Failed",
+  braked: "Stopped",
 };
 
 export function formatDecision(decision: Decision, entry: AutopilotEntry): string {
