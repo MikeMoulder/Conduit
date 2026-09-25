@@ -327,23 +327,37 @@ const placeOrder: CopilotTool = {
   declaration: {
     name: "place_order",
     description:
-      "Prepares a trade in the person's main wallet: buy or sell a dollar amount of one asset, for example buy $3,000 of NVDA. Use this whenever they name an amount of money. No mandate applies: the main wallet is theirs to direct. The agent signs once they approve, so there is no wallet prompt. The price is the settlement price the program will use. It trades now: for a trade at a later time ('in 2 minutes', 'in an hour') use set_price_trigger with condition after instead. This does NOT execute.",
+      "Prepares a trade in the person's main wallet: buy or sell a dollar amount of one asset, for example buy $3,000 of NVDA. Use this whenever they name an amount of money. No mandate applies: the main wallet is theirs to direct. The agent signs once they approve, so there is no wallet prompt. The price is the settlement price the program will use. It trades now: for a trade at a later time ('in 2 minutes', 'in an hour') use set_price_trigger with condition after instead. Selling always uses this tool, never withdraw: 'sell google' or 'sell all my NVDA' with no amount is side SELL with all true, which sells the whole holding for cash in the main wallet. This does NOT execute.",
     parameters: {
       type: "OBJECT",
       properties: {
         side: { type: "STRING", description: "BUY or SELL." },
         symbol: { type: "STRING", description: "The asset, for example NVDA." },
-        dollars: { type: "NUMBER", description: "The amount in US dollars." },
+        dollars: { type: "NUMBER", description: "The amount in US dollars. Leave out when selling all." },
+        all: { type: "BOOLEAN", description: "SELL only: sell the whole holding of this asset." },
       },
-      required: ["side", "symbol", "dollars"],
+      required: ["side", "symbol"],
     },
   },
   async run(args, ctx) {
     const parsed = z
-      .object({ side: z.string(), symbol: z.string().min(1), dollars: z.number().positive() })
+      .object({
+        side: z.string(),
+        symbol: z.string().min(1),
+        dollars: z.number().positive().optional(),
+        all: z.boolean().optional(),
+      })
       .parse(args);
     const owner = requireOwner(ctx);
     const side = parsed.side.toLowerCase() === "sell" ? "sell" : "buy";
+    const all = side === "sell" && parsed.all === true;
+    if (!all && parsed.dollars === undefined) {
+      throw new ToolError(
+        side === "sell"
+          ? "Say how much to sell in dollars, or pass all true to sell the whole holding."
+          : "Say how much to buy in dollars.",
+      );
+    }
 
     const asset = assetBySymbol(parsed.symbol);
     if (!asset) throw new ToolError(`The desk does not trade ${parsed.symbol.toUpperCase()}.`);
@@ -361,24 +375,31 @@ const placeOrder: CopilotTool = {
     const heldTokens = balances.assets.find((a) => a.mint === asset.mint)?.uiAmount ?? 0;
     const heldValue = heldTokens * price.price.price;
 
-    if (side === "buy" && parsed.dollars > cash) {
+    if (all && !(heldTokens > 0)) {
+      throw new ToolError(`The main wallet holds no ${asset.symbol}, so there is nothing to sell.`);
+    }
+    // Selling all shows the holding's value now; the exact amount is fixed
+    // when the person approves, from the balance and price at that moment.
+    const dollars = all ? Math.floor(heldValue * 100) / 100 : parsed.dollars!;
+
+    if (side === "buy" && dollars > cash) {
       return fundFirst({
         owner,
-        needed: parsed.dollars,
+        needed: dollars,
         have: cash,
-        purpose: `this ${usd(parsed.dollars)} buy of ${asset.symbol}`,
-        then: `a buy of ${usd(parsed.dollars)} of ${asset.symbol} in your main wallet`,
-        retry: { tool: "place_order", args: { side: "BUY", symbol: asset.symbol, dollars: parsed.dollars } },
+        purpose: `this ${usd(dollars)} buy of ${asset.symbol}`,
+        then: `a buy of ${usd(dollars)} of ${asset.symbol} in your main wallet`,
+        retry: { tool: "place_order", args: { side: "BUY", symbol: asset.symbol, dollars } },
       });
     }
-    if (side === "sell" && parsed.dollars > heldValue) {
+    if (side === "sell" && !all && dollars > heldValue) {
       throw new ToolError(
-        `The main wallet holds ${usd(heldValue)} of ${asset.symbol}, less than ${usd(parsed.dollars)}.`,
+        `The main wallet holds ${usd(heldValue)} of ${asset.symbol}, less than ${usd(dollars)}. To sell all of it, pass all true.`,
       );
     }
 
-    const tokens = parsed.dollars / price.price.price;
-    const cashAfter = side === "buy" ? cash - parsed.dollars : cash + parsed.dollars;
+    const tokens = all ? heldTokens : dollars / price.price.price;
+    const cashAfter = side === "buy" ? cash - dollars : cash + dollars;
     const verb = side === "buy" ? "Buy" : "Sell";
 
     return {
@@ -386,25 +407,31 @@ const placeOrder: CopilotTool = {
         prepared: true,
         side,
         symbol: asset.symbol,
-        dollars: parsed.dollars,
+        dollars,
+        ...(all ? { sellsAll: true } : {}),
         price: price.price.price,
         tokens,
         cashAfter,
         note: "Waiting for the person to approve. Nothing has been sent.",
       },
-      summary: `${side} ${usd(parsed.dollars)} of ${asset.symbol}, awaiting approval`,
+      summary: all
+        ? `sell all ${asset.symbol} (about ${usd(dollars)}), awaiting approval`
+        : `${side} ${usd(dollars)} of ${asset.symbol}, awaiting approval`,
       action: {
         kind: "trade",
         owner: owner.toBase58(),
         side,
         symbol: asset.symbol,
-        dollars: parsed.dollars,
+        dollars,
+        ...(all ? { all: true } : {}),
         price: price.price.price,
         priceSource: price.price.source,
         priceAgeSeconds: price.price.ageSeconds,
         tokens,
         cashAfter,
-        summary: `${verb} ${usd(parsed.dollars)} of ${asset.symbol} in your main wallet at ${usd(price.price.price)}. The agent signs; the program fixes the price and keeps both sides of the trade in your wallet.`,
+        summary: all
+          ? `Sell all ${Number(heldTokens.toFixed(6))} ${asset.symbol} in your main wallet for cash, about ${usd(dollars)} at ${usd(price.price.price)}. The exact amount is set from your balance and the price when you approve. The agent signs; the program fixes the price and keeps both sides of the trade in your wallet.`
+          : `${verb} ${usd(dollars)} of ${asset.symbol} in your main wallet at ${usd(price.price.price)}. The agent signs; the program fixes the price and keeps both sides of the trade in your wallet.`,
       },
     };
   },
@@ -468,7 +495,7 @@ const withdraw: CopilotTool = {
   declaration: {
     name: "withdraw",
     description:
-      "Prepares sending money back to the person's own connected wallet, from their main wallet, or from a mandate when a mandateId is given. Cash is withdrawn in dollars; an asset such as NVDA in whole tokens, or all of it. The agent signs once they approve, and the program only lets it send the money to the owner. This does NOT execute.",
+      "Prepares sending money back to the person's own connected wallet, from their main wallet, or from a mandate when a mandateId is given. Cash is withdrawn in dollars; an asset such as NVDA in whole tokens, or all of it. Use it only when they ask to withdraw, send or move money out to their own wallet. Never use it to sell: selling turns an asset into cash and is place_order with side SELL. The agent signs once they approve, and the program only lets it send the money to the owner. This does NOT execute.",
     parameters: {
       type: "OBJECT",
       properties: {

@@ -31,6 +31,8 @@ export async function executeWalletTrade(input: {
   side: "buy" | "sell";
   symbol: string;
   dollars: number;
+  /** Sell the whole holding, sized from the balance and price at this moment. */
+  all?: boolean;
 }): Promise<ExecutionResult> {
   const result = (body: Record<string, unknown>, status = 200): ExecutionResult => ({ status, body });
 
@@ -55,8 +57,18 @@ export async function executeWalletTrade(input: {
   const cashMint = new PublicKey(desk.cashMint);
   const before = await fetchWalletBalances(connection, walletKey);
 
-  const amount = cashUnits(input.dollars);
   const buying = input.side === "buy";
+  let amount = cashUnits(input.dollars);
+  if (!buying && input.all) {
+    // Sized now rather than when the card was prepared: the published price
+    // may have moved since, and a fixed dollar amount could then ask for a
+    // unit more than the wallet holds. Rounded down, so the units the program
+    // derives from it never exceed the holding; at most dust is left behind.
+    const held = before.assets.find((a) => a.mint === asset.mint)?.uiAmount ?? 0;
+    if (!(held > 0)) return result({ error: `there is no ${asset.symbol} in the main wallet to sell` }, 409);
+    amount = BigInt(Math.floor(held * price.price.price * 10 ** desk.cashDecimals * (1 - 1e-9)));
+    if (amount <= BigInt(0)) return result({ error: `the ${asset.symbol} held is worth less than a cent` }, 409);
+  }
 
   const trade = await codecProgram.methods
     .trade(buying, new BN(amount.toString()))

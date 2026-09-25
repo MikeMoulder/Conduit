@@ -273,6 +273,8 @@ export type PendingAction =
       side: "buy" | "sell";
       symbol: string;
       dollars: number;
+      /** A sell of the whole holding; the amount is fixed at approval. */
+      all?: boolean;
       price: number;
       priceSource: string;
       priceAgeSeconds: number;

@@ -106,7 +106,9 @@ function present(action: PendingAction): Presentation {
       };
     case "trade":
       return {
-        title: `${action.side === "buy" ? "Buy" : "Sell"} ${usd(action.dollars)} of ${action.symbol}`,
+        title: action.all
+          ? `Sell all ${action.symbol}`
+          : `${action.side === "buy" ? "Buy" : "Sell"} ${usd(action.dollars)} of ${action.symbol}`,
         signer: "agent",
         button: action.side === "buy" ? "Buy" : "Sell",
         warning: false,
@@ -256,6 +258,7 @@ async function runServerAction(action: ServerAction): Promise<Card> {
         side: action.side,
         symbol: action.symbol,
         dollars: action.dollars,
+        ...(action.all ? { all: true } : {}),
       });
       if (!data.traded) return failure(data, "The trade did not go through");
       const before = data.before as PortfolioHoldings;

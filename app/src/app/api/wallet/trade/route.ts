@@ -20,6 +20,7 @@ const requestSchema = z.object({
   side: z.enum(["buy", "sell"]),
   symbol: z.string().min(1).max(16),
   dollars: z.number().positive().finite(),
+  all: z.boolean().optional(),
 });
 
 export async function POST(request: Request): Promise<Response> {
