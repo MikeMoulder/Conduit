@@ -502,9 +502,13 @@ function AnalysisCard({ card }: { card: Extract<Card, { kind: "analysis" }> }) {
 
   return (
     <Shell
-      title={`Proposed allocation, ${analysis.positions.length} position${
-        analysis.positions.length === 1 ? "" : "s"
-      }`}
+      title={
+        analysis.research
+          ? `Research view, how the committee would split it`
+          : `Proposed allocation, ${analysis.positions.length} position${
+              analysis.positions.length === 1 ? "" : "s"
+            }`
+      }
       aside={
         <span className="flex items-baseline gap-3">
           <span className="font-mono text-[11px] text-zinc-600">

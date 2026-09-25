@@ -3,8 +3,8 @@ import "server-only";
 import { PublicKey } from "@solana/web3.js";
 import { z } from "zod";
 
-import { fetchMandate, fetchPortfolio, type MandateView } from "../accounts";
-import { getAssetByMint, getAssetBySymbol, listAssets } from "../assets";
+import { fetchMandate, fetchPortfolio, type MandateConstraintsView, type MandateView } from "../accounts";
+import { getAssetByMint, getAssetBySymbol, listAssets, listAssetsOfClass } from "../assets";
 import { MAX_ASSETS, bpsToPercent, mandatePda, portfolioPda } from "../chain";
 import { fetchActivity } from "../events";
 import type { ToolDeclaration } from "../gemini";
@@ -481,16 +481,37 @@ const checkProposal: CopilotTool = {
   },
 };
 
+/**
+ * Limits for a research view, where there is no mandate to take them from.
+ *
+ * Loose enough that the manager's view is its own, tight enough that it still
+ * has to diversify: a single asset may take the whole book, two may not put
+ * more than 70 percent in either, more than two not more than 40.
+ */
+function researchLimits(count: number): MandateConstraintsView {
+  return {
+    maxPositionBps: count === 1 ? 10_000 : count === 2 ? 7_000 : 4_000,
+    minCashBps: 0,
+    maxTurnoverBps: 10_000,
+    maxAssets: Math.min(Math.max(count, 1), MAX_ASSETS),
+  };
+}
+
 const runAnalysis: CopilotTool = {
   label: "Running the five stage analysis",
   declaration: {
     name: "run_analysis",
     description:
-      "Runs the full research pipeline over live prices and produces a proposed allocation with a thesis per position. Five stages: research, then bull and bear independently, then risk, then a portfolio manager. Takes around twenty seconds, so only call it when an allocation is actually wanted, not to answer a simple question.",
+      "Runs the full five stage analysis over live prices: research, then bull and bear independently, then risk, then a portfolio manager, with a thesis per position and a suggested split. Give symbols to analyse specific assets, such as NVDA and TSLA: that needs no mandate at all and is a research view. Without symbols it analyses the person's mandate, or the tokenized stocks if they have none. Never tell someone they need a mandate to get an analysis. Takes around twenty seconds.",
     parameters: {
       type: "OBJECT",
       properties: {
-        mandateId: { type: "INTEGER", description: "Which mandate. Defaults to 0." },
+        symbols: {
+          type: "ARRAY",
+          items: { type: "STRING" },
+          description: "Assets to analyse, when they name specific ones. No mandate needed.",
+        },
+        mandateId: { type: "INTEGER", description: "Which mandate, when analysing one. Defaults to 0." },
         objective: {
           type: "STRING",
           description:
@@ -501,18 +522,47 @@ const runAnalysis: CopilotTool = {
     },
   },
   async run(args, ctx) {
-    const { mandateId = 0, objective } = z
-      .object({ mandateId: mandateIdArg, objective: z.string().min(1).max(2000) })
+    const { mandateId = 0, objective, symbols: named } = z
+      .object({
+        mandateId: mandateIdArg,
+        objective: z.string().min(1).max(2000),
+        symbols: z.array(z.string().min(1).max(16)).max(MAX_ASSETS).optional(),
+      })
       .parse(args);
 
-    const { mandate } = await loadMandate(ctx, mandateId);
-    const { portfolio: address } = addresses(ctx, mandateId);
-    const portfolio = await fetchPortfolio(getConnection(), address);
-    const current = portfolio?.positions ?? [];
+    // A research view needs no mandate: asking what the committee thinks of
+    // NVDA and TSLA should not require setting up rules for an AI to run money
+    // first. It is used when assets are named, or when there is no mandate.
+    const mandate = named?.length
+      ? null
+      : await loadMandate(ctx, mandateId)
+          .then((m) => m.mandate)
+          .catch(() => null);
+    const research = mandate === null;
 
-    const symbols = mandate.allowedAssets
-      .map((a) => getAssetByMint(a.mint)?.symbol)
-      .filter((s): s is string => Boolean(s));
+    let symbols: string[];
+    let current: { mint: string; targetBps: number }[] = [];
+    let constraints: MandateConstraintsView;
+    if (mandate) {
+      const { portfolio: address } = addresses(ctx, mandateId);
+      const portfolio = await fetchPortfolio(getConnection(), address);
+      current = portfolio?.positions ?? [];
+      symbols = mandate.allowedAssets
+        .map((a) => getAssetByMint(a.mint)?.symbol)
+        .filter((s): s is string => Boolean(s));
+      constraints = mandate.constraints;
+    } else {
+      symbols = named?.length
+        ? [...new Set(named.map((s) => s.toUpperCase()))]
+        : listAssetsOfClass("equity").map((a) => a.symbol);
+      const unknown = symbols.filter((s) => !getAssetBySymbol(s));
+      if (unknown.length > 0) {
+        throw new ToolError(
+          `${unknown.join(", ")} ${unknown.length === 1 ? "is" : "are"} not in the universe. Call list_universe to see what is.`,
+        );
+      }
+      constraints = researchLimits(symbols.length);
+    }
 
     ctx.onProgress?.("Pricing the permitted universe");
     const snapshot = await snapshotMarket(symbols);
@@ -527,10 +577,10 @@ const runAnalysis: CopilotTool = {
 
     const spec: MandateSpec = {
       objective,
-      maxPositionBps: mandate.constraints.maxPositionBps,
-      minCashBps: mandate.constraints.minCashBps,
-      maxTurnoverBps: mandate.constraints.maxTurnoverBps,
-      maxAssets: Math.min(mandate.constraints.maxAssets, tradable.length),
+      maxPositionBps: constraints.maxPositionBps,
+      minCashBps: constraints.minCashBps,
+      maxTurnoverBps: constraints.maxTurnoverBps,
+      maxAssets: Math.min(constraints.maxAssets, tradable.length),
       allowedSymbols: pricedSymbols(tradable),
       currentPositions: current.flatMap((p) => {
         const known = getAssetByMint(p.mint);
@@ -541,18 +591,19 @@ const runAnalysis: CopilotTool = {
     ctx.onProgress?.("Research, bull and bear, risk, then the manager");
     const run = await runPipeline(spec, tradable);
 
-    const rows = weightRows(
-      mandate,
-      current,
-      run.proposal.positions.map((p) => ({
-        symbol: p.symbol,
-        targetBps: p.targetBps,
-      })),
-    );
+    const proposed = run.proposal.positions.map((p) => ({ symbol: p.symbol, targetBps: p.targetBps }));
+    const rows: WeightRow[] = mandate
+      ? weightRows(mandate, current, proposed)
+      : proposed.flatMap((p) => {
+          const asset = getAssetBySymbol(p.symbol);
+          return asset ? [{ symbol: p.symbol, mint: asset.mint, targetBps: p.targetBps, currentBps: 0 }] : [];
+        });
 
     const evaluation = evaluateProposal({
-      constraints: mandate.constraints,
-      allowedMints: mandate.allowedAssets.map((a) => a.mint),
+      constraints,
+      allowedMints: mandate
+        ? mandate.allowedAssets.map((a) => a.mint)
+        : symbols.map((s) => getAssetBySymbol(s)!.mint),
       current,
       proposed: rows.map((r) => ({ mint: r.mint, targetBps: r.targetBps })),
     });
@@ -570,9 +621,18 @@ const runAnalysis: CopilotTool = {
         turnoverBps: evaluation.turnoverBps,
         cashBps: evaluation.cashBps,
         excluded,
-        note: "The allocation is a proposal. It has not been submitted and will not be unless the person approves it.",
+        ...(research
+          ? {
+              researchView: true,
+              note: "A research view with no mandate: how a committee would weigh and split these, not an order. Offer place_order to act on it, or prepare_mandate if they want the agent to run it for them.",
+            }
+          : {
+              note: "The allocation is a proposal. It has not been submitted and will not be unless the person approves it.",
+            }),
       },
-      summary: `${run.proposal.positions.length} positions, ${evaluation.compliant ? "within the mandate" : `would be refused with ${evaluation.firstRefusal}`}`,
+      summary: research
+        ? `research view on ${symbols.join(", ")}, ${run.proposal.positions.length} positions`
+        : `${run.proposal.positions.length} positions, ${evaluation.compliant ? "within the mandate" : `would be refused with ${evaluation.firstRefusal}`}`,
       card: {
         kind: "analysis",
         analysis: {
@@ -608,6 +668,7 @@ const runAnalysis: CopilotTool = {
           })),
           evaluation,
           excludedForMissingPrice: excluded,
+          research,
         },
       },
       sources: [

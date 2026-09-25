@@ -145,6 +145,8 @@ export interface AnalysisCard {
   stages: { stage: string; model: string; durationMs: number }[];
   evaluation: ProposalEvaluation;
   excludedForMissingPrice: string[];
+  /** A research view: assets named with no mandate, so no mandate applies. */
+  research?: boolean;
 }
 
 export interface WalletLine {
