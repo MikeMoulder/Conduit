@@ -20,6 +20,47 @@ import { WALLET_TOOLS } from "./wallet-tools";
 
 type Stage = "not-connected" | "first-time" | "ready" | "holding";
 
+/**
+ * The words for someone who has not started, written here rather than left to
+ * the model.
+ *
+ * These are the first words a new person reads, and a small model improvising
+ * them drifted into chat room cheer: exclamation marks, "play money", and a
+ * numbered list whose numbers it wrote twice. A person deciding whether to
+ * trust a product with money should meet the same measured sentences every
+ * time, so the model is handed them to use as written.
+ */
+const INTRO =
+  "Conduit lets you trade tokenized US equities, such as NVIDIA and Tesla, through conversation, and can manage a portfolio for you within limits you set and the Solana program enforces.";
+
+const usd = (n: number) => `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+
+function notConnectedGreeting(): string {
+  return `Welcome to Conduit. ${INTRO}\n\nConnect a Solana wallet with the button to begin. Conduit runs on devnet, so every balance is in test funds.`;
+}
+
+function firstTimeGreeting(ownCash: number): string {
+  const steps =
+    ownCash > 0
+      ? [
+          `**Open your main wallet.** Type "open my main wallet". It takes one signature, and trades after that need none.`,
+          `**Place your first trade.** Type "buy $100 of NVDA".`,
+          `**See what is moving.** Type "what is moving today?"`,
+        ]
+      : [
+          `**Add test funds.** Type "give me demo cash".`,
+          `**Open your main wallet.** Type "open my main wallet". It takes one signature, and trades after that need none.`,
+          `**Place your first trade.** Type "buy $100 of NVDA".`,
+        ];
+  const funds = ownCash > 0 ? ` Your wallet holds ${usd(ownCash)} in test funds.` : "";
+  return [
+    `Welcome to Conduit. ${INTRO} It runs on Solana devnet, so every balance is in test funds.${funds}`,
+    "To get started:",
+    steps.map((step, i) => `${i + 1}. ${step}`).join("\n"),
+    "You can ask a question at any point along the way.",
+  ].join("\n\n");
+}
+
 const getWelcome: CopilotTool = {
   label: "Getting your bearings",
   declaration: {
@@ -32,7 +73,11 @@ const getWelcome: CopilotTool = {
     if (!ctx.owner) {
       const stage: Stage = "not-connected";
       return {
-        result: { stage, nextWords: [], note: "No wallet is connected. Ask them to connect one with the button." },
+        result: {
+          stage,
+          greeting: notConnectedGreeting(),
+          note: "Reply with greeting exactly as written, and nothing else.",
+        },
         summary: "no wallet connected",
       };
     }
@@ -50,12 +95,8 @@ const getWelcome: CopilotTool = {
       return {
         result: {
           stage,
-          ownWalletCash: w.ownWalletCash ?? 0,
-          hasDemoCash: (w.ownWalletCash ?? 0) > 0,
-          nextWords:
-            (w.ownWalletCash ?? 0) > 0
-              ? ["open my main wallet", "buy $100 of NVDA", "what is moving today?"]
-              : ["give me demo cash", "open my main wallet", "buy $100 of NVDA"],
+          greeting: firstTimeGreeting(w.ownWalletCash ?? 0),
+          note: "Reply with greeting exactly as written, and nothing else.",
         },
         summary: "first time here",
       };

@@ -12,6 +12,7 @@ import {
 import { MAX_ASSETS } from "../chain";
 import type { CopilotEvent } from "./events";
 import { TOOLS, TOOL_DECLARATIONS, ToolError, type ToolContext } from "./tools";
+import { houseStyle } from "./style";
 
 /**
  * The conversation loop.
@@ -69,30 +70,27 @@ Explaining is different from asserting. You may explain what turnover means, why
 a clause exists, how to read a discount, or what would happen if a limit were
 set differently, from your own understanding. You may not invent a figure.
 
+Voice. Write like a well run brokerage speaking to a client: measured, precise
+and courteous, in plain English. No exclamation marks, no emoji, no slang ("yo",
+"play money", "just"), and no hype. Never use an em dash or an en dash; use a
+comma, a colon or a full stop instead. Call devnet balances "test funds". Use a
+numbered or bulleted list only for steps or options, and never write the number
+twice ("1. 1.").
+
 When someone only says hello (hi, yo, hey, gm, sup), call get_welcome and no
-other tool, then greet them back in their own register and write for the stage
-it returns, using only the facts it returns. Never list your features. Under
-about 80 words, plain words, no jargon (no "mandate", "settle" or "basis
-points" for someone new). Offer its nextWords as the exact words to type.
+other tool, then answer for the stage it returns.
 
-not-connected: say hello, say in one sentence what Conduit is (you buy and sell
-tokenized stocks like NVIDIA and Tesla just by chatting, and can let an AI run
-a portfolio for you within limits you set), and ask them to connect a wallet
-with the button. It is devnet, so it is all play money.
+not-connected and first-time: reply with its greeting exactly as written and
+nothing else. Do not rephrase it, add to it, or answer their tone.
 
-first-time: welcome them, give that same one sentence, then a numbered start
-from nextWords, each with a few words on why ("give me demo cash" is free play
-money to try it with; "open my main wallet" is one signature, and after that
-trades need none; "buy $100 of NVDA" is their first trade, just by asking).
-Then one line that they can ask anything along the way.
+ready: a short courteous welcome back, how much cash is waiting in their main
+wallet, and its nextWords offered as the exact words to type.
 
-ready: say they are set up, how much cash is waiting, and offer nextWords as
-first moves.
-
-holding: one sentence on their largest holding today, with the percentage and
-where it sits in the day's range from largest.today, and why from
-largest.topHeadline if there is one. If largest.today says there is no figure,
-do not state any daily move. Note idle cash, then offer nextWords.
+holding: a short courteous welcome back, then one sentence on their largest
+holding today, with the percentage and where it sits in the day's range from
+largest.today, and why from largest.topHeadline if there is one. If
+largest.today says there is no figure, do not state any daily move. Note idle
+cash, then offer its nextWords as the exact words to type. Under about 80 words.
 
 Call tools rather than guessing, and call several at once when they do not
 depend on each other. Do not call run_analysis unless an allocation is actually
@@ -370,7 +368,7 @@ export async function runCopilot(
     // about to do. The step list already says that, so it is dropped rather
     // than shown twice.
     if (prose && calls.length === 0) {
-      emit({ type: "text", delta: prose });
+      emit({ type: "text", delta: houseStyle(prose) });
     }
 
     if (calls.length === 0) {

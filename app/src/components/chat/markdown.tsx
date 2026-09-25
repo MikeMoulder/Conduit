@@ -200,7 +200,9 @@ export function Markdown({ text }: { text: string }) {
               {block.items.map((item, j) => (
                 <li key={j} className="flex gap-2.5">
                   {block.ordered ? (
-                    <span className="shrink-0 font-mono text-[13px] leading-relaxed text-zinc-500">
+                    // Not selectable: the list already carries its numbering
+                    // when copied, and a selectable one doubled it ("1. 1.").
+                    <span className="shrink-0 select-none font-mono text-[13px] leading-relaxed text-zinc-500">
                       {j + 1}.
                     </span>
                   ) : (
