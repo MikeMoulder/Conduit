@@ -1,6 +1,7 @@
 import "server-only";
 
 import { generateStructured } from "../gemini";
+import { preIpoBrief } from "../autopilot/pre-ipo";
 import { turnoverBetween } from "../proposal";
 import {
   argumentGeminiSchema,
@@ -47,6 +48,13 @@ export interface MandateSpec {
    * propose a sensible book that the chain refuses for moving too fast.
    */
   currentPositions?: { symbol: string; targetBps: number }[];
+  /**
+   * Most the pre IPO names may hold together, when the autopilot runs this.
+   *
+   * Absent in the chat's own analysis, which is advice a person reviews, so
+   * there it is told the signals without the limits.
+   */
+  preIpoCapBps?: number;
 }
 
 export interface MarketSnapshot {
@@ -320,7 +328,8 @@ export async function runPipeline(
   const startedAt = Date.now();
   const stages: StageRecord[] = [];
 
-  const context = `${mandateBlock(mandate)}\n\nMarket data:\n${marketTable(market)}`;
+  const preIpo = preIpoBrief(market, mandate.currentPositions ?? [], mandate.preIpoCapBps);
+  const context = `${mandateBlock(mandate)}\n\nMarket data:\n${marketTable(market)}${preIpo ? `\n\n${preIpo}` : ""}`;
 
   const research = await runStage<Research>(
     "research",
@@ -380,7 +389,7 @@ export async function runPipeline(
   const proposal = await runStage<Proposal>(
     "manager",
     `${HOUSE_RULES}\n\nYou are the Portfolio Manager. You decide. Weigh the bull case against the bear case, respect the risk ceilings, and stay inside the mandate. Every position needs a thesis and the specific conditions that would break it.`,
-    `${decision}\n\nProduce the final allocation.\n\nHard constraints, which will be enforced on chain and will cause the transaction to fail if breached:\n- No position above ${mandate.maxPositionBps} bps.\n- At most ${mandate.maxAssets} positions.\n- Allocations must leave at least ${mandate.minCashBps} bps in cash, so they must total no more than ${10_000 - mandate.minCashBps} bps.\n- Only permitted symbols.\n${turnoverBrief(mandate)}\n\nOmit any asset you do not want rather than giving it a zero weight.`,
+    `${decision}\n\nProduce the final allocation.\n\nHard constraints, which will be enforced on chain and will cause the transaction to fail if breached:\n- No position above ${mandate.maxPositionBps} bps.\n- At most ${mandate.maxAssets} positions.\n- Allocations must leave at least ${mandate.minCashBps} bps in cash, so they must total no more than ${10_000 - mandate.minCashBps} bps.\n- Only permitted symbols.\n${turnoverBrief(mandate)}${mandate.preIpoCapBps === undefined ? "" : `\n- The pre IPO limits above, and at most ${mandate.preIpoCapBps} bps across all pre IPO names together.`}\n\nOmit any asset you do not want rather than giving it a zero weight.`,
     proposalGeminiSchema,
     proposalSchema,
     stages,
