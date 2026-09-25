@@ -227,7 +227,7 @@ Safety rules: a trigger is claimed before it trades, so it can never fire twice.
 
 **392 automated tests**, all passing at their last full run: 53 Rust unit tests (policy, settlement arithmetic, the Pyth parser), 77 TypeScript integration tests against the live devnet program (including balances checked on both sides of a settlement), and 262 app tests (rerun today, 25 September).
 
-On top of that, **57 recorded test runs with 722 hand checks**, many of them live on devnet, in Chrome, and against the deployed site. They found **109 failures, and all 109 are closed.** Some of what they caught:
+On top of that, **58 recorded test runs with 726 hand checks**, many of them live on devnet, in Chrome, and against the deployed site. They found **111 failures, and all 111 are closed.** Some of what they caught:
 
 | Run | What it proved or caught |
 |---|---|
