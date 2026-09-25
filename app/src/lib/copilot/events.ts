@@ -4,7 +4,7 @@ import type { ProposalEvaluation } from "../proposal";
 import type { Score } from "../autopilot/scorecard";
 import type { DayStats } from "../day-stats";
 import type { Headline } from "../news";
-import type { Condition, Trigger, TriggerAction } from "../triggers/rules";
+import type { Condition, Repeat, Trigger, TriggerAction } from "../triggers/rules";
 import type { AutopilotEntry, Decision } from "../autopilot/state";
 import type { PortfolioHoldings } from "../holdings";
 
@@ -329,6 +329,8 @@ export type PendingAction =
       condition: Condition;
       action: TriggerAction;
       days: number;
+      /** Set when it repeats. */
+      repeat?: Repeat;
       /** The price when prepared, for the card. Re-read at approval. */
       basePrice: number;
       summary: string;
@@ -378,6 +380,7 @@ export function actionTitle(action: PendingAction): string {
     case "autopilot-run":
       return `Run one autopilot cycle on ${action.mandateLabel}`;
     case "price-trigger":
+      if (action.repeat) return `Set a repeating trigger on ${action.symbol}`;
       return action.condition.kind === "after"
         ? `Set a timed trigger on ${action.symbol}`
         : `Set a price trigger on ${action.symbol}`;

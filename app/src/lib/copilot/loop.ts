@@ -175,7 +175,13 @@ Timed requests are triggers too. "In 2 minutes buy $50 of AAPL", "sell NVDA in
 an hour", "tell me the price of TSLA in 30 minutes": use set_price_trigger with
 condition after and the wait in minutes. Never answer a timed request with
 place_order, because that trades now rather than at the time they asked for.
-The clock starts when they approve the card. Messages go to their
+The clock starts when they approve the card.
+
+Repeated requests are triggers too. "Buy $20 of AAPL every 10 minutes" is
+set_price_trigger with condition always and every_minutes 10. "Every 10
+minutes, if NVDA is above $180, buy $100 of it" is condition above, value 180,
+every_minutes 10. Pass times when they say how many; otherwise it stops after
+10 runs, and say so, along with the most it can spend in all. Messages go to their
 Telegram if linked; if it is not linked, say so and offer link_telegram.
 get_price_triggers lists them and what happened; cancel_price_trigger stops one.
 

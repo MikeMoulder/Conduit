@@ -10,7 +10,16 @@ import { getConnection } from "../rpc";
 import { readAssetPrice } from "../settlement-prices";
 import { sendToOwner } from "../telegram/bot";
 import { executeWalletTrade } from "../wallet-trade";
-import { describeCondition, describeTrigger, describeWait, fireTime, isMet, type Trigger } from "./rules";
+import {
+  describeCondition,
+  describeTrigger,
+  describeWait,
+  fireTime,
+  isDue,
+  nextCheck,
+  type Trigger,
+  type TriggerStatus,
+} from "./rules";
 import { activeTriggers, transition } from "./state";
 
 /**
@@ -27,6 +36,11 @@ import { activeTriggers, transition } from "./state";
  *
  * A timed trigger due before the next minute's pass gets its own wake up at
  * its time, so "in 2 minutes" means two minutes, not up to three.
+ *
+ * A repeating trigger goes back to active after each run with its next check
+ * time, until its run cap is reached. A failed trade stops it for good, for
+ * the same reason as above: an order that failed for want of cash would only
+ * fail again every interval.
  */
 
 const usd = (n: number) =>
@@ -46,15 +60,40 @@ async function fire(trigger: Trigger, price: number): Promise<Trigger | null> {
   const claimed = await transition(trigger.id, "active", "firing", { firedAt: Date.now(), firedPrice: price });
   if (!claimed) return null;
 
+  const repeat = trigger.repeat;
+  const run = (trigger.runs ?? 0) + 1;
   const timed = trigger.condition.kind === "after";
-  const moved = timed
-    ? `${describeWait((trigger.condition as { minutes: number }).minutes)} are up: ${trigger.symbol} is ${usd(price)} now, ${usd(trigger.basePrice)} when set.`
-    : `${trigger.symbol} ${describeCondition(trigger.condition, trigger.basePrice).replace(/ \(to .*\)$/, "")}: now ${usd(price)}, set at ${usd(trigger.basePrice)}.`;
-  const name = timed ? "timed trigger" : "price trigger";
+  const moved = repeat
+    ? `Run ${run} of ${repeat.maxRuns}: ${trigger.symbol} is ${usd(price)} now, ${usd(trigger.basePrice)} when set.`
+    : trigger.condition.kind === "after"
+      ? `${describeWait(trigger.condition.minutes)} are up: ${trigger.symbol} is ${usd(price)} now, ${usd(trigger.basePrice)} when set.`
+      : `${trigger.symbol} ${describeCondition(trigger.condition, trigger.basePrice).replace(/ \(to .*\)$/, "")}: now ${usd(price)}, set at ${usd(trigger.basePrice)}.`;
+  const name = repeat ? "repeating trigger" : timed ? "timed trigger" : "price trigger";
+
+  // A repeating trigger that succeeded goes back to watching until its last run.
+  const after = (ok: boolean): { status: TriggerStatus; patch: Partial<Trigger> } => {
+    if (!ok) return { status: "failed", patch: {} };
+    if (!repeat || run >= repeat.maxRuns) return { status: "fired", patch: repeat ? { runs: run } : {} };
+    const due = trigger.nextAt ?? trigger.createdAt;
+    return { status: "active", patch: { runs: run, nextAt: nextCheck(due, repeat.everyMinutes, Date.now()) } };
+  };
+  const ending = (status: TriggerStatus) =>
+    !repeat
+      ? null
+      : status === "active"
+        ? `Next check in ${describeWait(repeat.everyMinutes)}.`
+        : status === "fired"
+          ? "That was the last run."
+          : null;
 
   if (trigger.action.kind === "notify") {
-    const done = await transition(trigger.id, "firing", "fired", { result: moved, signature: null });
-    await tell(trigger.owner, [timed ? "Conduit timed alert" : "Conduit price alert", moved]);
+    const next = after(true);
+    const done = await transition(trigger.id, "firing", next.status, { ...next.patch, result: moved, signature: null });
+    await tell(trigger.owner, [
+      repeat ? "Conduit repeating alert" : timed ? "Conduit timed alert" : "Conduit price alert",
+      moved,
+      ending(next.status),
+    ]);
     return done;
   }
 
@@ -84,11 +123,13 @@ async function fire(trigger: Trigger, price: number): Promise<Trigger | null> {
     result = `Tried to ${kind} ${usd(dollars)} of ${trigger.symbol}, but it stopped: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}. Nothing was traded.`;
   }
 
-  const done = await transition(trigger.id, "firing", ok ? "fired" : "failed", { result: `${moved} ${result}`, signature });
+  const next = after(ok);
+  const done = await transition(trigger.id, "firing", next.status, { ...next.patch, result: `${moved} ${result}`, signature });
   await tell(trigger.owner, [
     ok ? `Conduit ${name} fired` : `Conduit ${name}: the trade failed`,
     moved,
     result,
+    !ok && repeat ? "The schedule is stopped, so it will not try again." : ending(next.status),
     signature ? explorerUrl(signature, "tx", CLUSTER) : null,
   ]);
   return done;
@@ -134,19 +175,26 @@ export async function checkTriggers(now = Date.now()): Promise<Trigger[]> {
     const active = await activeTriggers();
 
     for (const t of active.filter((t) => t.expiresAt <= now)) {
-      const done = await transition(t.id, "active", "expired", { result: "Expired without the condition being met." });
+      const ran = t.runs ?? 0;
+      const why = t.repeat
+        ? `Its time is up after ${ran} of ${t.repeat.maxRuns} run${t.repeat.maxRuns === 1 ? "" : "s"}.`
+        : t.condition.kind === "after"
+          ? "No fresh price could be read in time, so nothing happened."
+          : "The condition was never met, so nothing happened.";
+      const done = await transition(t.id, "active", "expired", { result: why });
       if (done) {
         finished.push(done);
-        await tell(
-          t.owner,
-          t.condition.kind === "after"
-            ? ["Conduit timed trigger expired", describeTrigger(t), "No fresh price could be read in time, so nothing happened."]
-            : ["Conduit price trigger expired", describeTrigger(t), "The condition was never met, so nothing happened."],
-        );
+        await tell(t.owner, [
+          t.repeat ? "Conduit repeating trigger ended" : t.condition.kind === "after" ? "Conduit timed trigger expired" : "Conduit price trigger expired",
+          describeTrigger(t),
+          why,
+        ]);
       }
     }
 
     const live = active.filter((t) => t.expiresAt > now);
+    // The latest copy of each trigger still watching, for the wake up below.
+    const watching = new Map(live.map((t) => [t.id, t]));
     const connection = getConnection();
     for (const symbol of [...new Set(live.map((t) => t.symbol))]) {
       const asset = assetBySymbol(symbol);
@@ -155,12 +203,27 @@ export async function checkTriggers(now = Date.now()): Promise<Trigger[]> {
       // A price that cannot be read, or is stale, fires nothing. The next pass
       // tries again.
       if (!read || !read.ok) continue;
-      for (const t of live.filter((t) => t.symbol === symbol && isMet(t, read.price.price, Date.now()))) {
-        const done = await fire(t, read.price.price);
-        if (done) finished.push(done);
+      for (const t of live.filter((t) => t.symbol === symbol)) {
+        const at = Date.now();
+        if (isDue(t, read.price.price, at)) {
+          const done = await fire(t, read.price.price);
+          if (!done) continue;
+          if (done.status === "active") watching.set(done.id, done);
+          else {
+            watching.delete(done.id);
+            finished.push(done);
+          }
+        } else if (t.repeat && at >= (t.nextAt ?? t.createdAt)) {
+          // A repeating check whose condition did not hold: nothing to do
+          // until the next interval.
+          const moved = await transition(t.id, "active", "active", {
+            nextAt: nextCheck(t.nextAt ?? t.createdAt, t.repeat.everyMinutes, at),
+          });
+          if (moved) watching.set(moved.id, moved);
+        }
       }
     }
-    wakeForTimed(live.filter((t) => !finished.some((f) => f.id === t.id)), Date.now());
+    wakeForTimed([...watching.values()], Date.now());
   } finally {
     shared.__conduitTriggerPass = false;
   }

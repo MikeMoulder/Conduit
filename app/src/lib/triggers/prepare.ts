@@ -6,7 +6,7 @@ import { assetBySymbol } from "../agent-actions";
 import { fetchMainWallet } from "../main-wallet";
 import { getConnection } from "../rpc";
 import { readAssetPrice } from "../settlement-prices";
-import { validate, type Condition, type TriggerAction } from "./rules";
+import { validate, validateRepeat, type Condition, type Repeat, type TriggerAction } from "./rules";
 
 /**
  * Everything that must be true for a trigger to be set, checked twice: when
@@ -23,6 +23,7 @@ export async function checkTrigger(input: {
   symbol: string;
   condition: Condition;
   action: TriggerAction;
+  repeat?: Repeat;
 }): Promise<{ ok: true; symbol: string; basePrice: number } | { ok: false; error: string }> {
   const asset = assetBySymbol(input.symbol);
   if (!asset) return { ok: false, error: `${input.symbol} is not on the desk, so it cannot be watched or traded.` };
@@ -31,7 +32,7 @@ export async function checkTrigger(input: {
   const price = await readAssetPrice(connection, asset);
   if (!price.ok) return { ok: false, error: price.reason };
 
-  const invalid = validate(input.condition, price.price.price);
+  const invalid = validateRepeat(input.condition, input.repeat) ?? validate(input.condition, price.price.price, Boolean(input.repeat));
   if (invalid) return { ok: false, error: invalid };
 
   if (input.action.kind !== "notify") {

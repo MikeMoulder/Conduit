@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { parseAddress } from "@/lib/agent-actions";
 import { startScheduler } from "@/lib/autopilot/scheduler";
-import { MAX_TTL_DAYS, MIN_DELAY_MINUTES, expiryFor } from "@/lib/triggers/rules";
+import { MAX_RUNS, MAX_TTL_DAYS, MIN_DELAY_MINUTES, expiryFor } from "@/lib/triggers/rules";
 import { checkTrigger } from "@/lib/triggers/prepare";
 import { addTrigger, listTriggers } from "@/lib/triggers/state";
 
@@ -25,12 +25,19 @@ const schema = z.object({
     z.object({ kind: z.literal("above"), price: z.number().positive() }),
     z.object({ kind: z.literal("below"), price: z.number().positive() }),
     z.object({ kind: z.literal("after"), minutes: z.number().min(MIN_DELAY_MINUTES).max(MAX_TTL_DAYS * 1440) }),
+    z.object({ kind: z.literal("always") }),
   ]),
   action: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("notify") }),
     z.object({ kind: z.enum(["buy", "sell"]), dollars: z.number().positive().max(10_000_000) }),
   ]),
   days: z.number().positive().max(MAX_TTL_DAYS).optional(),
+  repeat: z
+    .object({
+      everyMinutes: z.number().min(MIN_DELAY_MINUTES).max(MAX_TTL_DAYS * 1440),
+      maxRuns: z.number().int().min(1).max(MAX_RUNS),
+    })
+    .optional(),
 });
 
 export async function POST(request: Request): Promise<Response> {
@@ -55,7 +62,9 @@ export async function POST(request: Request): Promise<Response> {
     action: parsed.data.action,
     createdAt: now,
     // A timed trigger's clock starts here, at approval, not when it was prepared.
-    expiresAt: expiryFor(parsed.data.condition, now, parsed.data.days),
+    expiresAt: expiryFor(parsed.data.condition, now, parsed.data.days, parsed.data.repeat),
+    // A repeating one makes its first check on the next pass.
+    ...(parsed.data.repeat ? { repeat: parsed.data.repeat, runs: 0, nextAt: now } : {}),
   });
   return Response.json({ ok: true, trigger });
 }

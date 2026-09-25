@@ -15,7 +15,7 @@ import { associatedTokenAddress, desk, type PortfolioHoldings } from "@/lib/hold
 import { walletAddress } from "@/lib/main-wallet";
 import { buildProofMessage } from "@/lib/wallet-proof";
 import { describeScore, type Score } from "@/lib/autopilot/scorecard";
-import { describeTrigger, fireTime, targetPrice, type Trigger } from "@/lib/triggers/rules";
+import { describeEvery, describeTrigger, fireTime, targetPrice, type Trigger } from "@/lib/triggers/rules";
 import bs58 from "bs58";
 import { createMandateInstructions, setStatusInstruction } from "@/lib/mandate-tx";
 import {
@@ -136,8 +136,9 @@ function present(action: PendingAction): Presentation {
       };
     case "price-trigger":
       return {
-        title:
-          action.condition.kind === "after"
+        title: action.repeat
+          ? `Set a repeating trigger on ${action.symbol}`
+          : action.condition.kind === "after"
             ? `Set a timed trigger on ${action.symbol}`
             : `Set a price trigger on ${action.symbol}`,
         signer: "agent",
@@ -325,9 +326,25 @@ async function runServerAction(action: ServerAction): Promise<Card> {
         condition: action.condition,
         action: action.action,
         days: action.days,
+        repeat: action.repeat,
       });
       if (!data.ok) return failure(data, "The trigger was not set");
       const trigger = data.trigger as Trigger;
+      if (trigger.repeat) {
+        const { everyMinutes, maxRuns } = trigger.repeat;
+        const most = trigger.action.kind === "notify" ? null : trigger.action.dollars * maxRuns;
+        return resultCard({
+          ok: true,
+          headline: `Running ${describeEvery(everyMinutes)} on ${trigger.symbol}`,
+          detail: `${describeTrigger(trigger)} The first check is within a minute. Ask to cancel it at any time.`,
+          signature: null,
+          lines: [
+            { label: "price now", value: `$${trigger.basePrice.toFixed(2)}` },
+            { label: "runs", value: `up to ${maxRuns}` },
+            ...(most === null ? [] : [{ label: "most in all", value: `$${most.toFixed(2)}` }]),
+          ],
+        });
+      }
       const due = fireTime(trigger);
       if (due !== null) {
         const when = new Date(due).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });

@@ -1275,7 +1275,7 @@ function TriggersCardView({ triggers }: { triggers: Trigger[] }) {
   return (
     <Shell title="Triggers" aside={<span className="text-[11px] text-zinc-500">{watching} watching</span>}>
       {triggers.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-zinc-500">No triggers yet. Try: alert me when NVDA rises 2.5%, or in 10 minutes buy $50 of AAPL.</p>
+        <p className="px-4 py-3 text-sm text-zinc-500">No triggers yet. Try: alert me when NVDA rises 2.5%, or buy $20 of AAPL every 10 minutes.</p>
       ) : (
         triggers.map((t, i) => (
           <div key={t.id} className={`px-4 py-2.5 ${i === triggers.length - 1 ? "" : "border-b border-zinc-900"}`}>
@@ -1285,10 +1285,11 @@ function TriggersCardView({ triggers }: { triggers: Trigger[] }) {
               </span>
               <span className="font-mono text-[11px] text-zinc-600">
                 {t.id} ·{" "}
+                {t.repeat ? `${t.runs ?? 0} of ${t.repeat.maxRuns} runs · ` : ""}
                 {t.status !== "active"
                   ? ago(t.firedAt ?? t.createdAt)
                   : fireTime(t) !== null
-                    ? `at ${new Date(fireTime(t)!).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                    ? `${t.repeat ? "next" : "at"} ${new Date(fireTime(t)!).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
                     : `until ${new Date(t.expiresAt).toLocaleDateString()}`}
               </span>
             </div>

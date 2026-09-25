@@ -5,11 +5,16 @@ import { tmpdir } from "os";
 import path from "path";
 
 import {
+  DEFAULT_RUNS,
+  describeEvery,
   describeTrigger,
   describeWait,
   expiryFor,
   fireTime,
+  isDue,
   isMet,
+  nextCheck,
+  validateRepeat,
   targetPrice,
   validate,
   type Condition,
@@ -159,6 +164,89 @@ describe("timed triggers", () => {
     expect(fireTime(t)).to.equal(now + 120_000);
     expect(await transition(t.id, "active", "firing")).to.not.equal(null);
     expect(await transition(t.id, "active", "firing")).to.equal(null);
+  });
+});
+
+describe("repeating triggers", () => {
+  const setAt = 1_000_000;
+  const every10 = { everyMinutes: 10, maxRuns: 5 };
+
+  it("acts at each check time when there is no price condition", async () => {
+    const t = { condition: { kind: "always" } as Condition, basePrice: 300, createdAt: setAt, repeat: every10, nextAt: setAt + 600_000 };
+    expect(isDue(t, 300, setAt + 599_999)).to.equal(false);
+    expect(isDue(t, 300, setAt + 600_000)).to.equal(true);
+  });
+
+  it("acts at a check time only while the price condition holds", async () => {
+    const t = { condition: { kind: "above", price: 180 } as Condition, basePrice: 175, createdAt: setAt, repeat: every10, nextAt: setAt };
+    expect(isDue(t, 179.99, setAt)).to.equal(false);
+    expect(isDue(t, 180, setAt)).to.equal(true);
+    // Between checks, even a price that holds does nothing.
+    expect(isDue({ ...t, nextAt: setAt + 600_000 }, 200, setAt + 1)).to.equal(false);
+  });
+
+  it("allows a level that already holds, since it acts while it holds", async () => {
+    expect(validate({ kind: "above", price: 180 }, 200, true)).to.equal(null);
+    expect(validate({ kind: "above", price: 180 }, 200)).to.not.equal(null);
+  });
+
+  it("stays on its grid, and restarts from now after a long gap instead of catching up", async () => {
+    expect(nextCheck(setAt, 10, setAt + 30_000)).to.equal(setAt + 600_000);
+    expect(nextCheck(setAt, 10, setAt + 700_000)).to.equal(setAt + 700_000 + 600_000);
+  });
+
+  it("refuses a repeat that is too fast, too many, or also delayed", async () => {
+    expect(validateRepeat({ kind: "always" }, undefined)).to.not.equal(null);
+    expect(validateRepeat({ kind: "always" }, { everyMinutes: 0.5, maxRuns: 5 })).to.not.equal(null);
+    expect(validateRepeat({ kind: "always" }, { everyMinutes: 10, maxRuns: 201 })).to.not.equal(null);
+    expect(validateRepeat({ kind: "always" }, { everyMinutes: 10, maxRuns: 2.5 })).to.not.equal(null);
+    expect(validateRepeat({ kind: "after", minutes: 5 }, every10)).to.not.equal(null);
+    expect(validateRepeat({ kind: "always" }, { everyMinutes: 1440, maxRuns: 40 })).to.not.equal(null);
+    expect(validateRepeat({ kind: "always" }, every10)).to.equal(null);
+    expect(validateRepeat({ kind: "rise", percent: 2 }, undefined)).to.equal(null);
+  });
+
+  it("ends a plain schedule after its last run, and a conditional one after its days", async () => {
+    expect(expiryFor({ kind: "always" }, setAt, 7, every10)).to.equal(setAt + 4 * 600_000 + 600_000);
+    expect(expiryFor({ kind: "above", price: 180 }, setAt, 7, every10)).to.equal(setAt + 7 * 86_400_000);
+  });
+
+  it("reports its next check as its fire time", async () => {
+    expect(fireTime({ condition: { kind: "always" }, createdAt: setAt, repeat: every10, nextAt: setAt + 600_000 })).to.equal(setAt + 600_000);
+  });
+
+  it("says the schedule and the most it can spend", async () => {
+    expect(describeEvery(10)).to.equal("every 10 minutes");
+    expect(describeEvery(60)).to.equal("every hour");
+    expect(
+      describeTrigger({ symbol: "AAPL", condition: { kind: "always" }, basePrice: 338.68, action: { kind: "buy", dollars: 20 }, repeat: { everyMinutes: 10, maxRuns: DEFAULT_RUNS } }),
+    ).to.equal("Every 10 minutes, buy $20.00 of AAPL, 10 times at most, $200.00 in all.");
+    expect(
+      describeTrigger({ symbol: "NVDA", condition: { kind: "above", price: 180 }, basePrice: 175, action: { kind: "buy", dollars: 100 }, repeat: every10 }),
+    ).to.equal("Every 10 minutes, if NVDA reaches $180.00 or more, buy $100.00 of NVDA, 5 times at most, $500.00 in all.");
+  });
+
+  it("goes back to watching after a run, with its count and next check", async () => {
+    const now = Date.now();
+    const t = await addTrigger({
+      owner: "owner-a",
+      symbol: "AAPL",
+      condition: { kind: "always" },
+      basePrice: 338.68,
+      action: { kind: "buy", dollars: 20 },
+      createdAt: now,
+      expiresAt: expiryFor({ kind: "always" }, now, 7, every10),
+      repeat: every10,
+      runs: 0,
+      nextAt: now,
+    });
+    expect(await transition(t.id, "active", "firing")).to.not.equal(null);
+    const back = await transition(t.id, "firing", "active", { runs: 1, nextAt: nextCheck(now, 10, now) });
+    expect(back?.runs).to.equal(1);
+    expect(back?.nextAt).to.equal(now + 600_000);
+    expect(await activeTriggers()).to.have.length(1);
+    // And can still be cancelled between runs.
+    expect((await cancelTrigger("owner-a", t.id))?.status).to.equal("cancelled");
   });
 });
 
