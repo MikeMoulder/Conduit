@@ -43,6 +43,7 @@ import { WALLET_TOOLS } from "./wallet-tools";
 import { AUTOPILOT_TOOLS } from "./autopilot-tools";
 import { MARKET_TOOLS } from "./market-tools";
 import { TRIGGER_TOOLS } from "./trigger-tools";
+import { WELCOME_TOOLS } from "./welcome-tools";
 import {
   ToolError,
   type CopilotTool,
@@ -907,6 +908,7 @@ export const TOOLS: Record<string, CopilotTool> = {
   ...AUTOPILOT_TOOLS,
   ...MARKET_TOOLS,
   ...TRIGGER_TOOLS,
+  ...WELCOME_TOOLS,
   list_universe: listUniverse,
   get_prices: getPrices,
   get_mandate: getMandate,
