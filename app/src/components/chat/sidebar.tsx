@@ -2,29 +2,19 @@
 
 import { useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
-import {
-  Briefcase,
-  PanelLeftClose,
-  Plus,
-  Search,
-  ShieldCheck,
-  X,
-} from "lucide-react";
+import { PanelLeftClose, Plus, Search, X } from "lucide-react";
 
 import type { Conversation } from "@/lib/copilot/store";
 
 /**
- * Conversations and workspaces.
+ * Conversations.
  *
- * The workspace links are not a fallback for a chat that cannot do the job.
- * They are the same accounts seen a different way, and some things are simply
- * better as a screen: picking eight assets out of eighteen with checkboxes
- * beats describing them in a sentence. The conversation is the front door, not
- * the only door.
+ * Everything Conduit does happens in the conversation, so this is only the
+ * list of them. The portfolio and mandate screens it used to link to were
+ * removed once the chat could do all of it, with a card to approve each step.
  *
  * Collapsed, the sidebar becomes an icon rail rather than disappearing, so a
- * new chat, search and the workspaces stay one click away. The logo in the
+ * new chat and search stay one click away. The logo in the
  * rail is the way back out: clicking it expands the panel again.
  */
 
@@ -47,11 +37,6 @@ function rowClass(rail: boolean, active = false) {
       : "text-ink-muted hover:bg-raised hover:text-ink",
   ].join(" ");
 }
-
-const WORKSPACES = [
-  { href: "/portfolio", label: "Portfolio", icon: Briefcase },
-  { href: "/mandate", label: "Author a mandate", icon: ShieldCheck },
-] as const;
 
 export function Sidebar({
   conversations,
@@ -194,18 +179,6 @@ export function Sidebar({
               />
             </label>
           )}
-
-          {!rail ? <SectionLabel>Workspaces</SectionLabel> : null}
-          <ul className={rail ? "mt-3 flex flex-col gap-1" : ""}>
-            {WORKSPACES.map(({ href, label, icon: Icon }) => (
-              <li key={href}>
-                <Link href={href} title={label} className={rowClass(rail)}>
-                  <Icon className="size-[18px] shrink-0" aria-hidden="true" />
-                  {!rail ? <span className="truncate">{label}</span> : null}
-                </Link>
-              </li>
-            ))}
-          </ul>
 
           {rail ? null : filtered.length > 0 ? (
             <>
