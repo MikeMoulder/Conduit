@@ -31,33 +31,36 @@ type Stage = "not-connected" | "first-time" | "ready" | "holding";
  * time, so the model is handed them to use as written.
  */
 const INTRO =
-  "Conduit lets you trade tokenized US equities, such as NVIDIA and Tesla, through conversation, and can manage a portfolio for you within limits you set and the Solana program enforces.";
+  "Hi there, I'm Conduit, your personal stock copilot on Solana. With me you can trade tokenized US stocks like NVIDIA and Tesla by simply telling me what you want, and hand me a portfolio to manage within limits you set, which the Solana program enforces.";
 
 const usd = (n: number) => `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 
 function notConnectedGreeting(): string {
-  return `Welcome to Conduit. ${INTRO}\n\nConnect a Solana wallet with the button to begin. Conduit runs on devnet, so every balance is in test funds.`;
+  return `${INTRO}\n\nConnect a Solana wallet with the button below to get started. We're on devnet, so everything runs on test funds.`;
 }
 
 function firstTimeGreeting(ownCash: number): string {
   const steps =
     ownCash > 0
       ? [
-          `**Open your main wallet.** Type "open my main wallet". It takes one signature, and trades after that need none.`,
-          `**Place your first trade.** Type "buy $100 of NVDA".`,
-          `**See what is moving.** Type "what is moving today?"`,
+          `**Open your main wallet.** Say "open my main wallet". It takes one signature, and after that your trades need none.`,
+          `**Make your first trade.** Try "buy $100 of NVDA".`,
+          `**See what's moving.** Ask "what is moving today?"`,
         ]
       : [
-          `**Add test funds.** Type "give me demo cash".`,
-          `**Open your main wallet.** Type "open my main wallet". It takes one signature, and trades after that need none.`,
-          `**Place your first trade.** Type "buy $100 of NVDA".`,
+          `**Get some test funds.** Say "give me demo cash".`,
+          `**Open your main wallet.** Say "open my main wallet". It takes one signature, and after that your trades need none.`,
+          `**Make your first trade.** Try "buy $100 of NVDA".`,
         ];
-  const funds = ownCash > 0 ? ` Your wallet holds ${usd(ownCash)} in test funds.` : "";
+  const lead =
+    ownCash > 0
+      ? `We're on Solana devnet, so everything runs on test funds, and you already have ${usd(ownCash)} of them. Here's what to do next:`
+      : "We're on Solana devnet, so everything runs on test funds. Here's how to get started:";
   return [
-    `Welcome to Conduit. ${INTRO} It runs on Solana devnet, so every balance is in test funds.${funds}`,
-    "To get started:",
+    INTRO,
+    lead,
     steps.map((step, i) => `${i + 1}. ${step}`).join("\n"),
-    "You can ask a question at any point along the way.",
+    "Ask me anything along the way.",
   ].join("\n\n");
 }
 
@@ -121,7 +124,7 @@ const getWelcome: CopilotTool = {
     const brief = await MARKET_TOOLS.get_stock_brief.run({ symbol: largest.symbol }, ctx).catch(() => null);
     const b = brief?.result as
       | {
-          day?: { changePercent: number; where: string } | string;
+          day?: { change: string; changePercent: number; where: string } | string;
           headlines?: { title: string; source: string; summary?: string }[] | string;
         }
       | undefined;
@@ -139,7 +142,7 @@ const getWelcome: CopilotTool = {
           symbol: largest.symbol,
           value: Number((largest.value ?? 0).toFixed(2)),
           today: day
-            ? { changePercent: day.changePercent, where: day.where }
+            ? { change: day.change, where: day.where }
             : "no intraday figure available: do not state a daily move",
           topHeadline: top ? { title: top.title, source: top.source, summary: top.summary ?? null } : null,
         },

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getAssetBySymbol } from "../assets";
-import { dayStats, describeRange, plausibleLine } from "../day-stats";
+import { dayStats, describeChange, describeRange, plausibleLine } from "../day-stats";
 import { desk } from "../holdings";
 import { fetchMainWallet, fetchWalletBalances, walletAddress } from "../main-wallet";
 import { snapshotMarket } from "../market";
@@ -113,6 +113,7 @@ const getStockBrief: CopilotTool = {
         price,
         day: day
           ? {
+              change: describeChange(day.changePct),
               changePercent: Number(day.changePct.toFixed(2)),
               open24hAgo: Number(day.open.toFixed(2)),
               high: Number(day.high.toFixed(2)),

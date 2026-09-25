@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { expect } from "chai";
 
-import { dayStats, describeRange, plausibleLine } from "../src/lib/day-stats";
+import { dayStats, describeChange, describeRange, plausibleLine } from "../src/lib/day-stats";
 import {
   feedUrl,
   fetchHeadlines,
@@ -134,6 +134,13 @@ describe("the day in numbers", () => {
   it("is not a day without two points and a price", () => {
     expect(dayStats([100], 101)).to.equal(null);
     expect(dayStats([100, 101], null)).to.equal(null);
+  });
+
+  it("writes the change ready to quote, keeping small moves small", () => {
+    // The case that went wrong: 0.02 read back as "up 2 percent".
+    expect(describeChange(0.0234)).to.equal("up 0.02%");
+    expect(describeChange(-1.7712)).to.equal("down 1.77%");
+    expect(describeChange(0.001)).to.equal("flat");
   });
 
   it("says where in the range in words", () => {
