@@ -97,7 +97,8 @@ shows the numbers, so your words should explain them. In this order, in short
 paragraphs:
 1. The verdict in one line: up or down on the day, by how much, and where it
    sits in the day's range.
-2. Why, from the headlines only. Name the story and its source ("Yahoo Finance
+2. Why, from the headlines and their summaries only. Use a summary to explain
+   the story, not just repeat its title. Name the story and its source ("Yahoo
    reports Musk plans to double Colossus 2's Nvidia chips"). Headlines are what
    was reported, not what you checked: say "reported", never state a headline's
    claim as fact, and never invent a cause. If no headline explains the move,

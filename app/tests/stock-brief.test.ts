@@ -1,8 +1,17 @@
-import { describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import { expect } from "chai";
 
 import { dayStats, describeRange, plausibleLine } from "../src/lib/day-stats";
-import { feedUrl, parseRss, pickHeadlines, termsFor, type Headline } from "../src/lib/news";
+import {
+  feedUrl,
+  fetchHeadlines,
+  namesAny,
+  parseFinnhub,
+  parseRss,
+  pickHeadlines,
+  termsFor,
+  type Headline,
+} from "../src/lib/news";
 
 /**
  * Tests for the stock brief: the headlines a person is shown about an asset,
@@ -138,5 +147,124 @@ describe("the day in numbers", () => {
     expect(plausibleLine([0.3345, 0.3314], 769.04)).to.equal(false);
     expect(plausibleLine([769.85, 773.63], 769.04)).to.equal(true);
     expect(plausibleLine([], 769.04)).to.equal(false);
+  });
+});
+
+const finnhub = [
+  {
+    headline: "Can Plug Power's NZ Electrolyzer Win Offset Questions",
+    source: "Yahoo",
+    url: "https://finnhub.io/api/news?id=1",
+    datetime: Math.floor(NOW / 1000) - 3_600,
+    summary: "Plug Power won a contract in New Zealand.",
+  },
+  {
+    headline: "Chip stocks climb into the weekend",
+    source: "SeekingAlpha",
+    url: "https://finnhub.io/api/news?id=2",
+    datetime: Math.floor(NOW / 1000) - 7_200,
+    summary: "Nvidia led the semiconductor index higher after   Musk said Colossus 2 would double its chip count.",
+  },
+  {
+    headline: "Nvidia raises its dividend",
+    source: "Yahoo",
+    url: "https://finnhub.io/api/news?id=3",
+    datetime: Math.floor(NOW / 1000) - 10_800,
+    summary: "x".repeat(400),
+  },
+  { headline: "", url: "https://finnhub.io/api/news?id=4", datetime: 1 },
+  { headline: "No time", url: "https://finnhub.io/api/news?id=5" },
+];
+
+describe("reading Finnhub company news", () => {
+  it("keeps headline, source, link, time and summary, newest first", () => {
+    const all = parseFinnhub(finnhub);
+    expect(all).to.have.length(3);
+    expect(all[0].title).to.include("Plug Power");
+    expect(all[1].summary).to.equal(
+      "Nvidia led the semiconductor index higher after Musk said Colossus 2 would double its chip count.",
+    );
+  });
+
+  it("trims a long summary", () => {
+    expect(parseFinnhub(finnhub)[2].summary).to.have.length(320);
+  });
+
+  it("returns nothing for an error body rather than throwing", () => {
+    expect(parseFinnhub({ error: "API limit reached" })).to.deep.equal([]);
+  });
+
+  it("ranks named in the title, then named in the summary, then the rest", () => {
+    const picked = pickHeadlines(parseFinnhub(finnhub), NOW, termsFor({ symbol: "NVDA", name: "NVIDIA" }));
+    expect(picked.map((h) => h.title)).to.deep.equal([
+      "Nvidia raises its dividend",
+      "Chip stocks climb into the weekend",
+      "Can Plug Power's NZ Electrolyzer Win Offset Questions",
+    ]);
+  });
+
+  it("matches a name with punctuation, and only whole words", () => {
+    const spy = termsFor({ symbol: "SPY", name: "S&P 500 ETF" });
+    expect(namesAny([{ title: "S&P 500 hits a record", source: "x", url: "u", publishedAt: NOW }], spy)).to.equal(true);
+    const apple = termsFor({ symbol: "AAPL", name: "Apple" });
+    expect(namesAny([{ title: "Pineapple prices soar", source: "x", url: "u", publishedAt: NOW }], apple)).to.equal(false);
+  });
+});
+
+describe("choosing a news source", () => {
+  const realFetch = globalThis.fetch;
+  let calls: { url: string; headers: Record<string, string> }[];
+  let finnhubBody: unknown;
+
+  beforeEach(() => {
+    calls = [];
+    finnhubBody = finnhub;
+    globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, headers: (init?.headers ?? {}) as Record<string, string> });
+      if (url.includes("finnhub.io")) return new Response(JSON.stringify(finnhubBody), { status: 200 });
+      return new Response(yahoo, { status: 200 });
+    }) as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    delete process.env.FINNHUB_API_KEY;
+  });
+
+  // A different symbol per test: results are cached by symbol.
+  it("uses Finnhub for a stock when there is a key, with the key in a header", async () => {
+    process.env.FINNHUB_API_KEY = "test-key-not-real";
+    const { provider, headlines } = await fetchHeadlines({ symbol: "NVDA", name: "NVIDIA", assetClass: "equity" });
+    expect(provider).to.equal("finnhub");
+    expect(headlines[0].summary).to.be.a("string");
+    expect(calls[0].headers["X-Finnhub-Token"]).to.equal("test-key-not-real");
+    expect(calls.every((c) => !c.url.includes("test-key-not-real"))).to.equal(true);
+  });
+
+  it("falls back to Yahoo without a key", async () => {
+    const { provider } = await fetchHeadlines({ symbol: "MSFT", name: "Microsoft", assetClass: "equity" });
+    expect(provider).to.equal("yahoo finance");
+    expect(calls.some((c) => c.url.includes("finnhub"))).to.equal(false);
+  });
+
+  it("falls back to Yahoo when nothing from Finnhub names the company", async () => {
+    process.env.FINNHUB_API_KEY = "test-key-not-real";
+    const { provider } = await fetchHeadlines({ symbol: "GOOGL", name: "Alphabet", assetClass: "equity" });
+    expect(provider).to.equal("yahoo finance");
+  });
+
+  it("falls back to Yahoo when Finnhub answers with an error", async () => {
+    process.env.FINNHUB_API_KEY = "test-key-not-real";
+    finnhubBody = { error: "API limit reached" };
+    const { provider } = await fetchHeadlines({ symbol: "TSLA", name: "Tesla", assetClass: "equity" });
+    expect(provider).to.equal("yahoo finance");
+  });
+
+  it("never asks Finnhub about a pre IPO company or a coin", async () => {
+    process.env.FINNHUB_API_KEY = "test-key-not-real";
+    expect((await fetchHeadlines({ symbol: "SPACEX", name: "SpaceX", assetClass: "preipo" })).provider).to.equal("google news");
+    expect((await fetchHeadlines({ symbol: "BTC", name: "Bitcoin", assetClass: "crypto" })).provider).to.equal("yahoo finance");
+    expect(calls.some((c) => c.url.includes("finnhub"))).to.equal(false);
   });
 });

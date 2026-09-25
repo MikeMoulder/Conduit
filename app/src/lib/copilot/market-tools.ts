@@ -24,7 +24,7 @@ import { ToolError, type CopilotTool } from "./tool-types";
  *
  *   price and premium  Jupiter, PreStocks        what the chat quotes everywhere
  *   the day            GeckoTerminal             the same line the card draws
- *   why                Yahoo Finance, Google News  headlines, named as such
+ *   why                Finnhub, Yahoo, Google    headlines and summaries, named as such
  *   valuation          PreStocks                 pre IPO names only
  *   their position     the chain                 their main wallet
  *
@@ -57,7 +57,7 @@ const getStockBrief: CopilotTool = {
     if (!asset) throw new ToolError(`${symbol} is not in the universe. Call list_universe to see what is.`);
 
     const mint = asset.assetClass === "equity" ? asset.mainnetMint : undefined;
-    const [snapshot, headlines, preStocks, holding] = await Promise.all([
+    const [snapshot, news, preStocks, holding] = await Promise.all([
       snapshotMarket([asset.symbol]),
       fetchHeadlines(asset),
       asset.assetClass === "preipo" ? fetchPreStocks() : Promise.resolve(null),
@@ -76,6 +76,7 @@ const getStockBrief: CopilotTool = {
       })(),
     ]);
 
+    const { headlines, provider } = news;
     const row = snapshot[0];
     const price = row?.price ?? null;
     const rawLine = mint ? (dayLines([mint])[mint] ?? []) : [];
@@ -141,18 +142,19 @@ const getStockBrief: CopilotTool = {
         headlines:
           headlines.length === 0
             ? "none found in the last three days"
-            : headlines.map((h) => ({ title: h.title, source: h.source, age: hoursAgo(h.publishedAt) })),
+            : headlines.map((h) => ({
+                title: h.title,
+                source: h.source,
+                age: hoursAgo(h.publishedAt),
+                ...(h.summary ? { summary: h.summary } : {}),
+              })),
       },
       summary: `${asset.symbol}${price === null ? "" : ` $${price.toFixed(2)}`}${day ? `, ${day.changePct >= 0 ? "+" : ""}${day.changePct.toFixed(2)}% on the day` : ""}, ${headlines.length} headline${headlines.length === 1 ? "" : "s"}`,
       card: { kind: "stock-brief", brief },
       sources: [
         { provider: row?.priceSource ?? "prices", detail: "live price", ok: price !== null },
         ...(mint ? [{ provider: "geckoterminal", detail: "24 hour line", ok: day !== null }] : []),
-        {
-          provider: asset.assetClass === "preipo" ? "google news" : "yahoo finance",
-          detail: `${headlines.length} headlines`,
-          ok: headlines.length > 0,
-        },
+        { provider, detail: `${headlines.length} headlines`, ok: headlines.length > 0 },
       ],
     };
   },
