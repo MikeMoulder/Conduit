@@ -101,10 +101,10 @@ export async function sendMessage(chatId: number, text: string): Promise<boolean
  */
 export async function sendToOwner(owner: string, text: string): Promise<SendOutcome | "not-linked"> {
   if (!botToken()) return "not-linked";
-  const chatId = chatFor(owner);
+  const chatId = await chatFor(owner);
   if (chatId === null) return "not-linked";
   const outcome = await deliver(chatId, text);
-  if (outcome === "blocked") unlinkOwner(owner);
+  if (outcome === "blocked") await unlinkOwner(owner);
   return outcome;
 }
 
@@ -132,25 +132,25 @@ interface Update {
 }
 
 /** What the bot says back. Exported so it can be tested without Telegram. */
-export function handleText(
+export async function handleText(
   text: string,
   chatId: number,
   from: string | null,
-): string {
+): Promise<string> {
   const [command, argument] = text.trim().split(/\s+/, 2);
 
   if (command === "/start") {
     if (!argument) {
       return "Open this bot from Conduit's chat, by asking it to connect Telegram. That link carries a one time code that ties this chat to your wallet.";
     }
-    const owner = redeemCode(argument, chatId, from);
+    const owner = await redeemCode(argument, chatId, from);
     return owner
       ? `Linked to wallet ${shortAddress(owner)}. Your autopilot's decisions will arrive here, and only here. Send /stop to unlink.`
       : "That link has expired or was already used. Ask Conduit to connect Telegram again for a fresh one.";
   }
 
   if (command === "/stop") {
-    const owner = unlinkChat(chatId);
+    const owner = await unlinkChat(chatId);
     return owner
       ? `Unlinked from wallet ${shortAddress(owner)}. No more updates will be sent here.`
       : "This chat is not linked to any wallet.";
@@ -158,7 +158,7 @@ export function handleText(
 
   // Anything else, including /help, gets told what this chat is for. Silence
   // read as a broken bot: someone typing "hi" to it heard nothing back.
-  const owner = ownerForChat(chatId);
+  const owner = await ownerForChat(chatId);
   return owner
     ? `This chat is linked to wallet ${shortAddress(owner)}. I send your Conduit price alerts and autopilot decisions here. To trade, set alerts or ask anything, use Conduit's chat. Send /stop to unlink.`
     : "I send Conduit price alerts and autopilot decisions. To link this chat, ask Conduit's chat to connect Telegram, then press the link it gives you.";
@@ -172,7 +172,7 @@ export function handleText(
  * catches it. Exported so a single pass can be tested.
  */
 export async function pollOnce(timeoutSeconds = 25): Promise<boolean> {
-  const offset = getOffset();
+  const offset = await getOffset();
   // Telegram holds the request up to the timeout waiting for a message, so
   // the loop is quiet rather than busy.
   const updates = await call<Update[]>(
@@ -185,10 +185,10 @@ export async function pollOnce(timeoutSeconds = 25): Promise<boolean> {
   for (const update of updates) {
     // The offset moves first. A message whose handling throws is skipped
     // rather than read again on every pass for ever.
-    setOffset(update.update_id + 1);
+    await setOffset(update.update_id + 1);
     const message = update.message;
     if (message?.text) {
-      const reply = handleText(message.text, message.chat.id, message.from?.username ?? null);
+      const reply = await handleText(message.text, message.chat.id, message.from?.username ?? null);
       if (reply) await sendMessage(message.chat.id, reply);
     }
   }

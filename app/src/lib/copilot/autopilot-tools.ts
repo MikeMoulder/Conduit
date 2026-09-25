@@ -170,7 +170,7 @@ const getAutopilot: CopilotTool = {
 
     return {
       result: {
-        telegramLinked: chatFor(owner) !== null,
+        telegramLinked: (await chatFor(owner)) !== null,
         running: entries.filter((e) => e.enabled).map((e) => ({
           mandateId: e.mandateId,
           everyMinutes: e.everyMinutes,
@@ -253,7 +253,7 @@ const linkTelegram: CopilotTool = {
         "Telegram is not set up on this server yet: the operator needs to add a bot token. Everything the autopilot decides is still visible here with get_autopilot.",
       );
     }
-    if (chatFor(owner.toBase58()) !== null) {
+    if ((await chatFor(owner.toBase58())) !== null) {
       throw new ToolError("This wallet already has a Telegram chat linked. Offer unlink_telegram if they want to change it.");
     }
     return {
@@ -279,7 +279,7 @@ const unlinkTelegram: CopilotTool = {
   },
   async run(_args, ctx) {
     const owner = requireOwner(ctx);
-    if (chatFor(owner.toBase58()) === null) {
+    if ((await chatFor(owner.toBase58())) === null) {
       throw new ToolError("No Telegram chat is linked to this wallet.");
     }
     return {

@@ -40,7 +40,7 @@ export async function POST(request: Request): Promise<Response> {
   const proof = verifyProof("link-telegram", owner, message, signature);
   if (!proof.ok) return Response.json({ error: proof.reason }, { status: 403 });
 
-  if (!spendProof(signature, Date.now() + PROOF_MAX_AGE_MS)) {
+  if (!(await spendProof(signature, Date.now() + PROOF_MAX_AGE_MS))) {
     return Response.json({ error: "That signature was already used. Sign again." }, { status: 409 });
   }
 
@@ -52,7 +52,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const code = issueCode(owner);
+  const code = await issueCode(owner);
   return Response.json({
     link: `https://t.me/${username}?start=${code}`,
     bot: username,

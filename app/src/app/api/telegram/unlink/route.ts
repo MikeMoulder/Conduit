@@ -28,12 +28,12 @@ export async function POST(request: Request): Promise<Response> {
   const proof = verifyProof("unlink-telegram", owner, message, signature);
   if (!proof.ok) return Response.json({ error: proof.reason }, { status: 403 });
 
-  if (!spendProof(signature, Date.now() + PROOF_MAX_AGE_MS)) {
+  if (!(await spendProof(signature, Date.now() + PROOF_MAX_AGE_MS))) {
     return Response.json({ error: "That signature was already used. Sign again." }, { status: 409 });
   }
 
-  const chatId = chatFor(owner);
-  const unlinked = unlinkOwner(owner);
+  const chatId = await chatFor(owner);
+  const unlinked = await unlinkOwner(owner);
   if (chatId !== null) {
     await sendMessage(chatId, "Unlinked from Conduit. No more autopilot updates will be sent here.");
   }

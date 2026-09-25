@@ -147,7 +147,7 @@ const setTrigger: CopilotTool = {
     const shortfall = await fundingShortfall(owner, check.symbol, action, check.basePrice);
 
     const days = parsed.days ?? DEFAULT_TTL_DAYS;
-    const telegram = Boolean(botToken()) && chatFor(owner.toBase58()) !== null;
+    const telegram = Boolean(botToken()) && (await chatFor(owner.toBase58())) !== null;
     const sentence = describeTrigger({ symbol: check.symbol, condition, basePrice: check.basePrice, action });
 
     return {
