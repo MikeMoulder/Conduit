@@ -6,6 +6,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { Menu } from "lucide-react";
 
 import { ConnectWallet } from "@/components/connect-wallet";
+import ParticleDrift from "@/components/ui/particle-drift";
 import { CLUSTER } from "@/lib/cluster";
 import { useCopilot } from "@/hooks/use-copilot";
 import { useIsDesktop, useSidebarCollapsed } from "@/hooks/use-sidebar";
@@ -71,7 +72,9 @@ export function Copilot() {
         footer={<ConnectWallet variant="sidebar" rail={rail} />}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative isolate flex min-w-0 flex-1 flex-col">
+        {!conversation ? <WelcomeBackdrop /> : null}
+
         <header className="flex items-center gap-3 px-4 py-3 lg:hidden">
           <button
             type="button"
@@ -173,6 +176,31 @@ function Welcome({ connected }: { connected: boolean }) {
           </p>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The field behind an empty conversation.
+ *
+ * Only shown before the first message, where there is nothing to read yet
+ * and the screen can afford some motion. Faded under the middle column so
+ * the welcome text stays the easiest thing to read, and left at full
+ * strength toward the edges where nothing competes with it.
+ */
+function WelcomeBackdrop() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 -z-10 animate-[fade-in_1.2s_ease-out_both]"
+      style={{
+        maskImage:
+          "radial-gradient(ellipse 55% 65% at 50% 45%, rgb(0 0 0 / 0.3), #000 100%)",
+        WebkitMaskImage:
+          "radial-gradient(ellipse 55% 65% at 50% 45%, rgb(0 0 0 / 0.3), #000 100%)",
+      }}
+    >
+      <ParticleDrift opacity={0.9} />
     </div>
   );
 }

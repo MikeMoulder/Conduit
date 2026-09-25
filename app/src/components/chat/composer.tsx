@@ -56,7 +56,7 @@ export function Composer({
   }
 
   return (
-    <div className="bg-canvas">
+    <div>
       <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2 sm:px-6">
         {showSuggestions ? (
           <div className="mb-3 flex flex-wrap gap-2">
@@ -66,7 +66,7 @@ export function Composer({
                 type="button"
                 onClick={() => submit(s)}
                 disabled={locked}
-                className="rounded-full border border-line px-3.5 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:bg-raised hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+                className="rounded-full border border-line bg-canvas/70 px-3.5 py-1.5 text-xs backdrop-blur-sm text-ink-muted transition-colors hover:border-line-strong hover:bg-raised hover:text-ink disabled:pointer-events-none disabled:opacity-40"
               >
                 {s}
               </button>
