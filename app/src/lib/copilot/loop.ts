@@ -83,8 +83,9 @@ Every asset in the universe can now be settled, equities and pre IPO names
 included. Settlement values each asset from a price the program reads on chain,
 and there are two kinds. A Pyth price means many independent publishers observed
 a market and agreed. A published price means this project's publishing key
-wrote the number: Jupiter's quote for the tokenized equities, the issuer's mark
-from PreStocks for the pre IPO names, which have no market anywhere to observe.
+wrote the number: Jupiter's quote for the tokenized equities, and for the pre IPO
+names the price their tokens trade for on PreStocks. The company's mark is a
+reference the pre IPO strategy reads against, never the price anyone deals at.
 If asked who sets the price, say that plainly. The publishing key is not the
 agent key, so you still cannot choose the price a settlement runs at, and that
 is the property that matters. A price older than ten minutes is refused, so a

@@ -16,9 +16,8 @@
  * to build.
  *
  * And for the pre IPO names no procurement would have helped. OPENAI and SPACEX
- * have no market, so there is nothing for an oracle to observe. PreStocks marks
- * them, and that mark is the price of record. Publishing it is what the real
- * instrument does.
+ * have no public market, so there is nothing for an oracle to observe. Their
+ * tokens trade on PreStocks, and that traded price is what gets published.
  *
  * What it does not claim
  * ----------------------
@@ -166,11 +165,19 @@ async function fromJupiter(assets: RegistryAsset[]): Promise<Quote[]> {
 /**
  * Prices the pre IPO names from PreStocks.
  *
- * `markPrice` rather than `tokenPrice`. The mark is what the issuer says the
- * underlying exposure is worth; the token price is where the wrapper has
- * traded, which for an illiquid pre IPO name can drift a long way from the mark
- * on very little volume. Valuing a portfolio at the mark is what the issuer
- * itself does.
+ * `tokenPrice`, the price the token trades for, rather than `markPrice`.
+ *
+ * This was the mark until the autopilot began trading the gap between the two.
+ * Settlement is a fill: it is the price at which a portfolio buys or sells, and
+ * a fill at the mark describes a trade nobody could make. With SpaceX's token 21%
+ * below its mark, filling at the mark charged a buyer the price the strategy
+ * exists to avoid paying, and with OpenAI's 31% above it, sold at a price no
+ * buyer would pay. The mark is still what the strategy reads the token against,
+ * from the same response, but it is a reference and not a price anyone deals at.
+ *
+ * The cost is noise: an illiquid token can move a long way on little volume,
+ * so a portfolio valued this way moves more than one valued at the mark. That
+ * is the honest version of the number.
  */
 async function fromPreStocks(assets: RegistryAsset[]): Promise<Quote[]> {
   if (assets.length === 0) return [];
@@ -183,7 +190,7 @@ async function fromPreStocks(assets: RegistryAsset[]): Promise<Quote[]> {
 
   const body = (await response.json()) as {
     symbol?: string;
-    markPrice?: number;
+    tokenPrice?: number;
   }[];
 
   const bySymbol = new Map(
@@ -192,12 +199,12 @@ async function fromPreStocks(assets: RegistryAsset[]): Promise<Quote[]> {
 
   const quotes: Quote[] = [];
   for (const asset of assets) {
-    const mark = bySymbol.get(asset.symbol.toUpperCase())?.markPrice;
-    if (typeof mark !== "number") {
-      console.error(`  ${asset.symbol.padEnd(10)} no mark from prestocks`);
+    const traded = bySymbol.get(asset.symbol.toUpperCase())?.tokenPrice;
+    if (typeof traded !== "number" || !Number.isFinite(traded) || traded <= 0) {
+      console.error(`  ${asset.symbol.padEnd(10)} no token price from prestocks`);
       continue;
     }
-    quotes.push({ symbol: asset.symbol, price: mark, source: "prestocks" });
+    quotes.push({ symbol: asset.symbol, price: traded, source: "prestocks" });
   }
   return quotes;
 }
