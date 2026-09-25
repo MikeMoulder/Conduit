@@ -37,7 +37,6 @@ export function Copilot() {
   } = useCopilot();
   const { connected } = useWallet();
   const [open, setOpen] = useState(false);
-  const [refresh, setRefresh] = useState(0);
   const [collapsed, setCollapsed] = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
 
@@ -92,9 +91,11 @@ export function Copilot() {
 
         {conversation ? (
           <Thread
-            key={`${conversation.id}:${refresh}`}
+            // Keyed by conversation only. It used to remount on every approved
+            // card as well, which threw the scroll back to the top before the
+            // follow below brought it down again.
+            key={conversation.id}
             turns={conversation.turns}
-            onRefresh={() => setRefresh((r) => r + 1)}
             onEvent={(message) => void send(message, { event: true })}
           />
         ) : (

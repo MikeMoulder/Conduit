@@ -22,11 +22,9 @@ import { Markdown } from "./markdown";
 
 export function Thread({
   turns,
-  onRefresh,
   onEvent,
 }: {
   turns: Turn[];
-  onRefresh: () => void;
   /** Sends a card's outcome to the copilot, so it can say what is next. */
   onEvent: (message: string) => void;
 }) {
@@ -66,7 +64,6 @@ export function Thread({
             <AssistantTurn
               key={turn.id}
               turn={turn}
-              onRefresh={onRefresh}
               onEvent={onEvent}
             />
           ),
@@ -79,11 +76,9 @@ export function Thread({
 
 function AssistantTurn({
   turn,
-  onRefresh,
   onEvent,
 }: {
   turn: Turn;
-  onRefresh: () => void;
   onEvent: (message: string) => void;
 }) {
   return (
@@ -113,7 +108,6 @@ function AssistantTurn({
           action={action}
           onResolved={(outcome, message) => {
             resolveAction(turn.id, action, outcome);
-            onRefresh();
             if (message) onEvent(message);
           }}
         />
