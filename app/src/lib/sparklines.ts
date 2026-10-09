@@ -22,6 +22,15 @@ import { getJson, kv } from "./kv";
  * function is frozen the moment it has answered, which would cut a spaced
  * run of requests off after the first.
  *
+ * Store reads are kept to almost none. The worker used to read every pool
+ * and line from the store on each minute's pass to learn whether they were
+ * stale, fourteen commands a minute to find nothing to do, and that alone
+ * spent most of Upstash's free monthly allowance. The worker is the only
+ * writer of these keys, so it keeps what it wrote in memory, reads the store
+ * once per mint after a restart, and touches it again only to save a fresh
+ * line. Readers batch their keys into one command and keep the answer for a
+ * minute.
+ *
  *   spark:pool:v<rule>:<mint>  the pool a line is read from
  *   spark:line:<mint>          the last day of hourly closes
  */
@@ -29,8 +38,14 @@ import { getJson, kv } from "./kv";
 const API = "https://api.geckoterminal.com/api/v2/networks/solana";
 /** A pool address practically never changes. */
 const POOL_TTL_MS = 24 * 60 * 60 * 1000;
-/** An hourly line changes once an hour; five minutes keeps the last hour live. */
-const LINE_TTL_MS = 5 * 60 * 1000;
+/**
+ * An hourly line gains a point once an hour. Fifteen minutes keeps its last
+ * point close enough for a day chart, and the card ends the line at the live
+ * price anyway.
+ */
+const LINE_TTL_MS = 15 * 60 * 1000;
+/** How long a reader keeps lines before asking the store again. */
+const READ_TTL_MS = 60 * 1000;
 /**
  * Thirty calls a minute is the published limit, but in practice it refuses
  * sooner, so this stays well under it.
@@ -67,7 +82,23 @@ const lineKey = (mint: string) => `spark:line:${mint}`;
 const shared = globalThis as typeof globalThis & {
   __conduitSparklineRefresh?: Promise<void> | null;
   __conduitSparklineCooldownUntil?: number;
+  /** What the refreshing process last wrote or read, by mint. Null means none stored. */
+  __conduitSparklinePools?: Map<string, Pool | null>;
+  __conduitSparklineLines?: Map<string, Line | null>;
+  /** What a reader last fetched, by mint, and when. */
+  __conduitSparklineReads?: Map<string, { points: number[]; at: number }>;
 };
+const pools = (shared.__conduitSparklinePools ??= new Map());
+const lines = (shared.__conduitSparklineLines ??= new Map());
+const reads = (shared.__conduitSparklineReads ??= new Map());
+
+/** The store's copy the first time a mint is seen in this process, memory after that. */
+async function remembered<T>(memory: Map<string, T | null>, key: string, mint: string): Promise<T | null> {
+  if (memory.has(mint)) return memory.get(mint) ?? null;
+  const stored = await getJson<T>(key);
+  memory.set(mint, stored);
+  return stored;
+}
 
 class RateLimited extends Error {}
 
@@ -99,6 +130,7 @@ async function refreshPool(mint: string): Promise<Pool> {
     .sort((a, b) => b.reserve - a.reserve)[0];
   const pool: Pool = { address: deepest?.address ?? null, at: Date.now() };
   await kv().set(poolKey(mint), JSON.stringify(pool));
+  pools.set(mint, pool);
   return pool;
 }
 
@@ -117,6 +149,7 @@ async function refreshLine(mint: string, pool: string): Promise<void> {
   if (points.length > 0) {
     const line: Line = { points, at: Date.now(), pool };
     await kv().set(lineKey(mint), JSON.stringify(line));
+    lines.set(mint, line);
   }
 }
 
@@ -130,12 +163,12 @@ async function refreshAll(mints: string[]): Promise<void> {
 
   for (const mint of mints) {
     try {
-      let pool = await getJson<Pool>(poolKey(mint));
+      let pool = await remembered<Pool>(pools, poolKey(mint), mint);
       if (!pool || now - pool.at > POOL_TTL_MS) {
         await pace();
         pool = await refreshPool(mint);
       }
-      const line = await getJson<Line>(lineKey(mint));
+      const line = await remembered<Line>(lines, lineKey(mint), mint);
       const fresh = line && now - line.at <= LINE_TTL_MS && (line.pool === undefined || line.pool === pool.address);
       if (pool.address && !fresh) {
         await pace();
@@ -167,8 +200,37 @@ export function refreshDayLines(mints: string[]): Promise<void> {
   return shared.__conduitSparklineRefresh;
 }
 
-/** The stored lines for these mints, empty where none has been fetched yet. */
+/**
+ * The stored lines for these mints, empty where none has been fetched yet.
+ *
+ * One store command for every mint not read in the last minute, however many
+ * there are, and none when all of them were. A line that cannot be read is
+ * empty rather than an error: a card without a chart still has its price.
+ */
 export async function dayLines(mints: string[]): Promise<Record<string, number[]>> {
-  const lines = await Promise.all(mints.map((m) => getJson<Line>(lineKey(m)).catch(() => null)));
-  return Object.fromEntries(mints.map((m, i) => [m, lines[i]?.points ?? []]));
+  const now = Date.now();
+  const stale = mints.filter((m) => {
+    const read = reads.get(m);
+    return !read || now - read.at > READ_TTL_MS;
+  });
+  if (stale.length > 0) {
+    const raw = await kv()
+      .mget(stale.map(lineKey))
+      .catch(() => null);
+    // Only a successful read is kept, so a store outage is retried next time.
+    if (raw) {
+      stale.forEach((m, i) => {
+        const line = raw[i] ? (JSON.parse(raw[i] as string) as Line) : null;
+        reads.set(m, { points: line?.points ?? [], at: now });
+      });
+    }
+  }
+  return Object.fromEntries(mints.map((m) => [m, reads.get(m)?.points ?? []]));
+}
+
+/** Forgets what this process remembers, so the next pass reads the store. For tests. */
+export function forgetDayLines(): void {
+  pools.clear();
+  lines.clear();
+  reads.clear();
 }
