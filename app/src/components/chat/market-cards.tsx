@@ -42,15 +42,21 @@ export function MarketCards({
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    /** A refresh was passed over while the tab was hidden. */
+    let skipped = false;
     const opened = Date.now();
 
-    async function load() {
+    async function load(first = false) {
       let next = REFRESH_MS;
-      // A page in a background tab is not being looked at; it waits.
-      if (document.visibilityState === "hidden") {
+      // A page in a background tab is not being looked at, so its refreshes
+      // wait. Never the first: a page opened behind another tab must still
+      // have its cards when it is brought forward, not a minute later.
+      if (!first && document.visibilityState === "hidden") {
+        skipped = true;
         if (alive) timer = setTimeout(load, next);
         return;
       }
+      skipped = false;
       try {
         const response = await fetch("/api/market", { cache: "no-store" });
         if (!response.ok) throw new Error(String(response.status));
@@ -66,10 +72,19 @@ export function MarketCards({
       if (alive) timer = setTimeout(load, next);
     }
 
-    void load();
+    // A refresh missed while hidden is made up the moment the tab is shown.
+    function onVisibility() {
+      if (document.visibilityState !== "visible" || !skipped) return;
+      if (timer) clearTimeout(timer);
+      void load();
+    }
+
+    document.addEventListener("visibilitychange", onVisibility);
+    void load(true);
     return () => {
       alive = false;
       if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
