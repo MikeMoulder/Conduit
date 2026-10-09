@@ -545,6 +545,24 @@ describe("the copilot loop, streaming", () => {
     assert.equal(shownText(events), "Nothing is ready yet, say buy and I will set it up.");
   });
 
+  it("reports every model asked, so a slow reply can be explained", async () => {
+    const events: CopilotEvent[] = [];
+    const generate: TurnGenerator = async () => ({
+      ...turn(text("Anytime.")),
+      attempts: [
+        { model: "gemini-3.1-flash-lite", outcome: "http 429", ms: 300 },
+        { model: "gemini-3.5-flash", outcome: "ok", ms: 2200 },
+      ],
+    });
+    await runCopilot({ messages: [{ role: "user", content: "thanks" }], owner: null }, (e) => events.push(e), undefined, generate);
+
+    const done = events.find((e) => e.type === "done") as Extract<CopilotEvent, { type: "done" }>;
+    assert.deepEqual(done.attempts?.map((a) => `${a.model} ${a.outcome}`), [
+      "gemini-3.1-flash-lite http 429",
+      "gemini-3.5-flash ok",
+    ]);
+  });
+
   it("keeps the house style while streaming", async () => {
     const events = await runStreamed([
       { pieces: ["Up 2% today ", "—", " on chip news."], parts: text("Up 2% today — on chip news.") },

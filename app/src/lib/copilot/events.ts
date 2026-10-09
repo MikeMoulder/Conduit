@@ -465,5 +465,11 @@ export type CopilotEvent =
       totalMs: number;
       toolCalls: number;
       totalTokens: number | null;
+      /**
+       * Every model asked for every turn, in order, with how it went and how
+       * long it took. Says why a reply was slow: a fallback, a timeout or a
+       * busy model, rather than leaving it to guesswork.
+       */
+      attempts?: { model: string; outcome: string; ms: number }[];
     }
   | { type: "error"; message: string; detail?: string };

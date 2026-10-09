@@ -8,6 +8,7 @@ import {
   type GeminiContent,
   type ToolTurnRequest,
   type ToolTurnResult,
+  type TurnAttempt,
 } from "../gemini";
 import { MAX_ASSETS } from "../chain";
 import { actionButton, type CopilotEvent } from "./events";
@@ -406,6 +407,8 @@ export async function runCopilot(
   let totalTokens: number | null = null;
   /** Reply text already showing from earlier turns, which a discard keeps. */
   let shown = 0;
+  /** Every model asked across the turns, for the done event. */
+  const attempts: TurnAttempt[] = [];
 
   emit({ type: "status", label: "Reading the question" });
 
@@ -442,6 +445,7 @@ export async function runCopilot(
     }
 
     model = reply.model;
+    attempts.push(...(reply.attempts ?? []));
     totalTokens = reply.totalTokens ?? totalTokens;
 
     const calls = reply.parts.filter((p) => p.functionCall);
@@ -478,6 +482,7 @@ export async function runCopilot(
         totalMs: Date.now() - startedAt,
         toolCalls,
         totalTokens,
+        attempts,
       });
       return;
     }
@@ -593,5 +598,6 @@ export async function runCopilot(
     totalMs: Date.now() - startedAt,
     toolCalls,
     totalTokens,
+    attempts,
   });
 }
