@@ -74,6 +74,19 @@ interface RawPreStock {
 
 let cache: { result: PreStocksResult; fetchedAt: number } | null = null;
 
+/**
+ * The last read that worked, served while PreStocks refuses.
+ *
+ * PreStocks sits behind Vercel's firewall, which refuses some callers for
+ * rounds at a time. A failure used to be cached for the full thirty seconds
+ * like a success, so one refusal blanked every pre IPO price until it
+ * expired. Now a failure is never cached, and for up to three minutes the
+ * last good read stands in, with its real fetch time, so every age reported
+ * from it is true.
+ */
+let lastGood: Extract<PreStocksResult, { status: "ok" }> | null = null;
+const STALE_IF_ERROR_MS = 3 * 60_000;
+
 function asNumber(value: unknown): number | null {
   const n = typeof value === "string" ? Number(value) : value;
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -164,7 +177,12 @@ export async function fetchPreStocks(): Promise<PreStocksResult> {
     result = { status: "unavailable", reason: String(error) };
   }
 
-  cache = { result, fetchedAt: now };
+  if (result.status === "ok") {
+    lastGood = result;
+    cache = { result, fetchedAt: now };
+    return result;
+  }
+  if (lastGood && now - lastGood.fetchedAt < STALE_IF_ERROR_MS) return lastGood;
   return result;
 }
 
@@ -185,7 +203,8 @@ export function preStockSpread(asset: PreStock): PreStockSpread {
   return { fraction, basisPoints: Math.round(fraction * 10_000) };
 }
 
-/** Clears the cache. Intended for tests. */
+/** Clears the cache and the last good read. Intended for tests. */
 export function resetPreStocksCache(): void {
   cache = null;
+  lastGood = null;
 }
