@@ -16,11 +16,12 @@ import { ArrowUp, Square } from "lucide-react";
  * read would only produce an answer about nobody.
  */
 
+/** Things a first timer would actually type, in the words they would type them. */
 const SUGGESTIONS = [
-  "What am I holding, and how close am I to my limits?",
-  "Where is the widest discount to underlying right now?",
-  "Put my cash to work, but nothing reckless.",
-  "Show me every time the program refused a trade.",
+  "How's NVIDIA doing today?",
+  "Buy $50 of Apple",
+  "Ping me if Tesla drops 3%",
+  "What can you do?",
 ];
 
 export function Composer({
@@ -100,8 +101,8 @@ export function Composer({
             }}
             placeholder={
               locked
-                ? "Connect a wallet to start asking"
-                : "Ask about the market, your positions, or your mandate"
+                ? "Connect a wallet to start"
+                : "Text me what you want"
             }
             className="max-h-[200px] min-w-0 flex-1 resize-none bg-transparent px-1 py-1 disabled:cursor-not-allowed text-sm leading-relaxed text-ink placeholder:text-ink-ghost focus:outline-none"
           />
@@ -130,8 +131,8 @@ export function Composer({
         </div>
 
         <p className="mt-2 text-center text-[10px] text-ink-faint">
-          Research, not financial advice. Devnet. Every limit is enforced by the
-          program, not by this interface.
+          Not financial advice. Test money on devnet. Your limits are enforced
+          by Solana, not by this app.
         </p>
       </div>
     </div>

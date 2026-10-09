@@ -131,42 +131,42 @@ function Welcome({ connected, onAsk }: { connected: boolean; onAsk: (question: s
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Conduit</h1>
             <p className="text-xs text-ink-faint">
-              tokenized equities on {CLUSTER}, governed on chain
+              invest in stocks by texting, on Solana {CLUSTER}
             </p>
           </div>
         </div>
 
         <p className="max-w-2xl text-[15px] leading-relaxed text-ink">
-          Ask me about the market, your portfolio, or the mandate it runs
-          under. I will fetch what I need and show you every tool I used to
-          get there. I will not give you a number I could not look up.
+          Text me what you want, like &ldquo;buy $50 of Apple&rdquo; or
+          &ldquo;how&rsquo;s Tesla doing?&rdquo;, and I&rsquo;ll take it from
+          there. Every number I show you comes from a live source, never from
+          memory.
         </p>
 
         <ul className="flex flex-col gap-2 text-sm text-ink-muted">
           <Bullet>
-            Read live prices, and the gap between a token and the thing it
-            tracks.
+            Buy and sell stocks like NVIDIA and Tesla, plus crypto and pre IPO
+            names like SpaceX.
           </Bullet>
           <Bullet>
-            See what the portfolio holds and how close it sits to its limits.
+            Get a quick brief on any stock: the price, the day, and the news
+            behind it.
           </Bullet>
           <Bullet>
-            Run a five stage analysis and get an allocation with a thesis per
-            position.
+            Set price alerts and timed or repeating orders, with a ping on
+            Telegram.
           </Bullet>
           <Bullet>
-            Propose a rebalance. The program checks it and refuses it by name if
-            it breaches a clause.
+            Hand me a portfolio to run on my own, inside rules you set.
           </Bullet>
         </ul>
 
         <div className="rounded-2xl border border-line bg-surface px-4 py-3.5">
           <p className="text-[13px] leading-relaxed text-ink-muted">
-            The mandate is not a prompt. It is an account on Solana, and every
-            proposal is re-derived against it before anything moves. I can
-            propose. I cannot widen a limit, replace the agent or withdraw. Those
-            are not promises I am making, they are instructions I have no way to
-            reach.
+            Here&rsquo;s the part that matters: your rules live on Solana, not
+            in my head. If I ever try to break one, like putting too much into
+            one stock, Solana blocks it, and anyone can check. I also
+            can&rsquo;t send your money anywhere except back to you.
           </p>
         </div>
 
@@ -174,9 +174,8 @@ function Welcome({ connected, onAsk }: { connected: boolean; onAsk: (question: s
 
         {!connected ? (
           <p className="text-[13px] text-ink-faint">
-            Connect a {CLUSTER} wallet to start. I read your mandate and your
-            positions from it, so there is nothing to ask about until one is
-            connected.
+            Connect a wallet to start. It&rsquo;s all test money on {CLUSTER},
+            so nothing real is at risk.
           </p>
         ) : null}
       </div>
