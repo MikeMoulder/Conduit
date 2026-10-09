@@ -225,7 +225,11 @@ describe("choosing a news source", () => {
 
   beforeEach(() => {
     calls = [];
-    finnhubBody = finnhub;
+    // fetchHeadlines filters by the real clock, unlike the pure tests above
+    // that pass NOW in, so the articles are moved to now. With fixed dates
+    // this test began failing three days after they were written.
+    const shift = Math.floor(Date.now() / 1000) - Math.floor(NOW / 1000);
+    finnhubBody = finnhub.map((a) => (typeof a.datetime === "number" && a.datetime > 1 ? { ...a, datetime: a.datetime + shift } : a));
     globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
       const url = String(input);
       calls.push({ url, headers: (init?.headers ?? {}) as Record<string, string> });
