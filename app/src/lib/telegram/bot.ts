@@ -164,15 +164,30 @@ export async function handleText(
     : "I send Conduit price alerts and autopilot decisions. To link this chat, ask Conduit's chat to connect Telegram, then press the link it gives you.";
 }
 
+const listener = globalThis as unknown as {
+  __conduitTelegram?: boolean;
+  /** When the listener last heard from Telegram, for the status check. */
+  __conduitTelegramLastPoll?: number;
+  /** The next update to ask for, once read from the store. */
+  __conduitTelegramOffset?: number;
+};
+
 /**
  * One long poll: read what arrived, answer it, and move the offset past it.
+ *
+ * The offset is read from the store once per process and kept in memory
+ * after that. This process is the only listener, so nothing else moves it,
+ * and reading it back on every 25 second poll cost about 3,500 store
+ * commands a day to learn nothing. It is still written whenever a message
+ * arrives, so a restart carries on where this process stopped.
  *
  * Returns false when Telegram could not be reached, so the loop can wait
  * before asking again. Throws whatever handling a message throws; the loop
  * catches it. Exported so a single pass can be tested.
  */
 export async function pollOnce(timeoutSeconds = 25): Promise<boolean> {
-  const offset = await getOffset();
+  listener.__conduitTelegramOffset ??= await getOffset();
+  const offset = listener.__conduitTelegramOffset;
   // Telegram holds the request up to the timeout waiting for a message, so
   // the loop is quiet rather than busy.
   const updates = await call<Update[]>(
@@ -183,8 +198,10 @@ export async function pollOnce(timeoutSeconds = 25): Promise<boolean> {
   if (!updates) return false;
 
   for (const update of updates) {
-    // The offset moves first. A message whose handling throws is skipped
-    // rather than read again on every pass for ever.
+    // The offset moves first, in memory before the store. A message whose
+    // handling throws is skipped rather than read again on every pass for
+    // ever, and so is one that arrives while the store is refusing writes.
+    listener.__conduitTelegramOffset = update.update_id + 1;
     await setOffset(update.update_id + 1);
     const message = update.message;
     if (message?.text) {
@@ -195,11 +212,10 @@ export async function pollOnce(timeoutSeconds = 25): Promise<boolean> {
   return true;
 }
 
-const listener = globalThis as unknown as {
-  __conduitTelegram?: boolean;
-  /** When the listener last heard from Telegram, for the status check. */
-  __conduitTelegramLastPoll?: number;
-};
+/** Drops the offset held in memory, so the next poll reads the store. For tests. */
+export function forgetOffset(): void {
+  delete listener.__conduitTelegramOffset;
+}
 
 /** When the listener last completed a poll, or null if it has not yet. */
 export function lastPollAt(): number | null {

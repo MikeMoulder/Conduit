@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { expect } from "chai";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { ed25519 } from "@noble/curves/ed25519";
@@ -14,10 +14,12 @@ import {
   getOffset,
   issueCode,
   redeemCode,
+  setOffset,
   spendProof,
   unlinkChat,
 } from "../src/lib/telegram/state";
-import { deliver, handleText, pollOnce, sendToOwner } from "../src/lib/telegram/bot";
+import { deliver, forgetOffset, handleText, pollOnce, sendToOwner } from "../src/lib/telegram/bot";
+import { storeCommands } from "../src/lib/kv";
 import { notify } from "../src/lib/autopilot/notify";
 import { AUTOPILOT_TOOLS } from "../src/lib/copilot/autopilot-tools";
 import type { AutopilotEntry, Decision } from "../src/lib/autopilot/state";
@@ -219,13 +221,17 @@ describe("sending reliably", () => {
 describe("the listener", () => {
   const realFetch = globalThis.fetch;
   let sent: { chat_id: number; text: string }[];
+  let polled: { offset: number }[];
   let updates: unknown;
 
   beforeEach(() => {
     process.env.TELEGRAM_BOT_TOKEN = "test-token-not-real";
+    forgetOffset();
     sent = [];
+    polled = [];
     globalThis.fetch = (async (url: string, init?: RequestInit) => {
       if (String(url).endsWith("/getUpdates")) {
+        polled.push(JSON.parse(String(init?.body)));
         return updates === "down"
           ? Promise.reject(new Error("unreachable"))
           : new Response(JSON.stringify({ ok: true, result: updates }), { status: 200 });
@@ -252,6 +258,39 @@ describe("the listener", () => {
   it("reports Telegram being unreachable instead of throwing", async () => {
     updates = "down";
     expect(await pollOnce(0)).to.equal(false);
+  });
+
+  it("reads the stored offset once, then polls without touching the store", async () => {
+    await setOffset(700);
+    updates = [];
+    const before = storeCommands();
+
+    expect(await pollOnce(0)).to.equal(true);
+    expect(storeCommands() - before).to.equal(1);
+    expect(polled[0].offset).to.equal(700);
+
+    expect(await pollOnce(0)).to.equal(true);
+    expect(await pollOnce(0)).to.equal(true);
+    expect(storeCommands() - before).to.equal(1);
+    expect(polled.map((p) => p.offset)).to.deep.equal([700, 700, 700]);
+  });
+
+  it("asks past a message even when handling it fails", async () => {
+    await setOffset(800);
+    await pollOnce(0);
+    // The store breaks: its folder is now a file, so every write is refused.
+    writeFileSync(path.join(dir, "blocker"), "");
+    process.env.KV_FILE = path.join(dir, "blocker", "kv.json");
+    updates = [{ update_id: 800, message: { text: "hi", chat: { id: 2002 } } }];
+    let threw = false;
+    await pollOnce(0).catch(() => {
+      threw = true;
+    });
+    expect(threw).to.equal(true);
+
+    updates = [];
+    await pollOnce(0);
+    expect(polled.at(-1)?.offset).to.equal(801);
   });
 });
 
