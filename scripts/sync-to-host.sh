@@ -45,6 +45,9 @@ EXCLUDES=(
   --exclude='./programs/*/target'
   --exclude='./.anchor'
   --exclude='./test-ledger'
+  # Windows installers and executables land in the working folder now and
+  # then. They never belong on a Linux host, and one is hundreds of MB.
+  --exclude='*.exe'
 )
 
 # The same set, as prune paths. Anything under these is the host's own business.
