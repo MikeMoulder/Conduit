@@ -111,8 +111,8 @@ const setAutopilot: CopilotTool = {
     const brakeBps = parsed.brakePercent === undefined ? null : Math.round(parsed.brakePercent * 100);
     const brakeText =
       (brakeBps ?? DEFAULT_BRAKE_BPS) === 0
-        ? "There is no safety brake, so nothing stops it after a fall."
-        : `If the mandate falls ${bpsToPercent(brakeBps ?? DEFAULT_BRAKE_BPS)} below its best point, it moves to cash and stops until you switch it back on.`;
+        ? "There's no safety brake, so nothing stops me after a fall."
+        : `If it ever drops ${bpsToPercent(brakeBps ?? DEFAULT_BRAKE_BPS)} from its best point, I move it to cash and stop until you switch me back on.`;
 
     if (parsed.on) {
       const { funded } = await requireRunnableMandate(owner, mandateId);
@@ -139,8 +139,8 @@ const setAutopilot: CopilotTool = {
         preIpoCapBps,
         brakeBps,
         summary: parsed.on
-          ? `Let the agent run ${label} on its own every ${everyMinutes} minutes${parsed.objective ? `, aiming to ${parsed.objective.replace(/\.$/, "")}` : ""}. It analyses, rebalances and settles without asking you each time. The program checks every transaction against the mandate's rules, so it can only do what you already allowed. Pre-IPO names are bought only when their token trades below the company's mark, never added to at a premium, and kept to ${capText} of the mandate together. ${brakeText} The first cycle starts within a minute.`
-          : `Stop the autopilot on ${label}. Nothing it already did is undone, and you can switch it back on at any time.`,
+          ? `I'll run ${label} on my own every ${everyMinutes} minutes${parsed.objective ? `, aiming to ${parsed.objective.replace(/\.$/, "")}` : ""}, researching, rebalancing and trading without asking each time. Solana checks every move against your rules, so I can only do what you've allowed. Pre-IPO names: I only buy below the company's value, never add at a premium, and keep them under ${capText} together. ${brakeText} The first round starts within a minute.`
+          : `Pause the autopilot on ${label}. Nothing I've done gets undone, and you can turn it back on anytime.`,
       },
     };
   },
@@ -232,7 +232,7 @@ const runAutopilotNow: CopilotTool = {
         owner: owner.toBase58(),
         mandateId,
         mandateLabel: label,
-        summary: `Run one autonomous cycle on ${label} now: analyse the market, then rebalance and settle if the result changes the allocation and the mandate allows it. The agent decides; the program checks.`,
+        summary: `Run one round on ${label} now. I check the market, and if the plan changes and your rules allow it, I rebalance and trade. Solana checks every move.`,
       },
     };
   },
@@ -263,7 +263,7 @@ const linkTelegram: CopilotTool = {
         kind: "link-telegram",
         owner: owner.toBase58(),
         summary:
-          "Connect your Telegram so the autopilot can tell you what it decides. Your wallet signs a short message to prove it is yours; nothing moves and it costs nothing. You then get a link to open in Telegram and press Start. It works once and expires in ten minutes.",
+          "Get my updates on your phone. Your wallet signs a quick message to prove it's you (free, no money moves), then you open a link in Telegram and tap Start. The link works once and expires in 10 minutes.",
       },
     };
   },
@@ -288,7 +288,7 @@ const unlinkTelegram: CopilotTool = {
       action: {
         kind: "unlink-telegram",
         owner: owner.toBase58(),
-        summary: "Stop sending autopilot updates for this wallet to Telegram. Your wallet signs a short message to confirm; nothing moves.",
+        summary: "Stop sending my updates to your Telegram. Your wallet signs a quick message to confirm, and no money moves.",
       },
     };
   },

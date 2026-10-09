@@ -737,8 +737,8 @@ const proposeRebalance: CopilotTool = {
         positions: rows,
         evaluation,
         summary: evaluation.compliant
-          ? `${rows.length} positions. ${bpsToPercent(evaluation.turnoverBps)} of the book changes hands, leaving ${bpsToPercent(evaluation.cashBps)} in cash.`
-          : `The program would refuse this with ${evaluation.firstRefusal}. Submitting it anyway records the refusal on chain.`,
+          ? `${rows.length} positions. About ${bpsToPercent(evaluation.turnoverBps)} of the portfolio gets traded, leaving ${bpsToPercent(evaluation.cashBps)} in cash.`
+          : `This breaks one of your rules (${evaluation.firstRefusal}), so Solana will block it. You can send it anyway to watch that happen, and the refusal stays on chain for anyone to check.`,
       },
     };
   },
@@ -827,10 +827,11 @@ const prepareMandate: CopilotTool = {
           agent: agent.publicKey,
         },
         summary:
-          `No single position above ${bpsToPercent(input.maxPositionBps)}. ` +
-          `At least ${bpsToPercent(input.minCashBps)} held in cash. ` +
-          `At most ${bpsToPercent(input.maxTurnoverBps)} of the book may change hands in one rebalance. ` +
-          `Up to ${input.maxAssets} positions, chosen from ${input.symbols.join(", ")}.`,
+          `Your rules, stored on Solana where I can't change them: ` +
+          `no single stock above ${bpsToPercent(input.maxPositionBps)}, ` +
+          `at least ${bpsToPercent(input.minCashBps)} kept in cash, ` +
+          `at most ${bpsToPercent(input.maxTurnoverBps)} of the portfolio traded at once, ` +
+          `and up to ${input.maxAssets} picks from ${input.symbols.join(", ")}.`,
       },
     };
   },
@@ -883,10 +884,10 @@ const setStatus: CopilotTool = {
         status,
         summary:
           status === "closed"
-            ? "Closing is permanent. The agent will never propose again under this mandate."
+            ? "Closing is for good. I'll never trade under this mandate again."
             : status === "paused"
-              ? "The agent stops proposing. Positions are untouched and it can be resumed."
-              : "The agent may propose again.",
+              ? "I stop trading this mandate. What it holds stays put, and you can resume anytime."
+              : "I can trade this mandate again, inside the same rules.",
       },
     };
   },
@@ -958,7 +959,7 @@ const settlePortfolio: CopilotTool = {
       action: {
         kind: "settle",
         mandate: address.toBase58(),
-        summary: `Buy and sell until the portfolio actually holds ${targets}. Prices come from the Pyth accounts the mandate named, and the program checks the result against the mandate again once the tokens have moved.`,
+        summary: `Make the trades so the portfolio actually holds ${targets}. Prices come from the chain, and Solana checks the result against your rules again once everything has moved.`,
       },
     };
   },

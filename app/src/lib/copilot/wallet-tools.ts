@@ -174,7 +174,7 @@ const openWallet: CopilotTool = {
         kind: "open-wallet",
         agent: agent.publicKey,
         summary:
-          "Open your main wallet. It is bound to your address and nobody holds a key for it, not even Conduit. After this one signature the agent can trade, fund your mandates and send money back to you without asking you to sign again, and the program only ever lets money leave it for the desk, your own mandates, or you.",
+          "Your main wallet is your trading balance on Conduit. Sign once now, and after that I can buy and sell for you with no more popups. Nobody holds a key to it, not even Conduit, and money in it can only go to trades, your mandates or back to you.",
       },
     };
   },
@@ -204,7 +204,7 @@ const getDemoCash: CopilotTool = {
       action: {
         kind: "demo-cash",
         owner: owner.toBase58(),
-        summary: `Top your own wallet up to ${usd(FUND_UNITS)} in devnet demo cash. Worthless outside this demo. From there you choose how much goes into your main wallet or a mandate.`,
+        summary: `Grab free test money, up to ${usd(FUND_UNITS)}, in your own wallet. It's devnet money with no real value, so try anything with it. You decide later how much goes into your main wallet.`,
       },
     };
   },
@@ -261,7 +261,7 @@ export async function fundFirst(input: {
       destinationLabel: "your main wallet",
       dollars: short,
       then: input.then,
-      summary: `Your main wallet has ${usd(input.have)} of cash, so ${input.purpose} cannot go through yet. Approve moving ${usd(short)} in from your own wallet first. You sign this one, because the money is leaving your wallet. As soon as it lands, the card for ${input.then} comes next, for you to approve.`,
+      summary: `Your main wallet has ${usd(input.have)} in cash, which isn't enough for ${input.purpose} yet. Move ${usd(short)} in from your own wallet first. You'll sign this one, since it's your money leaving your wallet. As soon as it lands, I'll bring up ${input.then} for you to approve.`,
     },
   };
 }
@@ -316,7 +316,7 @@ const deposit: CopilotTool = {
         mandate,
         destinationLabel: label,
         dollars,
-        summary: `Move ${usd(dollars)} of demo cash from your own wallet into ${label}. You sign this one, because the money is leaving your wallet.`,
+        summary: `Move ${usd(dollars)} of test money from your own wallet into ${label}. You'll sign this one, since the money is leaving your wallet.`,
       },
     };
   },
@@ -430,8 +430,8 @@ const placeOrder: CopilotTool = {
         tokens,
         cashAfter,
         summary: all
-          ? `Sell all ${Number(heldTokens.toFixed(6))} ${asset.symbol} in your main wallet for cash, about ${usd(dollars)} at ${usd(price.price.price)}. The exact amount is set from your balance and the price when you approve. The agent signs; the program fixes the price and keeps both sides of the trade in your wallet.`
-          : `${verb} ${usd(dollars)} of ${asset.symbol} in your main wallet at ${usd(price.price.price)}. The agent signs; the program fixes the price and keeps both sides of the trade in your wallet.`,
+          ? `Sell all your ${asset.symbol} (${Number(heldTokens.toFixed(4))}) for cash, about ${usd(dollars)} at ${usd(price.price.price)}. The exact amount comes from your balance when you tap Sell. No popup, and the price comes from the chain, not from me.`
+          : `${verb} ${usd(dollars)} of ${asset.symbol} at ${usd(price.price.price)}. No popup, and the price comes from the chain, not from me.`,
       },
     };
   },
@@ -484,7 +484,7 @@ const fundMandate: CopilotTool = {
         mandate: address.toBase58(),
         mandateLabel: label,
         dollars,
-        summary: `Move ${usd(dollars)} from your main wallet into ${label}. From there the agent invests it on its own, and the program checks every decision against that mandate's rules.`,
+        summary: `Move ${usd(dollars)} from your main wallet into ${label}. From there I invest it on my own, and Solana checks every move against that mandate's rules.`,
       },
     };
   },
@@ -552,7 +552,7 @@ const withdraw: CopilotTool = {
         symbol,
         amount: parsed.amount ?? null,
         all: parsed.all,
-        summary: `Send ${what} from ${fromLabel} back to your own wallet. The agent signs; the program will not let it go anywhere else.`,
+        summary: `Send ${what} from ${fromLabel} back to your own wallet. Money from here can only ever go back to you.`,
       },
     };
   },
