@@ -23,7 +23,7 @@ import {
   transferTokens,
 } from "@/lib/token-instructions";
 import { useConduitProgram } from "@/hooks/use-conduit-program";
-import { actionTitle, type Card, type PendingAction, type WalletResultCard } from "@/lib/copilot/events";
+import { actionButton, actionTitle, type Card, type PendingAction, type WalletResultCard } from "@/lib/copilot/events";
 import { AssetBadge } from "./cards";
 
 /**
@@ -76,32 +76,37 @@ const tokens = (n: number) => n.toLocaleString(undefined, { maximumFractionDigit
 function present(action: PendingAction): Presentation {
   switch (action.kind) {
     case "create-mandate":
-      return { title: "Create this mandate", signer: "owner", button: "Approve", warning: false };
+      return { title: "Create your mandate", signer: "owner", button: actionButton(action), warning: false };
     case "set-status":
       return {
-        title: `Set the mandate to ${action.status}`,
+        title:
+          action.status === "closed"
+            ? "Close this mandate for good"
+            : action.status === "paused"
+              ? "Pause this mandate"
+              : "Resume this mandate",
         signer: "owner",
-        button: action.status === "closed" ? "Close permanently" : "Approve",
+        button: actionButton(action),
         warning: action.status === "closed",
       };
     case "submit-rebalance":
       return {
-        title: "Submit this rebalance",
+        title: "Rebalance your portfolio",
         signer: "agent",
-        button: action.evaluation.compliant ? "Approve" : "Send it and let the chain refuse",
+        button: actionButton(action),
         warning: !action.evaluation.compliant,
       };
     case "settle":
-      return { title: "Settle this portfolio", signer: "agent", button: "Settle", warning: false };
+      return { title: "Make the trades", signer: "agent", button: actionButton(action), warning: false };
     case "open-wallet":
-      return { title: "Open your main wallet", signer: "owner", button: "Open", warning: false };
+      return { title: "Open your main wallet", signer: "owner", button: actionButton(action), warning: false };
     case "demo-cash":
-      return { title: "Add demo cash", signer: "faucet", button: "Add demo cash", warning: false };
+      return { title: "Get test money", signer: "faucet", button: actionButton(action), warning: false };
     case "deposit":
       return {
         title: `Deposit ${usd(action.dollars)} into ${action.destinationLabel}`,
         signer: "owner",
-        button: "Deposit",
+        button: actionButton(action),
         warning: false,
       };
     case "trade":
@@ -110,55 +115,59 @@ function present(action: PendingAction): Presentation {
           ? `Sell all ${action.symbol}`
           : `${action.side === "buy" ? "Buy" : "Sell"} ${usd(action.dollars)} of ${action.symbol}`,
         signer: "agent",
-        button: action.side === "buy" ? "Buy" : "Sell",
+        button: actionButton(action),
         warning: false,
       };
     case "fund-mandate":
       return {
         title: `Move ${usd(action.dollars)} into ${action.mandateLabel}`,
         signer: "agent",
-        button: "Move",
+        button: actionButton(action),
         warning: false,
       };
     case "withdraw":
-      return { title: "Withdraw to your wallet", signer: "agent", button: "Withdraw", warning: false };
+      return { title: "Withdraw to your wallet", signer: "agent", button: actionButton(action), warning: false };
     case "autopilot":
       return {
-        title: action.on ? `Autopilot on ${action.mandateLabel}` : `Stop the autopilot on ${action.mandateLabel}`,
+        title: action.on ? `Turn on autopilot for ${action.mandateLabel}` : `Pause autopilot on ${action.mandateLabel}`,
         signer: "agent",
-        button: action.on ? "Switch it on" : "Stop it",
+        button: actionButton(action),
         warning: false,
       };
     case "autopilot-run":
       return {
-        title: `Run a cycle on ${action.mandateLabel}`,
+        title: `Run the autopilot on ${action.mandateLabel} now`,
         signer: "agent",
-        button: "Run it now",
+        button: actionButton(action),
         warning: false,
       };
     case "price-trigger":
       return {
-        title: action.repeat
-          ? `Set a repeating trigger on ${action.symbol}`
-          : action.condition.kind === "after"
-            ? `Set a timed trigger on ${action.symbol}`
-            : `Set a price trigger on ${action.symbol}`,
+        title: triggerTitle(action),
         signer: "agent",
-        button: "Set the trigger",
+        button: actionButton(action),
         warning: action.action.kind !== "notify",
       };
     case "link-telegram":
-      return { title: "Connect Telegram", signer: "owner", button: "Sign and get the link", warning: false };
+      return { title: "Connect Telegram", signer: "owner", button: actionButton(action), warning: false };
     case "unlink-telegram":
-      return { title: "Disconnect Telegram", signer: "owner", button: "Sign and disconnect", warning: false };
+      return { title: "Disconnect Telegram", signer: "owner", button: actionButton(action), warning: false };
   }
 }
 
+/** Whether a wallet popup is coming, which is what a person wants to know before tapping. */
 const SIGNER_LABEL: Record<Signer, string> = {
-  agent: "signed by the agent",
-  owner: "signed by your wallet",
-  faucet: "paid by the devnet faucet",
+  agent: "no popup",
+  owner: "you'll sign in your wallet",
+  faucet: "free test money",
 };
+
+/** Alert when it only messages, order when it trades. */
+function triggerTitle(action: Extract<PendingAction, { kind: "price-trigger" }>): string {
+  const what = action.action.kind === "notify" ? "alert" : "order";
+  if (action.repeat) return `Repeating ${what} on ${action.symbol}`;
+  return action.condition.kind === "after" ? `Timed ${what} on ${action.symbol}` : `Price ${what} on ${action.symbol}`;
+}
 
 function isMessageAction(action: PendingAction): action is MessageAction {
   return action.kind === "link-telegram" || action.kind === "unlink-telegram";
@@ -196,7 +205,7 @@ function failure(data: Record<string, unknown>, headline: string): Card {
       programError?.message ??
       (data.detail as string | undefined) ??
       (data.error as string | undefined) ??
-      "The request did not complete.",
+      "That didn't go through.",
     signature: (data.signature as string | null) ?? null,
     lines: programError?.name ? [{ label: "program error", value: programError.name }] : [],
   });
@@ -240,13 +249,13 @@ async function runServerAction(action: ServerAction): Promise<Card> {
 
     case "demo-cash": {
       const data = await postJson("/api/faucet", { owner: action.owner });
-      if (!data.funded) return failure(data, "No demo cash was added");
+      if (!data.funded) return failure(data, "No test money was added");
       const sent = Number(data.sent ?? 0);
       return resultCard({
         ok: true,
-        headline: sent > 0 ? `Added ${usd(sent)} in devnet demo cash` : "Already topped up",
+        headline: sent > 0 ? `Added ${usd(sent)} of test money` : "You're already topped up",
         detail:
-          "In your own wallet, not in Conduit. It has no value outside this demo. Deposit it into your main wallet or a mandate when you are ready.",
+          "It's in your own wallet. Move some into your main wallet whenever you want to trade.",
         signature: (data.signature as string) ?? null,
         lines: [{ label: "your wallet", value: usd(Number(data.balance ?? 0)) }],
       });
@@ -265,8 +274,8 @@ async function runServerAction(action: ServerAction): Promise<Card> {
       const after = data.after as PortfolioHoldings;
       return resultCard({
         ok: true,
-        headline: `${action.side === "buy" ? "Bought" : "Sold"} ${action.symbol} in your main wallet`,
-        detail: `At ${usd(Number(data.price))}, the settlement price the program read.`,
+        headline: `${action.side === "buy" ? "Bought" : "Sold"} ${action.symbol}`,
+        detail: `Filled at ${usd(Number(data.price))}, the price on chain.`,
         signature: (data.signature as string) ?? null,
         lines: [
           {
@@ -284,12 +293,11 @@ async function runServerAction(action: ServerAction): Promise<Card> {
         mandate: action.mandate,
         dollars: action.dollars,
       });
-      if (!data.moved) return failure(data, "Nothing was moved");
+      if (!data.moved) return failure(data, "Nothing moved");
       return resultCard({
         ok: true,
         headline: `Moved ${usd(action.dollars)} into ${action.mandateLabel}`,
-        detail:
-          "The agent invests it from here, inside that mandate's rules. Only you can move it back into the main wallet.",
+        detail: "I'll invest it from here, inside that mandate's rules. Only you can move it back.",
         signature: (data.signature as string) ?? null,
         lines: [
           { label: "main wallet cash", value: usd(Number(data.walletCashAfter ?? 0)) },
@@ -308,15 +316,15 @@ async function runServerAction(action: ServerAction): Promise<Card> {
         preIpoCapBps: action.preIpoCapBps ?? undefined,
         brakeBps: action.brakeBps ?? undefined,
       });
-      if (!data.ok) return failure(data, "The autopilot was not changed");
+      if (!data.ok) return failure(data, "The autopilot didn't change");
       return resultCard({
         ok: true,
         headline: action.on
-          ? `The agent now runs ${action.mandateLabel} on its own, every ${action.everyMinutes} minutes`
-          : `The autopilot on ${action.mandateLabel} is off`,
+          ? `Autopilot is on for ${action.mandateLabel}, every ${action.everyMinutes} minutes`
+          : `Autopilot paused on ${action.mandateLabel}`,
         detail: action.on
-          ? "Its first cycle starts within a minute. Every transaction it sends is checked against the mandate's rules. Ask what it has been doing at any time."
-          : "Nothing it already did is undone.",
+          ? "The first round starts within a minute, and Solana checks every move against your rules. Ask me what I've been up to anytime."
+          : "Nothing I did gets undone.",
         signature: null,
         lines: [],
       });
@@ -331,7 +339,7 @@ async function runServerAction(action: ServerAction): Promise<Card> {
         days: action.days,
         repeat: action.repeat,
       });
-      if (!data.ok) return failure(data, "The trigger was not set");
+      if (!data.ok) return failure(data, "That didn't get set");
       const trigger = data.trigger as Trigger;
       if (trigger.repeat) {
         const { everyMinutes, maxRuns } = trigger.repeat;
@@ -339,7 +347,7 @@ async function runServerAction(action: ServerAction): Promise<Card> {
         return resultCard({
           ok: true,
           headline: `Running ${describeEvery(everyMinutes)} on ${trigger.symbol}`,
-          detail: `${describeTrigger(trigger)} The first check is within a minute. Ask to cancel it at any time.`,
+          detail: `${describeTrigger(trigger)} First check within a minute. Ask me to cancel it anytime.`,
           signature: null,
           lines: [
             { label: "price now", value: `$${trigger.basePrice.toFixed(2)}` },
@@ -354,22 +362,22 @@ async function runServerAction(action: ServerAction): Promise<Card> {
         return resultCard({
           ok: true,
           headline: `Set for ${when}`,
-          detail: `${describeTrigger(trigger)} It fires once, at ${when}, at the price at that moment.`,
+          detail: `${describeTrigger(trigger)} It goes off once, at ${when}, at that moment's price.`,
           signature: null,
           lines: [
             { label: "price now", value: `$${trigger.basePrice.toFixed(2)}` },
-            { label: "fires at", value: when },
+            { label: "goes off at", value: when },
           ],
         });
       }
       return resultCard({
         ok: true,
         headline: `Watching ${trigger.symbol}`,
-        detail: `${describeTrigger(trigger)} Checked every minute until ${new Date(trigger.expiresAt).toLocaleString()}. It fires once.`,
+        detail: `${describeTrigger(trigger)} I check every minute until ${new Date(trigger.expiresAt).toLocaleString()}, and it goes off once.`,
         signature: null,
         lines: [
           { label: "price now", value: `$${trigger.basePrice.toFixed(2)}` },
-          { label: "fires at", value: `$${targetPrice(trigger.condition, trigger.basePrice).toFixed(2)}` },
+          { label: "goes off at", value: `$${targetPrice(trigger.condition, trigger.basePrice).toFixed(2)}` },
         ],
       });
     }
@@ -390,13 +398,13 @@ async function runServerAction(action: ServerAction): Promise<Card> {
             score?: Score;
           }
         | undefined;
-      if (!decision) return failure(data, "The cycle did not run");
+      if (!decision) return failure(data, "That round didn't run");
       const headline = {
-        rebalanced: "The agent rebalanced and settled on its own",
-        held: "The agent kept the allocation",
-        skipped: "The agent held back",
-        failed: "The cycle did not complete",
-        braked: "The safety brake stopped the autopilot",
+        rebalanced: "I rebalanced and made the trades",
+        held: "I kept things as they are",
+        skipped: "I held back this round",
+        failed: "That round didn't finish",
+        braked: "The safety brake kicked in and paused me",
       }[decision.outcome];
       return resultCard({
         ok: decision.outcome !== "failed",
@@ -430,7 +438,7 @@ async function runServerAction(action: ServerAction): Promise<Card> {
       return resultCard({
         ok: true,
         headline: `Sent ${what} back to your wallet`,
-        detail: `From ${data.from === "mandate" ? "the mandate" : "your main wallet"}. The program only allows withdrawals to you.`,
+        detail: `From ${data.from === "mandate" ? "the mandate" : "your main wallet"}. Money can only ever be sent back to you.`,
         signature: (data.signature as string) ?? null,
         lines: [
           {
@@ -554,8 +562,7 @@ export function ActionCard({
       return resultCard({
         ok: true,
         headline: "Your main wallet is open",
-        detail:
-          "From now on the agent can trade, fund your mandates and send money back to you without asking you to sign. Deposit into it whenever you are ready.",
+        detail: "From now on I can trade for you with no popups. Move some money in whenever you're ready.",
         signature,
         lines: [],
       });
@@ -579,9 +586,9 @@ export function ActionCard({
         programError: outcome.status === "failed" ? extractProgramError(outcome.error) : null,
         detail:
           outcome.status === "expired"
-            ? "The transaction expired without landing. Nothing happened and it cannot be replayed."
+            ? "It timed out before it landed, so nothing happened. Give it another go."
             : outcome.status === "unknown"
-              ? "No result within the wait. It may still land, so check the explorer before retrying."
+              ? "No answer yet. It may still land, so check the explorer link before trying again."
               : null,
       },
     };
@@ -590,7 +597,7 @@ export function ActionCard({
   /** Signs a proof message with the wallet and hands it to the server. */
   async function runMessageAction(messageAction: MessageAction): Promise<Card> {
     if (!publicKey) throw new Error("Connect a wallet first. Only you can sign this.");
-    if (!signMessage) throw new Error("This wallet cannot sign messages, so it cannot prove it is yours here.");
+    if (!signMessage) throw new Error("This wallet can't sign messages, so it can't prove it's yours here.");
 
     const owner = publicKey.toBase58();
     const purpose = messageAction.kind;
@@ -603,8 +610,8 @@ export function ActionCard({
       if (!data.link) return failure(data, "Telegram was not linked");
       return resultCard({
         ok: true,
-        headline: "One step left: open Telegram and press Start",
-        detail: `The link works once and expires in ${Number(data.expiresInMinutes ?? 10)} minutes. When you press Start, the bot confirms which wallet it is linked to.`,
+        headline: "One more step: open Telegram and tap Start",
+        detail: `The link works once and expires in ${Number(data.expiresInMinutes ?? 10)} minutes. When you tap Start, the bot tells you which wallet it's linked to.`,
         signature: null,
         lines: [],
         link: { label: "Open in Telegram", href: String(data.link) },
@@ -616,7 +623,7 @@ export function ActionCard({
     return resultCard({
       ok: true,
       headline: data.unlinked ? "Telegram disconnected" : "No Telegram chat was linked",
-      detail: data.unlinked ? "No more autopilot updates will be sent there." : null,
+      detail: data.unlinked ? "No more updates will go there." : null,
       signature: null,
       lines: [],
     });
@@ -625,7 +632,7 @@ export function ActionCard({
   async function approve() {
     try {
       if (isMessageAction(action)) {
-        setPhase({ state: "working", note: "Waiting for your signature" });
+        setPhase({ state: "working", note: "Check your wallet" });
         const card = await runMessageAction(action);
         onResolved(card, outcomeMessage(action, card));
         return;
@@ -634,7 +641,7 @@ export function ActionCard({
       if (!isOwnerAction(action)) {
         setPhase({
           state: "working",
-          note: view.signer === "faucet" ? "Adding demo cash" : "The agent is signing",
+          note: view.signer === "faucet" ? "Getting test money" : "On it",
         });
         const card = await runServerAction(action);
         onResolved(card, outcomeMessage(action, card));
@@ -647,7 +654,7 @@ export function ActionCard({
         return;
       }
 
-      setPhase({ state: "working", note: "Waiting for your signature" });
+      setPhase({ state: "working", note: "Check your wallet" });
 
       const instructions = await ownerInstructions(action, publicKey);
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
@@ -658,7 +665,7 @@ export function ActionCard({
       }).add(...instructions);
 
       const signature = await sendTransaction(transaction, connection);
-      setPhase({ state: "working", note: "Confirming on chain" });
+      setPhase({ state: "working", note: "Confirming" });
 
       const outcome = await confirmSignature(connection, signature, { lastValidBlockHeight });
       const card = ownerResult(action, signature, outcome);
@@ -740,6 +747,12 @@ export function ActionCard({
  * where the price came from and how old it is, since the program reads that
  * same account when it runs the trade.
  */
+/** The publisher's lowercase source tag, as the name a person knows it by. */
+function sourceName(source: string): string {
+  const known: Record<string, string> = { jupiter: "Jupiter", prestocks: "PreStocks", coinbase: "Coinbase", pyth: "Pyth" };
+  return known[source.toLowerCase()] ?? source;
+}
+
 function TradeDetail({ action }: { action: Extract<PendingAction, { kind: "trade" }> }) {
   const minutes = Math.max(1, Math.round(action.priceAgeSeconds / 60));
   return (
@@ -752,13 +765,12 @@ function TradeDetail({ action }: { action: Extract<PendingAction, { kind: "trade
         </span>
       </div>
       <div className="flex items-baseline justify-between gap-3 py-1 text-[11px] text-zinc-500">
-        <span>cash after</span>
+        <span>cash left after</span>
         <span className="font-mono">{usd(action.cashAfter)}</span>
       </div>
       <p className="pt-1 text-[11px] leading-relaxed text-zinc-600">
-        At {usd(action.price)}, published {minutes} min ago from {action.priceSource}. No mandate
-        applies to your main wallet; the program fixes the price and keeps both sides of the trade
-        in it.
+        Price from {sourceName(action.priceSource)}, updated {minutes} min ago. It is set on chain, so
+        neither of us picks it.
       </p>
     </div>
   );

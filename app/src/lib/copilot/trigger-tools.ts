@@ -197,7 +197,7 @@ const setTrigger: CopilotTool = {
     return {
       result: {
         prepared: true,
-        notDoneYet: "The trigger is NOT set yet. Tell them to press Set the trigger on the card to switch it on. Never say it is set.",
+        notDoneYet: "The trigger is NOT set yet. Tell them to tap Set it on the card to switch it on. Never say it is set.",
         trigger: sentence,
         currentPrice: check.basePrice,
         ...(repeat
@@ -223,15 +223,15 @@ const setTrigger: CopilotTool = {
         basePrice: check.basePrice,
         summary: `${sentence} ${check.symbol} is ${usd(check.basePrice)} now. ${
           repeat
-            ? `The first check is within a minute of your approval, then ${describeEvery(repeat.everyMinutes)}. It stops after ${repeat.maxRuns} run${repeat.maxRuns === 1 ? "" : "s"}${condition.kind === "always" ? "" : ` or after ${days} day${days === 1 ? "" : "s"}, whichever comes first`}, and you can cancel it at any time.`
+            ? `First check within a minute, then ${describeEvery(repeat.everyMinutes)}. It stops after ${repeat.maxRuns} run${repeat.maxRuns === 1 ? "" : "s"}${condition.kind === "always" ? "" : ` or ${days} day${days === 1 ? "" : "s"}, whichever comes first`}, and you can cancel it anytime.`
             : timed
-              ? `The clock starts the moment you approve, and it fires once, ${describeWait(value)} later.`
-              : `Measured from the moment you approve. Checked every minute for ${days} day${days === 1 ? "" : "s"}; it fires once.`
+              ? `The clock starts when you tap Set it, and it goes off once, ${describeWait(value)} later.`
+              : `Counted from when you tap Set it. I check every minute for ${days} day${days === 1 ? "" : "s"}, and it goes off once.`
         }${
           action.kind === "notify"
             ? ""
-            : ` ${repeat ? "Each time it acts" : "When it fires"} the agent places the ${action.kind} from your main wallet straight away, at the price at that moment, with no further approval.`
-        }${telegram ? " The message goes to your Telegram." : " Telegram is not linked, so the message will only be here in the chat unless you connect it."}${shortfall ? ` Note: ${shortfall}` : ""}`,
+            : ` ${repeat ? "Each time" : "When it goes off"}, I place the ${action.kind} from your main wallet right away, at that moment's price, without asking again.`
+        }${telegram ? " You'll get a message on Telegram." : " Telegram isn't linked, so you'll only see it here in the chat unless you connect it."}${shortfall ? ` Heads up: ${shortfall}` : ""}`,
       },
     };
   },

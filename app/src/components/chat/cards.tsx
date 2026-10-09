@@ -384,10 +384,10 @@ function PortfolioCard({ card }: { card: Extract<Card, { kind: "portfolio" }> })
       </div>
       <p className="border-t border-zinc-900 px-4 py-2 text-[11px] leading-relaxed text-zinc-600">
         {!holdings?.settleable
-          ? "Weights the program enforces, not tokens the portfolio owns. This mandate names an asset with no on chain price, so it cannot be settled."
+          ? "These are targets, not holdings. One pick has no price on chain, so the trades can't run."
           : settled
-            ? "Settled. The amounts underneath are real token balances, moved against the desk at the oracle price."
-            : "Weights the program enforces. Nothing has settled yet, so the portfolio owns no tokens. On devnet, ask me to add demo cash, then to settle."}
+            ? "These are real balances, bought at the price on chain."
+            : "These are targets. Nothing's been bought yet. Ask me for test money, then to make the trades."}
       </p>
     </Shell>
   );
@@ -676,22 +676,18 @@ function SubmissionCard({ card }: { card: Extract<Card, { kind: "submission" }> 
       }`}
     >
       {submission.accepted ? (
-        <p className="text-sm text-emerald-300">
-          Accepted on chain at slot {submission.slot}.
-        </p>
+        <p className="text-sm text-emerald-300">Done, Solana accepted it.</p>
       ) : (
         <>
-          <p className="text-sm font-medium text-red-300">
-            {submission.programError?.name ?? "Refused"}
-          </p>
+          <p className="text-sm font-medium text-red-300">Solana blocked this</p>
           <p className="mt-0.5 text-[11px] leading-relaxed text-red-200/70">
             {submission.programError?.message ?? submission.detail}
           </p>
           {submission.programError ? (
             <p className="mt-1 text-[10px] text-red-200/50">
-              error {submission.programError.code}, returned by the program. No
-              client check stopped this. The transaction was sent and the
-              cluster rejected it.
+              Rule {submission.programError.name} (error {submission.programError.code}).
+              The app didn&rsquo;t stop this, Solana did, and the record stays on
+              chain for anyone to check.
             </p>
           ) : null}
         </>
@@ -735,22 +731,17 @@ function SettlementCard({ card }: { card: Extract<Card, { kind: "settlement" }> 
     >
       <div className="px-4 py-3">
         {settlement.settled ? (
-          <p className="text-sm text-emerald-300">
-            Settled at slot {settlement.slot}. The portfolio now holds these
-            tokens.
-          </p>
+          <p className="text-sm text-emerald-300">Done. The portfolio now holds these.</p>
         ) : (
           <>
-            <p className="text-sm font-medium text-red-300">
-              {settlement.programError?.name ?? "Settlement refused"}
-            </p>
+            <p className="text-sm font-medium text-red-300">The trades didn&rsquo;t go through</p>
             <p className="mt-0.5 text-[11px] leading-relaxed text-red-200/70">
               {settlement.programError?.message ?? settlement.detail}
             </p>
             {settlement.programError ? (
               <p className="mt-1 text-[10px] text-red-200/50">
-                error {settlement.programError.code}, returned by the program.
-                Nothing moved, because the whole settlement is one transaction.
+                Rule {settlement.programError.name} (error {settlement.programError.code}).
+                Nothing moved, since it&rsquo;s all or nothing.
               </p>
             ) : null}
           </>
@@ -860,17 +851,17 @@ function WalletCardView({ card }: { card: Extract<Card, { kind: "wallet" }> }) {
         wallet.opened ? (
           <span className="font-mono text-[11px] text-zinc-400">{dollars(wallet.total)}</span>
         ) : (
-          <span className="text-[11px] text-zinc-600">not opened</span>
+          <span className="text-[11px] text-zinc-600">not open yet</span>
         )
       }
     >
       {!wallet.opened ? (
         <p className="px-4 py-3 text-sm leading-relaxed text-zinc-500">
-          No main wallet yet. Opening one takes one signature; after that the agent can trade,
-          fund mandates and send money back without asking you to sign.
+          No main wallet yet. Opening one takes a single signature, and after that I can trade
+          for you with no popups.
         </p>
       ) : wallet.holdings.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-zinc-500">Nothing bought yet. Only cash.</p>
+        <p className="px-4 py-3 text-sm text-zinc-500">Nothing bought yet, just cash.</p>
       ) : (
         wallet.holdings.map((h, i) => (
           <Row key={h.symbol} last={i === wallet.holdings.length - 1}>
@@ -893,7 +884,7 @@ function WalletCardView({ card }: { card: Extract<Card, { kind: "wallet" }> }) {
         </div>
       ) : null}
       <div className="flex items-baseline justify-between border-t border-zinc-900 px-4 py-2">
-        <span className="text-[11px] text-zinc-500">in your own wallet, not deposited</span>
+        <span className="text-[11px] text-zinc-500">still in your own wallet</span>
         <span className="font-mono text-[11px] text-zinc-400">{dollars(wallet.ownCash)}</span>
       </div>
     </Shell>

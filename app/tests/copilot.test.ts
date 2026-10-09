@@ -59,7 +59,7 @@ import {
   type TurnGenerator,
 } from "../src/lib/copilot/loop";
 import { TOOLS, TOOL_DECLARATIONS } from "../src/lib/copilot/tools";
-import type { CopilotEvent } from "../src/lib/copilot/events";
+import { actionButton, type CopilotEvent, type PendingAction } from "../src/lib/copilot/events";
 import type { GeminiPart, ToolTurnResult } from "../src/lib/gemini";
 import { PublicKey } from "@solana/web3.js";
 
@@ -455,6 +455,43 @@ describe("the copilot loop", () => {
 /* -------------------------------------------------------------------------- */
 /* The tools                                                                  */
 /* -------------------------------------------------------------------------- */
+
+describe("card buttons", () => {
+  const base = { owner: OWNER, summary: "" };
+
+  it("says what the tap does, in the words on the button", () => {
+    const trade = {
+      ...base,
+      kind: "trade",
+      side: "buy",
+      symbol: "AAPL",
+      dollars: 50,
+      price: 300,
+      priceSource: "jupiter",
+      priceAgeSeconds: 60,
+      tokens: 0.16,
+      cashAfter: 0,
+    } as unknown as PendingAction;
+    assert.equal(actionButton(trade), "Buy");
+    assert.equal(actionButton({ ...trade, side: "sell" } as PendingAction), "Sell");
+    assert.equal(actionButton({ ...base, kind: "open-wallet", agent: OWNER } as unknown as PendingAction), "Open it");
+    assert.equal(actionButton({ ...base, kind: "demo-cash" } as unknown as PendingAction), "Get it");
+  });
+
+  it("warns on the button when Solana will block a rebalance", () => {
+    const rebalance = (compliant: boolean) =>
+      ({ ...base, kind: "submit-rebalance", mandate: OWNER, positions: [], evaluation: { compliant } }) as unknown as PendingAction;
+    assert.equal(actionButton(rebalance(true)), "Rebalance");
+    assert.include(actionButton(rebalance(false)), "Solana will block it");
+  });
+
+  it("makes closing a mandate sound as final as it is", () => {
+    const status = (s: string) => ({ ...base, kind: "set-status", mandate: OWNER, status: s }) as unknown as PendingAction;
+    assert.equal(actionButton(status("closed")), "Close it for good");
+    assert.equal(actionButton(status("paused")), "Pause");
+    assert.equal(actionButton(status("active")), "Resume");
+  });
+});
 
 describe("the tools the copilot is given", () => {
   it("declares every tool it can run, and runs every tool it declares", () => {

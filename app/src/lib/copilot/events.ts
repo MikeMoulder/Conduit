@@ -356,17 +356,17 @@ export type PendingAction =
 export function actionTitle(action: PendingAction): string {
   switch (action.kind) {
     case "create-mandate":
-      return "Create a mandate";
+      return "Create your mandate";
     case "set-status":
-      return `Set the mandate to ${action.status}`;
+      return action.status === "closed" ? "Close the mandate" : action.status === "paused" ? "Pause the mandate" : "Resume the mandate";
     case "submit-rebalance":
-      return "Submit a rebalance";
+      return "Rebalance your portfolio";
     case "settle":
-      return "Settle the portfolio";
+      return "Make the trades";
     case "open-wallet":
       return "Open your main wallet";
     case "demo-cash":
-      return "Add demo cash";
+      return "Get test money";
     case "deposit":
       return `Deposit $${action.dollars.toLocaleString()} into ${action.destinationLabel}`;
     case "trade":
@@ -377,19 +377,61 @@ export function actionTitle(action: PendingAction): string {
       return "Withdraw to your wallet";
     case "autopilot":
       return action.on
-        ? `Run ${action.mandateLabel} on its own every ${action.everyMinutes} minutes`
-        : `Stop the autopilot on ${action.mandateLabel}`;
+        ? `Turn on autopilot for ${action.mandateLabel}, every ${action.everyMinutes} minutes`
+        : `Pause autopilot on ${action.mandateLabel}`;
     case "autopilot-run":
-      return `Run one autopilot cycle on ${action.mandateLabel}`;
-    case "price-trigger":
-      if (action.repeat) return `Set a repeating trigger on ${action.symbol}`;
-      return action.condition.kind === "after"
-        ? `Set a timed trigger on ${action.symbol}`
-        : `Set a price trigger on ${action.symbol}`;
+      return `Run the autopilot on ${action.mandateLabel} now`;
+    case "price-trigger": {
+      const what = action.action.kind === "notify" ? "alert" : "order";
+      if (action.repeat) return `Repeating ${what} on ${action.symbol}`;
+      return action.condition.kind === "after" ? `Timed ${what} on ${action.symbol}` : `Price ${what} on ${action.symbol}`;
+    }
     case "link-telegram":
       return "Connect Telegram";
     case "unlink-telegram":
       return "Disconnect Telegram";
+  }
+}
+
+/**
+ * The label on a card's approve button.
+ *
+ * Shared so the copilot is told the button that is really there. It used to
+ * guess, and once told someone to "tap Approve" on a card whose button said
+ * "Open it".
+ */
+export function actionButton(action: PendingAction): string {
+  switch (action.kind) {
+    case "create-mandate":
+      return "Create it";
+    case "set-status":
+      return action.status === "closed" ? "Close it for good" : action.status === "paused" ? "Pause" : "Resume";
+    case "submit-rebalance":
+      return action.evaluation.compliant ? "Rebalance" : "Send anyway, Solana will block it";
+    case "settle":
+      return "Trade now";
+    case "open-wallet":
+      return "Open it";
+    case "demo-cash":
+      return "Get it";
+    case "deposit":
+      return "Deposit";
+    case "trade":
+      return action.side === "buy" ? "Buy" : "Sell";
+    case "fund-mandate":
+      return "Move";
+    case "withdraw":
+      return "Withdraw";
+    case "autopilot":
+      return action.on ? "Turn it on" : "Pause it";
+    case "autopilot-run":
+      return "Run it now";
+    case "price-trigger":
+      return "Set it";
+    case "link-telegram":
+      return "Sign and get the link";
+    case "unlink-telegram":
+      return "Sign and disconnect";
   }
 }
 
