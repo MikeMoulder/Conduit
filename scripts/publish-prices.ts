@@ -101,6 +101,12 @@ interface Quote {
   /** Whole dollars, as the source reported it. */
   price: number;
   source: string;
+  /**
+   * When the price was observed, in milliseconds, when that is earlier than
+   * now. A relayed price was read by the site a little while ago, and is
+   * stamped on chain with that time rather than made to look fresher.
+   */
+  observedAt?: number;
 }
 
 function has(flag: string): boolean {
@@ -184,6 +190,13 @@ async function fromPreStocks(assets: RegistryAsset[]): Promise<Quote[]> {
 
   const response = await fetch(PRESTOCKS);
   if (!response.ok) {
+    // PreStocks is hosted on Vercel, and Vercel's firewall has started to
+    // refuse this server ("x-vercel-mitigated: deny") for rounds at a time,
+    // while the same API answers Conduit's own site normally.
+    if (response.status === 403 || response.status === 429) {
+      console.error(`  prestocks refused this server (http ${response.status}), asking through the site`);
+      return fromPreStocksViaSite(assets);
+    }
     console.error(`  prestocks responded http ${response.status}, skipping`);
     return [];
   }
@@ -206,6 +219,73 @@ async function fromPreStocks(assets: RegistryAsset[]): Promise<Quote[]> {
     }
     quotes.push({ symbol: asset.symbol, price: traded, source: "prestocks" });
   }
+  // The firewall has also answered with a success that carries no prices at
+  // all. Nothing usable is treated like a refusal.
+  if (quotes.length === 0) {
+    console.error("  prestocks answered with no usable prices, asking through the site");
+    return fromPreStocksViaSite(assets);
+  }
+  return quotes;
+}
+
+/** Conduit's own site, whose price route reads PreStocks from where it is not refused. */
+const SITE = process.env.CONDUIT_SITE_URL ?? "https://ai-conduit.vercel.app";
+/** The oldest relayed read worth publishing. */
+const RELAY_MAX_AGE_SECONDS = 120;
+
+/**
+ * PreStocks' own token prices, relayed by Conduit's site.
+ *
+ * The site's /api/prices reads the same PreStocks response and reports
+ * `tokenPrice` as each pre IPO name's primary price, so the number published
+ * is the one this script would have read directly. Only the route it took is
+ * different, which is why the on chain source still says prestocks. Used only
+ * when PreStocks refuses this server; a relay that also fails publishes
+ * nothing rather than anything made up.
+ */
+async function fromPreStocksViaSite(assets: RegistryAsset[]): Promise<Quote[]> {
+  const symbols = assets.map((a) => a.symbol).join(",");
+  let response: Response;
+  try {
+    response = await fetch(`${SITE}/api/prices?symbols=${symbols}`, { signal: AbortSignal.timeout(20_000) });
+  } catch (error) {
+    console.error(`  the site relay did not answer (${error instanceof Error ? error.message : String(error)}), skipping`);
+    return [];
+  }
+  if (!response.ok) {
+    console.error(`  the site relay responded http ${response.status}, skipping`);
+    return [];
+  }
+
+  const body = (await response.json()) as {
+    assets?: {
+      symbol: string;
+      priceSource: string;
+      primary?: { available: boolean; price?: number; ageSeconds?: number };
+    }[];
+  };
+  const bySymbol = new Map((body.assets ?? []).map((a) => [a.symbol.toUpperCase(), a]));
+  const now = Date.now();
+
+  const quotes: Quote[] = [];
+  for (const asset of assets) {
+    const row = bySymbol.get(asset.symbol.toUpperCase());
+    const leg = row?.priceSource === "prestocks" && row.primary?.available ? row.primary : undefined;
+    const traded = leg?.price;
+    const age = leg?.ageSeconds ?? 0;
+    if (typeof traded !== "number" || !Number.isFinite(traded) || traded <= 0) {
+      console.error(`  ${asset.symbol.padEnd(10)} no token price from prestocks via the site`);
+      continue;
+    }
+    // The site may answer from a read a little while old. Two minutes is
+    // fresh enough to publish; older is left out rather than restamped.
+    if (age > RELAY_MAX_AGE_SECONDS) {
+      console.error(`  ${asset.symbol.padEnd(10)} the site's read is ${age}s old, too old to publish`);
+      continue;
+    }
+    quotes.push({ symbol: asset.symbol, price: traded, source: "prestocks", observedAt: now - age * 1000 });
+  }
+  console.error(`  ${quotes.length} of ${assets.length} pre IPO prices came through the site`);
   return quotes;
 }
 
@@ -365,7 +445,7 @@ async function main(): Promise<void> {
               Array.from(feedId),
               new BN(value.toString()),
               EXPONENT,
-              new BN(Math.floor(Date.now() / 1000)),
+              new BN(Math.floor((quote.observedAt ?? Date.now()) / 1000)),
               quote.source,
             )
             .accountsStrict({
