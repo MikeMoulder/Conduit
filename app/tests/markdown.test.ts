@@ -16,7 +16,7 @@
 import { describe, it } from "node:test";
 import { assert } from "chai";
 
-import { parseMarkdown, parseInline } from "../src/components/chat/markdown";
+import { parseMarkdown, parseInline, withoutOpenMarks } from "../src/components/chat/markdown";
 
 describe("reading blocks", () => {
   it("separates bullets that follow a paragraph with no blank line", () => {
@@ -160,5 +160,21 @@ describe("reading inline marks", () => {
   it("passes plain prose through untouched", () => {
     const plain = "SpaceX trades at a 22 percent discount to its underlying.";
     assert.deepEqual(shapes(plain), [`text:${plain}`]);
+  });
+});
+
+describe("a reply still being written", () => {
+  it("hides a bold mark until its partner arrives", () => {
+    assert.equal(withoutOpenMarks("NVDA is **up"), "NVDA is up");
+    assert.equal(withoutOpenMarks("NVDA is **up** today"), "NVDA is **up** today");
+  });
+
+  it("hides an unclosed code mark the same way", () => {
+    assert.equal(withoutOpenMarks("say `buy $50"), "say buy $50");
+    assert.equal(withoutOpenMarks("say `buy $50` now"), "say `buy $50` now");
+  });
+
+  it("only touches the mark still open", () => {
+    assert.equal(withoutOpenMarks("**Tesla** and **Apple"), "**Tesla** and Apple");
   });
 });

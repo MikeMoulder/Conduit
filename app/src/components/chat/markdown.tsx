@@ -187,6 +187,27 @@ function render(text: string, keyPrefix: string): ReactNode[] {
   });
 }
 
+/**
+ * A reply still being written, with any bold or code mark that has opened
+ * but not yet closed taken out.
+ *
+ * Words arrive a few at a time, so "**Tesla" can sit on screen before its
+ * closing mark does, and the parser rightly prints an unmatched mark as the
+ * characters it is. For the moment it takes the rest to arrive, that reads
+ * as a stray pair of asterisks. The unmatched mark is dropped until its
+ * partner turns up; the finished text is never passed through this.
+ */
+export function withoutOpenMarks(text: string): string {
+  let out = text;
+  for (const mark of ["**", "`"]) {
+    if (out.split(mark).length % 2 === 0) {
+      const at = out.lastIndexOf(mark);
+      out = out.slice(0, at) + out.slice(at + mark.length);
+    }
+  }
+  return out;
+}
+
 export function Markdown({ text }: { text: string }) {
   const blocks = parseMarkdown(text);
 

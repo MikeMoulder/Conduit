@@ -7,7 +7,7 @@ import type { Step, Turn } from "@/lib/copilot/store";
 import { resolveAction } from "@/lib/copilot/store";
 import { ActionCard } from "./actions";
 import { CardView } from "./cards";
-import { Markdown } from "./markdown";
+import { Markdown, withoutOpenMarks } from "./markdown";
 
 /**
  * The conversation.
@@ -93,7 +93,7 @@ function AssistantTurn({
         <CardView key={i} card={card} />
       ))}
 
-      {turn.text ? <Markdown text={turn.text} /> : null}
+      {turn.text ? <Markdown text={turn.streaming ? withoutOpenMarks(turn.text) : turn.text} /> : null}
 
       {(turn.outcomes ?? []).map((card, i) => (
         <CardView key={`outcome-${i}`} card={card} />
