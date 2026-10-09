@@ -21,7 +21,7 @@
  */
 
 import { backgroundJobsEnabled, startScheduler } from "../src/lib/autopilot/scheduler";
-import { kv } from "../src/lib/kv";
+import { kv, storeCommands } from "../src/lib/kv";
 import { botToken, lastPollAt } from "../src/lib/telegram/bot";
 
 const started = Date.now();
@@ -46,15 +46,37 @@ async function main(): Promise<void> {
 
   // A heartbeat in the log and in the store, so "is the worker alive" has an
   // answer from either side.
+  //
+  // Alive is not the same as working. The store once ran out of its monthly
+  // allowance and refused every command for a day and a half while this line
+  // kept saying alive, because nothing here looked at the store's answer. The
+  // heartbeat's own write is that check now, and the line says how many
+  // commands the last five minutes cost, so a rate that would run the
+  // allowance out shows up long before it does.
+  let counted = storeCommands();
   setInterval(() => {
-    const poll = lastPollAt();
-    void kv().set("worker:heartbeat", String(Date.now()), { exSeconds: 600 }).catch(() => {});
-    console.log(
-      `[${stamp()}] alive ${Math.round((Date.now() - started) / 60_000)} min` +
-        (botToken() ? `, telegram last polled ${poll ? `${Math.round((Date.now() - poll) / 1000)}s ago` : "not yet"}` : ""),
-    );
+    void (async () => {
+      const poll = lastPollAt();
+      const store = await beat();
+      const used = storeCommands() - counted;
+      counted = storeCommands();
+      console.log(
+        `[${stamp()}] alive ${Math.round((Date.now() - started) / 60_000)} min, ${store}, ${used} store commands in 5 min` +
+          (botToken() ? `, telegram last polled ${poll ? `${Math.round((Date.now() - poll) / 1000)}s ago` : "not yet"}` : ""),
+      );
+    })();
   }, 5 * 60_000);
-  void kv().set("worker:heartbeat", String(Date.now()), { exSeconds: 600 }).catch(() => {});
+  void beat();
+}
+
+/** Writes the heartbeat and says whether the store took it. */
+async function beat(): Promise<string> {
+  try {
+    await kv().set("worker:heartbeat", String(Date.now()), { exSeconds: 600 });
+    return "store ok";
+  } catch (error) {
+    return `STORE FAILING: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`;
+  }
 }
 
 process.on("unhandledRejection", (reason) => {
