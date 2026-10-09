@@ -2,10 +2,11 @@
 
 import { useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { PanelLeftClose, Plus, Search, X } from "lucide-react";
+import { PanelLeftClose, Plus, Search, Wallet, X } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { Conversation } from "@/lib/copilot/store";
+import { openPortfolio } from "@/lib/ui-sheets";
 
 /**
  * Conversations.
@@ -180,6 +181,20 @@ export function Sidebar({
               />
             </label>
           )}
+
+          <button
+            type="button"
+            onClick={() => {
+              openPortfolio();
+              onClose();
+            }}
+            aria-label="Your money"
+            title="Your money"
+            className={`mt-1 ${rowClass(rail)}`}
+          >
+            <Wallet className="size-[18px] shrink-0" aria-hidden="true" />
+            {!rail ? <span>Your money</span> : null}
+          </button>
 
           {rail ? null : filtered.length > 0 ? (
             <>

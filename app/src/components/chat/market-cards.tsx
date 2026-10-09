@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from "react";
 import Image from "next/image";
 
 import type { MarketCard } from "@/app/api/market/route";
+import { openStock } from "@/lib/ui-sheets";
 
 /**
  * Six tokenized equities on the welcome screen: price, the day's change, and
@@ -29,13 +30,8 @@ const FILL_POLL_MS = 6_000;
 const FILL_WINDOW_MS = 2 * 60_000;
 const REFRESH_MS = 60_000;
 
-export function MarketCards({
-  onAsk,
-  enabled,
-}: {
-  onAsk: (question: string) => void;
-  enabled: boolean;
-}) {
+/** Tapping a card opens its stock page, with or without a wallet. */
+export function MarketCards() {
   const [cards, setCards] = useState<MarketCard[] | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -100,34 +96,23 @@ export function MarketCards({
       </div>
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         {cards
-          ? cards.map((card) => (
-              <Card key={card.symbol} card={card} enabled={enabled} onAsk={onAsk} />
-            ))
+          ? cards.map((card) => <Card key={card.symbol} card={card} />)
           : Array.from({ length: 6 }, (_, i) => <Placeholder key={i} />)}
       </div>
     </section>
   );
 }
 
-function Card({
-  card,
-  enabled,
-  onAsk,
-}: {
-  card: MarketCard;
-  enabled: boolean;
-  onAsk: (question: string) => void;
-}) {
+function Card({ card }: { card: MarketCard }) {
   const up = (card.changePct ?? 0) >= 0;
   const known = card.changePct !== null;
 
   return (
     <button
       type="button"
-      disabled={!enabled}
-      onClick={() => onAsk(`How is ${card.symbol} doing today?`)}
-      title={enabled ? `Ask about ${card.name}` : "Connect a wallet to ask about it"}
-      className="group flex aspect-square flex-col rounded-2xl border border-line bg-surface p-3.5 text-left transition-colors enabled:hover:border-line-strong enabled:hover:bg-raised disabled:cursor-default sm:aspect-[5/4]"
+      onClick={() => openStock(card.symbol)}
+      title={`Open ${card.name}`}
+      className="group flex aspect-square flex-col rounded-2xl border border-line bg-surface p-3.5 text-left transition-colors hover:border-line-strong hover:bg-raised sm:aspect-[5/4]"
     >
       <div className="flex items-center gap-2.5">
         {card.logo ? (

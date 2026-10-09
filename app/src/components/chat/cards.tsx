@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { openStock } from "@/lib/ui-sheets";
 
 import { CLUSTER } from "@/lib/cluster";
 import { bpsToPercent, explorerUrl } from "@/lib/chain";
@@ -865,7 +866,9 @@ function WalletCardView({ card }: { card: Extract<Card, { kind: "wallet" }> }) {
       ) : (
         wallet.holdings.map((h, i) => (
           <Row key={h.symbol} last={i === wallet.holdings.length - 1}>
-            <AssetBadge symbol={h.symbol} />
+            <button type="button" onClick={() => openStock(h.symbol)} className="min-w-0 text-left hover:opacity-80">
+              <AssetBadge symbol={h.symbol} />
+            </button>
             <span className="text-right">
               <span className="block font-mono text-sm text-zinc-100">
                 {h.value === null ? "no fresh price" : dollars(h.value)}
@@ -1134,7 +1137,15 @@ function StockBriefView({ brief }: { brief: StockBrief }) {
   return (
     <Shell
       title={`${brief.symbol} brief`}
-      aside={<span className="text-[11px] text-zinc-500">{brief.assetClass === "preipo" ? "pre-IPO" : brief.assetClass}</span>}
+      aside={
+        <button
+          type="button"
+          onClick={() => openStock(brief.symbol)}
+          className="text-[11px] text-emerald-400 hover:underline"
+        >
+          Open {brief.symbol}
+        </button>
+      }
     >
       <div className="px-4 pt-3.5">
         <div className="flex items-center gap-3">

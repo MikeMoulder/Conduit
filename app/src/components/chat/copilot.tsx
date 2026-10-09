@@ -3,16 +3,19 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Menu } from "lucide-react";
+import { Menu, Wallet } from "lucide-react";
 
 import { ConnectWallet } from "@/components/connect-wallet";
 import ParticleDrift from "@/components/ui/particle-drift";
 import { CLUSTER } from "@/lib/cluster";
+import { openPortfolio } from "@/lib/ui-sheets";
 import { useCopilot } from "@/hooks/use-copilot";
 import { useIsDesktop, useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { Composer } from "./composer";
 import { MarketCards } from "./market-cards";
+import { PortfolioPanel } from "./portfolio-panel";
 import { Sidebar } from "./sidebar";
+import { StockSheet } from "./stock-sheet";
 import { Thread } from "./thread";
 
 /**
@@ -36,7 +39,8 @@ export function Copilot() {
     select,
     remove,
   } = useCopilot();
-  const { connected } = useWallet();
+  const { connected, publicKey } = useWallet();
+  const owner = publicKey?.toBase58() ?? null;
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
@@ -88,6 +92,14 @@ export function Copilot() {
           <span className="text-sm font-semibold tracking-tight">
             Conduit
           </span>
+          <button
+            type="button"
+            aria-label="Your money"
+            onClick={openPortfolio}
+            className="ml-auto grid size-8 place-items-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+          >
+            <Wallet className="size-5" aria-hidden="true" />
+          </button>
         </header>
 
         {conversation ? (
@@ -105,7 +117,7 @@ export function Copilot() {
             onRetry={retry}
           />
         ) : (
-          <Welcome connected={connected} onAsk={(q) => void send(q)} />
+          <Welcome connected={connected} />
         )}
 
         <Composer
@@ -118,11 +130,15 @@ export function Copilot() {
           showSuggestions={!conversation}
         />
       </div>
+
+      {/* Asking from a panel needs a wallet, like the composer. */}
+      <StockSheet owner={owner} canAsk={connected && !busy} onAsk={(q) => void send(q)} />
+      <PortfolioPanel owner={owner} canAsk={connected && !busy} onAsk={(q) => void send(q)} />
     </div>
   );
 }
 
-function Welcome({ connected, onAsk }: { connected: boolean; onAsk: (question: string) => void }) {
+function Welcome({ connected }: { connected: boolean }) {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-16 sm:px-6">
@@ -177,7 +193,7 @@ function Welcome({ connected, onAsk }: { connected: boolean; onAsk: (question: s
           </p>
         </div>
 
-        <MarketCards enabled={connected} onAsk={onAsk} />
+        <MarketCards />
 
         {!connected ? (
           <p className="text-[13px] text-ink-faint">
