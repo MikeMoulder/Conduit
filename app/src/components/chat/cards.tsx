@@ -64,7 +64,7 @@ function Shell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/60">
+    <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/60">
       <div className="flex items-baseline justify-between gap-3 border-b border-zinc-900 px-4 py-2.5">
         <span className="text-[11px] uppercase tracking-wider text-zinc-500">
           {title}
@@ -669,7 +669,7 @@ function SubmissionCard({ card }: { card: Extract<Card, { kind: "submission" }> 
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border px-4 py-3 ${
+      className={`overflow-hidden rounded-2xl border px-4 py-3 ${
         submission.accepted
           ? "border-emerald-500/30 bg-emerald-500/5"
           : "border-red-500/30 bg-red-500/5"
@@ -723,7 +723,7 @@ function SettlementCard({ card }: { card: Extract<Card, { kind: "settlement" }> 
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border ${
+      className={`overflow-hidden rounded-2xl border ${
         settlement.settled
           ? "border-emerald-500/30 bg-emerald-500/5"
           : "border-red-500/30 bg-red-500/5"
@@ -897,7 +897,7 @@ function WalletResultView({ card }: { card: Extract<Card, { kind: "wallet-result
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border px-4 py-3 ${
+      className={`overflow-hidden rounded-2xl border px-4 py-3 ${
         result.ok ? "border-emerald-500/30 bg-emerald-500/5" : "border-red-500/30 bg-red-500/5"
       }`}
     >

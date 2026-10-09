@@ -681,7 +681,7 @@ export function ActionCard({
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border ${
+      className={`overflow-hidden rounded-2xl border ${
         view.warning ? "border-amber-500/40 bg-amber-500/5" : "border-emerald-500/30 bg-emerald-500/5"
       }`}
     >

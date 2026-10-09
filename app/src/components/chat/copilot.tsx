@@ -199,7 +199,9 @@ function WelcomeBackdrop() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 -z-10 animate-[fade-in_1.2s_ease-out_both]"
+      // Fainter on a phone, where the welcome text spans the whole width and
+      // the drifting letters would sit right behind it.
+      className="pointer-events-none absolute inset-0 -z-10 animate-[fade-in_1.2s_ease-out_both] opacity-40 sm:opacity-100"
       style={{
         maskImage:
           "radial-gradient(ellipse 55% 65% at 50% 45%, rgb(0 0 0 / 0.3), #000 100%)",

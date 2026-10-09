@@ -101,7 +101,7 @@ function AssistantTurn({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 animate-[rise-in_0.25s_ease-out_both]">
       {turn.steps.length > 0 ? (
         <StepList steps={turn.steps} streaming={turn.streaming} />
       ) : null}
@@ -142,7 +142,7 @@ function AssistantTurn({
       ) : null}
 
       {turn.error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3">
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/5 px-4 py-3">
           <p className="text-sm text-red-300">{turn.error.message}</p>
           {turn.error.detail ? (
             <p className="mt-1 text-[11px] leading-relaxed text-red-200/60">
@@ -202,7 +202,7 @@ function StepList({
   const current = [...steps].reverse().find((s) => s.state === "running")?.label;
 
   return (
-    <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40">
+    <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40">
       <button
         type="button"
         onClick={() => setOpen(!open)}

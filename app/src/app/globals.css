@@ -37,7 +37,13 @@
 
 @theme inline {
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /*
+   * Amounts, prices and addresses used to be set in Geist Mono, which made
+   * every number on a card read like code. They share the sans face with the
+   * words around them now, and tabular figures (below) keep digits the same
+   * width so a column of prices still lines up.
+   */
+  --font-mono: var(--font-geist-sans);
 }
 
 html {
@@ -51,6 +57,22 @@ html {
   to {
     opacity: 1;
   }
+}
+
+/* A reply settles into place rather than appearing in a jump. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.font-mono {
+  font-variant-numeric: tabular-nums;
 }
 
 body {

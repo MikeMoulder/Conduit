@@ -57,7 +57,12 @@ export function Composer({
   }
 
   return (
-    <div>
+    <div className="relative">
+      {/* The thread scrolls under here, so it fades out instead of being cut. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 -top-8 h-8 bg-gradient-to-t from-canvas to-transparent"
+      />
       <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2 sm:px-6">
         {showSuggestions ? (
           <div className="mb-3 flex flex-wrap gap-2">
