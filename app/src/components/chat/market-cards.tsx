@@ -18,6 +18,15 @@ import type { MarketCard } from "@/app/api/market/route";
 
 /** While any line is still being fetched in the background. */
 const FILL_POLL_MS = 6_000;
+/**
+ * How long after opening the page the fast poll is allowed.
+ *
+ * A cold start fills every line in about a minute. A line that never fills,
+ * because its pool is missing or it disagrees with the price, used to keep
+ * every open page polling every six seconds for as long as it stayed open,
+ * each poll a read of the shared store.
+ */
+const FILL_WINDOW_MS = 2 * 60_000;
 const REFRESH_MS = 60_000;
 
 export function MarketCards({
@@ -33,9 +42,15 @@ export function MarketCards({
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const opened = Date.now();
 
     async function load() {
       let next = REFRESH_MS;
+      // A page in a background tab is not being looked at; it waits.
+      if (document.visibilityState === "hidden") {
+        if (alive) timer = setTimeout(load, next);
+        return;
+      }
       try {
         const response = await fetch("/api/market", { cache: "no-store" });
         if (!response.ok) throw new Error(String(response.status));
@@ -43,7 +58,8 @@ export function MarketCards({
         if (!alive) return;
         setCards(body.cards);
         setFailed(false);
-        if (body.cards.some((c) => c.points.length === 0)) next = FILL_POLL_MS;
+        const filling = Date.now() - opened < FILL_WINDOW_MS;
+        if (filling && body.cards.some((c) => c.points.length === 0)) next = FILL_POLL_MS;
       } catch {
         if (alive) setFailed(true);
       }
