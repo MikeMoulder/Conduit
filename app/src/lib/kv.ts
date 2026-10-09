@@ -31,6 +31,8 @@ export interface SetOptions {
 
 export interface Kv {
   get(key: string): Promise<string | null>;
+  /** Several values in one command, in the order asked, null where absent. */
+  mget(keys: string[]): Promise<(string | null)[]>;
   /** True when the value was written; false when nx found the key present. */
   set(key: string, value: string, options?: SetOptions): Promise<boolean>;
   /** Reads and deletes in one step, so a one time value is taken once. */
@@ -48,6 +50,25 @@ export interface Kv {
 
 const prefix = () => process.env.CONDUIT_KV_PREFIX ?? "conduit:";
 
+/**
+ * Commands sent since this process started, so the worker can report how
+ * fast it spends the store's allowance.
+ *
+ * Upstash's free plan is a fixed number of commands a month, and the worker
+ * ran it out once without anything saying so: every job failed while the log
+ * kept reporting the process alive. Counted on the global object, like the
+ * timers, because a module can be evaluated more than once in development.
+ */
+const usage = globalThis as unknown as { __conduitKvCommands?: number };
+
+export function storeCommands(): number {
+  return usage.__conduitKvCommands ?? 0;
+}
+
+function counted(): void {
+  usage.__conduitKvCommands = storeCommands() + 1;
+}
+
 /* ------------------------------------------------------------------------ */
 /* Upstash, over its REST API                                                */
 /* ------------------------------------------------------------------------ */
@@ -56,6 +77,7 @@ function upstash(url: string, token: string): Kv {
   const k = (key: string) => `${prefix()}${key}`;
 
   async function cmd(args: (string | number)[]): Promise<unknown> {
+    counted();
     const response = await fetch(url, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -75,6 +97,10 @@ function upstash(url: string, token: string): Kv {
     backend: "upstash",
     async get(key) {
       return (await cmd(["GET", k(key)])) as string | null;
+    },
+    async mget(keys) {
+      if (keys.length === 0) return [];
+      return ((await cmd(["MGET", ...keys.map(k)])) as (string | null)[] | null) ?? keys.map(() => null);
     },
     async set(key, value, options = {}) {
       const args: (string | number)[] = ["SET", k(key), value];
@@ -132,7 +158,10 @@ interface FileShape {
  * Upstash is for.
  */
 function file(filePath: string): Kv {
+  // Every operation loads the file exactly once, so counting here counts
+  // operations the way Upstash would bill them.
   const load = (): FileShape => {
+    counted();
     try {
       const parsed = JSON.parse(readFileSync(filePath, "utf8")) as Partial<FileShape>;
       return { strings: parsed.strings ?? {}, hashes: parsed.hashes ?? {}, lists: parsed.lists ?? {} };
@@ -157,6 +186,11 @@ function file(filePath: string): Kv {
     backend: "file",
     async get(key) {
       return live(load(), k(key))?.v ?? null;
+    },
+    async mget(keys) {
+      if (keys.length === 0) return [];
+      const data = load();
+      return keys.map((key) => live(data, k(key))?.v ?? null);
     },
     async set(key, value, options = {}) {
       const data = load();

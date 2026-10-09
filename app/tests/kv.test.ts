@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
-import { getJson, hsetJson, hvaluesJson, kv, withLock } from "../src/lib/kv";
+import { getJson, hsetJson, hvaluesJson, kv, storeCommands, withLock } from "../src/lib/kv";
 
 /**
  * Tests for the shared store behind every record that outlives a request.
@@ -68,6 +68,21 @@ describe("the file store", () => {
   it("reads JSON back", async () => {
     await kv().set("j", JSON.stringify({ ok: true }));
     expect(await getJson("j")).to.deep.equal({ ok: true });
+  });
+
+  it("reads several keys at once, in order, null where absent", async () => {
+    await kv().set("m1", "a");
+    await kv().set("m3", "c");
+    expect(await kv().mget(["m1", "m2", "m3"])).to.deep.equal(["a", null, "c"]);
+    expect(await kv().mget([])).to.deep.equal([]);
+  });
+
+  it("counts one command per operation, a multi key read included", async () => {
+    const before = storeCommands();
+    await kv().set("c", "1");
+    await kv().get("c");
+    await kv().mget(["c", "d", "e"]);
+    expect(storeCommands() - before).to.equal(3);
   });
 });
 
@@ -133,6 +148,24 @@ describe("the Upstash store", () => {
   it("reads a refused NX as false", async () => {
     reply = null;
     expect(await kv().set("k", "v", { nx: true })).to.equal(false);
+  });
+
+  it("reads several keys with one MGET, prefixed", async () => {
+    reply = ["a", null];
+    expect(await kv().mget(["x", "y"])).to.deep.equal(["a", null]);
+    expect(sent).to.deep.equal([["MGET", "conduit:x", "conduit:y"]]);
+  });
+
+  it("sends nothing for an empty multi key read", async () => {
+    expect(await kv().mget([])).to.deep.equal([]);
+    expect(sent).to.deep.equal([]);
+  });
+
+  it("counts every command it sends", async () => {
+    const before = storeCommands();
+    await kv().get("a");
+    await kv().mget(["a", "b"]);
+    expect(storeCommands() - before).to.equal(2);
   });
 
   it("turns HGETALL's flat reply into an object", async () => {
