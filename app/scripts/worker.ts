@@ -22,7 +22,11 @@
 
 import { backgroundJobsEnabled, startScheduler } from "../src/lib/autopilot/scheduler";
 import { kv, storeCommands } from "../src/lib/kv";
-import { botToken, lastPollAt } from "../src/lib/telegram/bot";
+import { AlertBook } from "../src/lib/ops/alerts";
+import { readBalances, readPriceAges } from "../src/lib/ops/check";
+import { findProblems, type HealthReading } from "../src/lib/ops/health";
+import { getConnection } from "../src/lib/rpc";
+import { botToken, deliver, lastPollAt } from "../src/lib/telegram/bot";
 
 const started = Date.now();
 const stamp = () => new Date().toISOString().slice(0, 19).replace("T", " ");
@@ -34,9 +38,13 @@ async function main(): Promise<void> {
   }
 
   const store = kv();
-  // Fail at start, loudly, rather than run jobs against a store that cannot
-  // be reached: every trigger and decision would be lost.
-  await store.set("worker:started", String(started));
+  // A store that refuses at start used to end the process, and the supervisor
+  // restarted it every fifteen seconds in a loop nobody saw. It starts anyway
+  // now: every job already survives a failed store call, and the health check
+  // below is what tells someone, which a crash loop never did.
+  await store.set("worker:started", String(started)).catch((error: unknown) => {
+    console.error(`[${stamp()}] STORE FAILING at start: ${error instanceof Error ? error.message : String(error)}`);
+  });
   if (store.backend === "file") {
     console.warn(`[${stamp()}] warning: using the local file store. The site on Vercel will not see these records; set Upstash.`);
   }
@@ -54,29 +62,73 @@ async function main(): Promise<void> {
   // commands the last five minutes cost, so a rate that would run the
   // allowance out shows up long before it does.
   let counted = storeCommands();
-  setInterval(() => {
-    void (async () => {
-      const poll = lastPollAt();
-      const store = await beat();
-      const used = storeCommands() - counted;
-      counted = storeCommands();
-      console.log(
-        `[${stamp()}] alive ${Math.round((Date.now() - started) / 60_000)} min, ${store}, ${used} store commands in 5 min` +
-          (botToken() ? `, telegram last polled ${poll ? `${Math.round((Date.now() - poll) / 1000)}s ago` : "not yet"}` : ""),
-      );
-    })();
-  }, 5 * 60_000);
+  const book = new AlertBook();
+  const check = async () => {
+    const poll = lastPollAt();
+    const store = await beat();
+    const used = storeCommands() - counted;
+    counted = storeCommands();
+    const problems = await healthProblems(store, poll);
+    console.log(
+      `[${stamp()}] alive ${Math.round((Date.now() - started) / 60_000)} min, ${store.ok ? "store ok" : `STORE FAILING: ${store.error}`}, ${used} store commands in 5 min` +
+        (botToken() ? `, telegram last polled ${poll ? `${Math.round((Date.now() - poll) / 1000)}s ago` : "not yet"}` : "") +
+        `, ${problems.length === 0 ? "healthy" : `${problems.length} problem${problems.length === 1 ? "" : "s"}`}`,
+    );
+    for (const message of book.update(problems, Date.now())) await alert(message);
+  };
+  setInterval(() => void check().catch(() => {}), 5 * 60_000);
+  // The first check waits a minute, so the Telegram listener has had time to
+  // poll before its silence counts against it.
   void beat();
+  setTimeout(() => void check().catch(() => {}), 60_000);
 }
 
 /** Writes the heartbeat and says whether the store took it. */
-async function beat(): Promise<string> {
+async function beat(): Promise<HealthReading["store"]> {
   try {
     await kv().set("worker:heartbeat", String(Date.now()), { exSeconds: 600 });
-    return "store ok";
+    return { ok: true };
   } catch (error) {
-    return `STORE FAILING: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`;
+    return { ok: false, error: error instanceof Error ? error.message.split("\n")[0] : String(error) };
   }
+}
+
+/** Everything the worker can see is wrong, with the store already checked by the heartbeat. */
+async function healthProblems(store: HealthReading["store"], poll: number | null) {
+  const connection = getConnection();
+  const [prices, balances] = await Promise.all([
+    readPriceAges(connection).catch(() => []),
+    readBalances(connection).catch(() => []),
+  ]);
+  return findProblems({
+    store,
+    prices,
+    balances,
+    telegram: {
+      enabled: Boolean(botToken()),
+      lastPollAgoSeconds: poll ? Math.round((Date.now() - poll) / 1000) : null,
+      upSeconds: Math.round((Date.now() - started) / 1000),
+    },
+  });
+}
+
+/**
+ * Logs a health message, and sends it to the operator's Telegram chat when
+ * OPS_TELEGRAM_CHAT_ID is set. Send /chatid to the bot to find the number.
+ */
+let hinted = false;
+async function alert(message: string): Promise<void> {
+  console.log(`[${stamp()}] ${message}`);
+  const chatId = Number(process.env.OPS_TELEGRAM_CHAT_ID);
+  if (!botToken() || !Number.isFinite(chatId) || chatId === 0) {
+    if (!hinted) {
+      hinted = true;
+      console.log(`[${stamp()}] set OPS_TELEGRAM_CHAT_ID to get these on Telegram; send /chatid to the bot for the number`);
+    }
+    return;
+  }
+  const outcome = await deliver(chatId, message);
+  if (outcome !== "sent") console.error(`[${stamp()}] could not send the alert to Telegram: ${outcome}`);
 }
 
 process.on("unhandledRejection", (reason) => {

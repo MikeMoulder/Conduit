@@ -149,6 +149,12 @@ export async function handleText(
       : "That link has expired or was already used. Ask Conduit to connect Telegram again for a fresh one.";
   }
 
+  // For the operator: the number to put in OPS_TELEGRAM_CHAT_ID so the
+  // worker's health alerts arrive in this chat. Says nothing about any wallet.
+  if (command === "/chatid") {
+    return `This chat's id is ${chatId}. Set OPS_TELEGRAM_CHAT_ID=${chatId} on the worker to get Conduit's health alerts here.`;
+  }
+
   if (command === "/stop") {
     const owner = await unlinkChat(chatId);
     return owner

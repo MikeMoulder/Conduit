@@ -132,6 +132,13 @@ describe("linking a chat with a one time code", () => {
 });
 
 describe("what the bot says", () => {
+  it("tells the operator a chat's id with /chatid, and nothing about any wallet", async () => {
+    const reply = await handleText("/chatid", 4242, null);
+    expect(reply).to.include("4242");
+    expect(reply).to.include("OPS_TELEGRAM_CHAT_ID=4242");
+    expect(reply).to.not.include("wallet");
+  });
+
   it("links on /start with a code and says which wallet", async () => {
     const code = await issueCode("Wa11etAddressAAAAAAAAAAAAAAAAAAAAAAAAAAzz1");
     // First four and last four characters: the owner can recognise their
