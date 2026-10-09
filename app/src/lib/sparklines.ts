@@ -228,6 +228,50 @@ export async function dayLines(mints: string[]): Promise<Record<string, number[]
   return Object.fromEntries(mints.map((m) => [m, reads.get(m)?.points ?? []]));
 }
 
+export type ChartRange = "1d" | "1w" | "1m";
+
+/**
+ * Candles for the stock page's longer ranges: a week in four hour steps, a
+ * month in days.
+ *
+ * Fetched when someone opens a stock rather than refreshed in the background,
+ * since few stocks are opened and a background refresh of every range would
+ * spend GeckoTerminal's allowance on charts nobody looks at. Kept in the store
+ * for half an hour (a week) or three hours (a month), so a second look costs
+ * one store read and no request. The pool is the one the day line already
+ * found. Null when there is no pool or the provider refuses, never an error.
+ */
+const RANGES: Record<Exclude<ChartRange, "1d">, { path: string; ttlSeconds: number }> = {
+  "1w": { path: "hour?aggregate=4&limit=42", ttlSeconds: 30 * 60 },
+  "1m": { path: "day?aggregate=1&limit=30", ttlSeconds: 3 * 60 * 60 },
+};
+
+export async function rangeLine(mint: string, range: Exclude<ChartRange, "1d">): Promise<number[] | null> {
+  const key = `chart:${range}:${mint}`;
+  const cached = await getJson<number[]>(key).catch(() => null);
+  if (cached) return cached;
+
+  const pool = await getJson<Pool>(poolKey(mint)).catch(() => null);
+  if (!pool?.address) return null;
+
+  try {
+    const body = (await getJsonFrom(
+      `${API}/pools/${pool.address}/ohlcv/${RANGES[range].path}&currency=usd&token=base`,
+    )) as { data?: { attributes?: { ohlcv_list?: number[][] } } };
+    const points = (body.data?.attributes?.ohlcv_list ?? [])
+      .filter((row) => Array.isArray(row) && Number.isFinite(row[4]) && row[4] > 0)
+      .sort((a, b) => a[0] - b[0])
+      .map((row) => row[4]);
+    if (points.length < 2) return null;
+    await kv()
+      .set(key, JSON.stringify(points), { exSeconds: RANGES[range].ttlSeconds })
+      .catch(() => {});
+    return points;
+  } catch {
+    return null;
+  }
+}
+
 /** Forgets what this process remembers, so the next pass reads the store. For tests. */
 export function forgetDayLines(): void {
   pools.clear();

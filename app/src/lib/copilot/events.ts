@@ -155,6 +155,8 @@ export interface WalletLine {
   amount: number;
   /** Dollars at the settlement price, null when there is no fresh price. */
   value: number | null;
+  /** Percent move over the last day, for equities with a day line. */
+  changePct?: number | null;
 }
 
 /** A person's main wallet, and the cash still in their own wallet. */

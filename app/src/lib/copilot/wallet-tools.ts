@@ -9,10 +9,10 @@ import { getAgentIdentity } from "../agent-identity";
 import { mandatePda } from "../chain";
 import { FUND_UNITS } from "../faucet";
 import { fetchMainWallet, fetchWalletBalances, walletAddress } from "../main-wallet";
+import { readWallet } from "../portfolio";
 import { getConnection } from "../rpc";
 import { readAssetPrice } from "../settlement-prices";
 import { ToolError, type CopilotTool, type ToolContext, type ToolOutcome } from "./tool-types";
-import type { WalletCard } from "./events";
 
 /**
  * The copilot's tools for a person's main wallet.
@@ -81,23 +81,10 @@ const getWallet: CopilotTool = {
   },
   async run(_args, ctx) {
     const owner = requireOwner(ctx);
-    const connection = getConnection();
+    const card = await readWallet(owner);
+    const { ownCash } = card;
 
-    const [wallet, own] = await Promise.all([
-      fetchMainWallet(connection, owner),
-      fetchWalletBalances(connection, owner),
-    ]);
-    const ownCash = own.cash?.uiAmount ?? 0;
-
-    if (!wallet) {
-      const card: WalletCard = {
-        opened: false,
-        address: null,
-        cash: 0,
-        holdings: [],
-        total: 0,
-        ownCash,
-      };
+    if (!card.opened) {
       return {
         result: {
           opened: false,
@@ -110,23 +97,7 @@ const getWallet: CopilotTool = {
       };
     }
 
-    const balances = await fetchWalletBalances(connection, walletAddress(owner));
-    const held = balances.assets.filter((a) => a.uiAmount > 0);
-
-    const holdings = await Promise.all(
-      held.map(async (h) => {
-        const asset = assetBySymbol(h.symbol);
-        const price = asset ? await readAssetPrice(connection, asset) : null;
-        return {
-          symbol: h.symbol,
-          amount: h.uiAmount,
-          value: price && price.ok ? h.uiAmount * price.price.price : null,
-        };
-      }),
-    );
-
-    const cash = balances.cash?.uiAmount ?? 0;
-    const total = cash + holdings.reduce((sum, h) => sum + (h.value ?? 0), 0);
+    const { cash, holdings, total } = card;
 
     return {
       result: {
@@ -141,10 +112,7 @@ const getWallet: CopilotTool = {
         ownWalletCash: ownCash,
       },
       summary: `${usd(total)} in the main wallet, ${usd(ownCash)} not yet deposited`,
-      card: {
-        kind: "wallet",
-        wallet: { opened: true, address: wallet.address, cash, holdings, total, ownCash },
-      },
+      card: { kind: "wallet", wallet: card },
       sources: SOLANA_SOURCE,
     };
   },

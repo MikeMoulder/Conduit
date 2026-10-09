@@ -1,15 +1,8 @@
 import "server-only";
 
 import { getAssetBySymbol } from "../assets";
-import { dayStats, describeChange, describeRange, plausibleLine } from "../day-stats";
-import { desk } from "../holdings";
-import { fetchMainWallet, fetchWalletBalances, walletAddress } from "../main-wallet";
-import { snapshotMarket } from "../market";
-import { fetchHeadlines } from "../news";
-import { fetchPreStocks } from "../prestocks";
-import { getConnection } from "../rpc";
-import { dayLines } from "../sparklines";
-import type { StockBrief } from "./events";
+import { describeChange, describeRange } from "../day-stats";
+import { readStockBrief } from "../portfolio";
 import { ToolError, type CopilotTool } from "./tool-types";
 
 /**
@@ -56,54 +49,10 @@ const getStockBrief: CopilotTool = {
     const asset = getAssetBySymbol(symbol);
     if (!asset) throw new ToolError(`${symbol} is not in the universe. Call list_universe to see what is.`);
 
-    const mint = asset.assetClass === "equity" ? asset.mainnetMint : undefined;
-    const [snapshot, news, preStocks, holding] = await Promise.all([
-      snapshotMarket([asset.symbol]),
-      fetchHeadlines(asset),
-      asset.assetClass === "preipo" ? fetchPreStocks() : Promise.resolve(null),
-      (async () => {
-        if (!ctx.owner) return null;
-        try {
-          const connection = getConnection();
-          if (!(await fetchMainWallet(connection, ctx.owner))) return null;
-          const balances = await fetchWalletBalances(connection, walletAddress(ctx.owner));
-          const deskMint = desk.settleable.find((a) => a.symbol === asset.symbol)?.mint;
-          const held = balances.assets.find((a) => a.mint === deskMint);
-          return held ? held.uiAmount : 0;
-        } catch {
-          return null;
-        }
-      })(),
-    ]);
-
-    const { headlines, provider } = news;
-    const row = snapshot[0];
-    const price = row?.price ?? null;
-    const rawLine = mint ? ((await dayLines([mint]))[mint] ?? []) : [];
-    const line = plausibleLine(rawLine, price) ? rawLine : [];
-    const day = dayStats(line, price);
-    const record = preStocks?.status === "ok" ? preStocks.assets.get(asset.symbol) : undefined;
-
-    const brief: StockBrief = {
-      symbol: asset.symbol,
-      name: asset.name,
-      logo: asset.logo ?? null,
-      assetClass: asset.assetClass,
-      price,
-      reference:
-        row?.referencePrice != null
-          ? {
-              label: asset.assetClass === "preipo" ? "company mark" : "listed share",
-              price: row.referencePrice,
-              spreadBps: row.spreadBps,
-            }
-          : null,
-      day,
-      points: day ? [...line, price!] : [],
-      valuation: record ? { atMark: record.markValuation, atToken: record.impliedValuation } : null,
-      held: holding,
-      headlines,
-    };
+    const read = await readStockBrief(asset.symbol, ctx.owner ?? null);
+    if (!read) throw new ToolError(`${symbol} is not in the universe. Call list_universe to see what is.`);
+    const { brief, provider, priceSource, mint } = read;
+    const { price, day, headlines, held: holding } = brief;
 
     return {
       result: {
@@ -153,7 +102,7 @@ const getStockBrief: CopilotTool = {
       summary: `${asset.symbol}${price === null ? "" : ` $${price.toFixed(2)}`}${day ? `, ${day.changePct >= 0 ? "+" : ""}${day.changePct.toFixed(2)}% on the day` : ""}, ${headlines.length} headline${headlines.length === 1 ? "" : "s"}`,
       card: { kind: "stock-brief", brief },
       sources: [
-        { provider: row?.priceSource ?? "prices", detail: "live price", ok: price !== null },
+        { provider: priceSource ?? "prices", detail: "live price", ok: price !== null },
         ...(mint ? [{ provider: "geckoterminal", detail: "24 hour line", ok: day !== null }] : []),
         { provider, detail: `${headlines.length} headlines`, ok: headlines.length > 0 },
       ],
