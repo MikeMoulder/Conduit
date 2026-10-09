@@ -45,11 +45,26 @@ const MODEL_LADDER = [
 /**
  * How long a model is considered unavailable after it fails.
  *
- * Long enough to stop hammering a busy model on every stage of a five stage
+ * Long enough to stop hammering a failing model on every stage of a five stage
  * pipeline, short enough that a transient spike does not sideline a good model
  * for the rest of the session.
+ *
+ * Split by what the failure means. Out of quota (429) or gone (404) will not
+ * change within seconds, so those wait a minute. Busy (503), a server error,
+ * a dropped connection or a timeout is the provider's load at that moment,
+ * and it passes quickly. Benching the fastest model for a full minute after
+ * one 503 pushed the next message onto quota limited and overloaded models:
+ * a live "explain what a mandate is" asked seven times and took 40 seconds.
  */
 const COOLDOWN_MS = 60_000;
+const BUSY_COOLDOWN_MS = 15_000;
+
+/** Puts a model aside after a failure, for as long as that kind of failure lasts. */
+function benchModel(model: string, status: number): void {
+  if (![404, 408, 429, 503, 500, 0].includes(status)) return;
+  const wait = status === 429 || status === 404 ? COOLDOWN_MS : BUSY_COOLDOWN_MS;
+  unavailableUntil.set(model, Date.now() + wait);
+}
 
 /**
  * Waits between passes over the ladder when another pass could succeed.
@@ -251,6 +266,8 @@ export interface ToolTurnRequest {
   onReset?: () => void;
   /** Stops the turn, and the model's stream with it. */
   signal?: AbortSignal;
+  /** A model failed and the next one is about to be asked. */
+  onRetry?: (attempt: TurnAttempt) => void;
 }
 
 /** One model asked during a turn, and how it went. */
@@ -330,11 +347,11 @@ export async function generateWithTools(
         // Prose from a model that then failed is not the answer. Whoever is
         // showing it takes it back before the next model starts again.
         if (response.textSent) request.onReset?.();
-        if ([404, 408, 429, 503, 500, 0].includes(response.status)) {
-          unavailableUntil.set(model, Date.now() + COOLDOWN_MS);
-        }
+        benchModel(model, response.status);
         failures.push(`${model}: http ${response.status} ${response.detail}`);
-        attempts.push({ model, outcome: response.status === 408 ? "timeout" : `http ${response.status}`, ms: Date.now() - began });
+        const attempt = { model, outcome: response.status === 408 ? "timeout" : `http ${response.status}`, ms: Date.now() - began };
+        attempts.push(attempt);
+        request.onRetry?.(attempt);
         continue;
       }
 
@@ -342,7 +359,9 @@ export async function generateWithTools(
       // next model rather than reporting silence to the caller as an answer.
       if (response.parts.length === 0) {
         failures.push(`${model}: empty reply, finishReason=${response.finishReason ?? "unknown"}`);
-        attempts.push({ model, outcome: "empty", ms: Date.now() - began });
+        const attempt = { model, outcome: "empty", ms: Date.now() - began };
+        attempts.push(attempt);
+        request.onRetry?.(attempt);
         continue;
       }
 
@@ -589,7 +608,7 @@ export async function generateStructured<T>(
           // Availability problems are a property of the model, not the prompt, so
           // repairing would be pointless. Move on.
           if ([404, 408, 429, 503, 500, 0].includes(response.status)) {
-            unavailableUntil.set(model, Date.now() + COOLDOWN_MS);
+            benchModel(model, response.status);
             failures.push(`${model}: http ${response.status} ${response.detail}`);
             break;
           }

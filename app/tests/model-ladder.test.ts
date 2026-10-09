@@ -333,3 +333,61 @@ describe("a streamed tool turn", () => {
     expect(calls).to.equal(1);
   });
 });
+
+describe("how long a failed model is put aside", () => {
+  const realNow = Date.now;
+  beforeEach(() => resetModelAvailability());
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    Date.now = realNow;
+  });
+
+  /** The first model asked by a turn, given how each model answers. */
+  async function firstAsked(answer: (model: string) => Response): Promise<string[]> {
+    const asked: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      const model = modelOf(String(url));
+      asked.push(model);
+      return answer(model);
+    }) as typeof fetch;
+    await generateWithTools(request);
+    return asked;
+  }
+
+  it("asks a busy model again after seconds, not a minute", async () => {
+    // Seen live: one 503 benched the fastest model for a minute, and the next
+    // message went to quota limited models and took 40 seconds.
+    const busyOnce = (model: string) =>
+      model === "gemini-3.1-flash-lite"
+        ? new Response(JSON.stringify({ error: { message: "high demand" } }), { status: 503 })
+        : sse(REPLY);
+    expect((await firstAsked(busyOnce))[0]).to.equal("gemini-3.1-flash-lite");
+
+    Date.now = () => realNow() + 16_000;
+    const next = await firstAsked(() => sse(REPLY));
+    expect(next[0]).to.equal("gemini-3.1-flash-lite");
+  });
+
+  it("keeps a model that is out of quota aside for the minute", async () => {
+    const outOfQuota = (model: string) =>
+      model === "gemini-3.1-flash-lite"
+        ? new Response(JSON.stringify({ error: { message: "quota" } }), { status: 429 })
+        : sse(REPLY);
+    await firstAsked(outOfQuota);
+
+    Date.now = () => realNow() + 16_000;
+    const next = await firstAsked(() => sse(REPLY));
+    expect(next[0]).to.not.equal("gemini-3.1-flash-lite");
+  });
+
+  it("says when a model failed and the next is being asked", async () => {
+    globalThis.fetch = (async (url: string) =>
+      modelOf(String(url)) === "gemini-3.1-flash-lite"
+        ? new Response(JSON.stringify({ error: { message: "high demand" } }), { status: 503 })
+        : sse(REPLY)) as typeof fetch;
+
+    const retries: string[] = [];
+    await generateWithTools({ ...request, onRetry: (a) => retries.push(`${a.model} ${a.outcome}`) });
+    expect(retries).to.deep.equal(["gemini-3.1-flash-lite http 503"]);
+  });
+});

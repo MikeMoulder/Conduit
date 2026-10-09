@@ -563,6 +563,19 @@ describe("the copilot loop, streaming", () => {
     ]);
   });
 
+  it("says the AI is busy once while models are retried, instead of going quiet", async () => {
+    const events: CopilotEvent[] = [];
+    const generate: TurnGenerator = async (request) => {
+      request.onRetry?.({ model: "gemini-3.1-flash-lite", outcome: "http 503", ms: 200 });
+      request.onRetry?.({ model: "gemini-3.5-flash", outcome: "http 429", ms: 100 });
+      return turn(text("Anytime."));
+    };
+    await runCopilot({ messages: [{ role: "user", content: "thanks" }], owner: null }, (e) => events.push(e), undefined, generate);
+
+    const busy = events.filter((e) => e.type === "status" && e.label.includes("busy"));
+    assert.lengthOf(busy, 1);
+  });
+
   it("keeps the house style while streaming", async () => {
     const events = await runStreamed([
       { pieces: ["Up 2% today ", "—", " on chip news."], parts: text("Up 2% today — on chip news.") },

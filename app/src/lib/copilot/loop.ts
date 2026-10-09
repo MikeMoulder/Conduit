@@ -419,6 +419,7 @@ export async function runCopilot(
     // known once the turn ends, so anything that turns out not to be is taken
     // back below.
     const prose = new ProseStream(emit, shown);
+    let retrySaid = false;
 
     let reply;
     try {
@@ -429,6 +430,13 @@ export async function runCopilot(
         signal,
         onText: (delta) => prose.push(delta),
         onReset: () => prose.discard(),
+        // Said once a turn, so a slow reply reads as the provider being busy
+        // rather than as nothing happening.
+        onRetry: () => {
+          if (retrySaid) return;
+          retrySaid = true;
+          emit({ type: "status", label: "The AI is busy, trying again" });
+        },
       });
     } catch (error) {
       prose.discard();
