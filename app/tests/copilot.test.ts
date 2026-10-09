@@ -365,6 +365,34 @@ describe("the copilot loop", () => {
     );
   });
 
+  it("tells the model the label on the button of the card it prepared", async () => {
+    // Seen live: the model told someone to "tap Approve" on a card whose
+    // button said "Open it", because it had to guess the label.
+    const { contents } = await run(
+      [
+        turn([
+          call("prepare_mandate", {
+            maxPositionBps: 2500,
+            minCashBps: 1000,
+            maxTurnoverBps: 4000,
+            maxAssets: 6,
+            symbols: ["BTC", "ETH", "SOL"],
+          }),
+        ]),
+        turn(text("Here are your rules, tap Create it when you're happy.")),
+      ],
+      OWNER,
+    );
+
+    const fedBack = JSON.stringify(contents[contents.length - 1]);
+    assert.include(fedBack, '"cardButton":"Create it"');
+  });
+
+  it("names a button only when a card was prepared", async () => {
+    const { contents } = await run([turn([call("list_universe")]), turn(text("Eighteen assets."))]);
+    assert.notInclude(JSON.stringify(contents[contents.length - 1]), "cardButton");
+  });
+
   it("sends back a reply that promises a card no tool prepared", async () => {
     // Seen live: after check_proposal alone the model wrote "I have prepared
     // the rebalance proposal for you to approve", and no card appeared.

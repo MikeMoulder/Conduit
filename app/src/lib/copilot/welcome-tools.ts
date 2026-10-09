@@ -25,42 +25,44 @@ type Stage = "not-connected" | "first-time" | "ready" | "holding";
  * the model.
  *
  * These are the first words a new person reads, and a small model improvising
- * them drifted into chat room cheer: exclamation marks, "play money", and a
- * numbered list whose numbers it wrote twice. A person deciding whether to
- * trust a product with money should meet the same measured sentences every
- * time, so the model is handed them to use as written.
+ * them drifted: exclamation marks, "play money", and a numbered list whose
+ * numbers it wrote twice. So the model is handed them to use as written.
+ *
+ * Written the way a friend would say it rather than a bank. The first version
+ * was one long formal sentence about tokenized equities and program enforced
+ * limits, which is accurate and is not how anybody says hello.
  */
 const INTRO =
-  "Hi there, I'm Conduit, your personal stock copilot on Solana. With me you can trade tokenized US stocks like NVIDIA and Tesla by simply telling me what you want, and hand me a portfolio to manage within limits you set, which the Solana program enforces.";
+  "Hey, I'm Conduit. I help you invest in stocks like NVIDIA and Tesla on Solana, just by texting. Say \"buy $50 of Apple\" and I'll set it up. I can also watch prices for you, or run a portfolio on my own inside rules you set, and Solana makes sure I stick to them.";
 
 const usd = (n: number) => `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 
 function notConnectedGreeting(): string {
-  return `${INTRO}\n\nConnect a Solana wallet with the button below to get started. We're on devnet, so everything runs on test funds.`;
+  return `${INTRO}\n\nConnect a wallet with the button below and we're good to go. It's all test money on devnet, so try anything.`;
 }
 
 function firstTimeGreeting(ownCash: number): string {
   const steps =
     ownCash > 0
       ? [
-          `**Open your main wallet.** Say "open my main wallet". It takes one signature, and after that your trades need none.`,
-          `**Make your first trade.** Try "buy $100 of NVDA".`,
-          `**See what's moving.** Ask "what is moving today?"`,
+          `Say **"open my main wallet"**. One signature, then no more popups when you trade.`,
+          `Try **"buy $100 of NVDA"**.`,
+          `Or just ask **"what's moving today?"**`,
         ]
       : [
-          `**Get some test funds.** Say "give me demo cash".`,
-          `**Open your main wallet.** Say "open my main wallet". It takes one signature, and after that your trades need none.`,
-          `**Make your first trade.** Try "buy $100 of NVDA".`,
+          `Say **"give me demo cash"** to grab some test money.`,
+          `Say **"open my main wallet"**. One signature, then no more popups when you trade.`,
+          `Try **"buy $100 of NVDA"**.`,
         ];
   const lead =
     ownCash > 0
-      ? `We're on Solana devnet, so everything runs on test funds, and you already have ${usd(ownCash)} of them. Here's what to do next:`
-      : "We're on Solana devnet, so everything runs on test funds. Here's how to get started:";
+      ? `You've already got ${usd(ownCash)} in test money. Here's the quickest way in:`
+      : "Everything here runs on test money, on Solana devnet. Here's the quickest way in:";
   return [
     INTRO,
     lead,
     steps.map((step, i) => `${i + 1}. ${step}`).join("\n"),
-    "Ask me anything along the way.",
+    "Anything else, just ask.",
   ].join("\n\n");
 }
 
@@ -69,7 +71,7 @@ const getWelcome: CopilotTool = {
   declaration: {
     name: "get_welcome",
     description:
-      "Call this, and only this, when someone just says hello (hi, yo, hey, gm, sup) with nothing else. Returns which stage they are at (not-connected, first-time, ready, holding), their cash and holdings, and for their largest holding today's move and top headline, plus the next steps to offer as exact words. Write the greeting from these facts only.",
+      "Call this, and only this, when someone just says hello (hi, yo, hey, gm, sup) with nothing else. Never for thanks, ok, lol or other small talk, and never for a question such as what can you do. Returns which stage they are at (not-connected, first-time, ready, holding), their cash and holdings, and for their largest holding today's move and top headline, plus the next steps to offer as exact words. Write the greeting from these facts only.",
     parameters: { type: "OBJECT", properties: {} },
   },
   async run(args, ctx) {
