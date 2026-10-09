@@ -93,7 +93,7 @@ export async function POST(request: Request): Promise<Response> {
       } catch (error) {
         send({
           type: "error",
-          message: "The copilot stopped unexpectedly.",
+          message: "Something went wrong on my side, so nothing was done. Try again in a moment.",
           detail: error instanceof Error ? error.message : String(error),
         });
       } finally {

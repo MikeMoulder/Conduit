@@ -102,7 +102,7 @@ export function useCopilot() {
           patchTurn(turnId, (turn) => ({
             ...turn,
             error: {
-              message: "The copilot could not be reached.",
+              message: "Couldn't reach Conduit. Check your connection and try again.",
               detail: detail.slice(0, 300),
             },
           }));
@@ -217,7 +217,7 @@ export function useCopilot() {
           patchTurn(turnId, (turn) => ({
             ...turn,
             error: {
-              message: "The connection dropped mid answer.",
+              message: "The connection dropped mid reply. Check your internet and try again.",
               detail: error instanceof Error ? error.message : String(error),
             },
           }));

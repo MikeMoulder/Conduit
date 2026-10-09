@@ -447,8 +447,8 @@ export async function runCopilot(
         type: "error",
         message:
           error instanceof GeminiError
-            ? "The AI provider is busy right now. Nothing was done; send it again in a few seconds."
-            : "The copilot failed.",
+            ? "The AI is busy right now, so nothing was done. Give it a few seconds and try again."
+            : "Something went wrong on my side, so nothing was done. Try again in a moment.",
         detail: error instanceof Error ? error.message : String(error),
       });
       return;

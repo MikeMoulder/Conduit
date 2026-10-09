@@ -212,7 +212,7 @@ export function Markdown({ text }: { text: string }) {
   const blocks = parseMarkdown(text);
 
   return (
-    <div className="flex flex-col gap-3 text-[15px] leading-relaxed text-zinc-200">
+    <div className="flex flex-col gap-3 text-[15px] leading-relaxed text-zinc-200 [overflow-wrap:anywhere]">
       {blocks.map((block, i) => {
         if (block.kind === "list") {
           const List = block.ordered ? "ol" : "ul";

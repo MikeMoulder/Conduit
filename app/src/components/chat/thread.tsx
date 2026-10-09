@@ -30,7 +30,7 @@ export function Thread({
   onRetry,
 }: {
   turns: Turn[];
-  /** An answer is on its way, so nothing new may be asked yet. */
+  /** Nothing new may be asked yet: an answer is on its way, or no wallet is connected. */
   busy: boolean;
   /** Sends a card's outcome to the copilot, so it can say what is next. */
   onEvent: (message: string) => void;
@@ -67,7 +67,7 @@ export function Thread({
             <EventLine key={turn.id} text={turn.text} />
           ) : turn.role === "user" ? (
             <div key={turn.id} className="flex justify-end">
-              <p className="max-w-[85%] rounded-2xl rounded-br-sm bg-zinc-800/80 px-4 py-2.5 text-sm leading-relaxed text-zinc-100">
+              <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-zinc-800/80 px-4 py-2.5 text-sm leading-relaxed text-zinc-100 [overflow-wrap:anywhere]">
                 {turn.text}
               </p>
             </div>

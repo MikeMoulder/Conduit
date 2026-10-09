@@ -97,7 +97,9 @@ export function Copilot() {
             // follow below brought it down again.
             key={conversation.id}
             turns={conversation.turns}
-            busy={busy}
+            // Asking needs a wallet, like the composer: a chip or Ask again
+            // must not get round the lock the input box keeps.
+            busy={busy || !connected}
             onEvent={(message) => void send(message, { event: true })}
             onAsk={(question) => void send(question)}
             onRetry={retry}
