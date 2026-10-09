@@ -131,6 +131,7 @@ function Welcome({ connected, onAsk }: { connected: boolean; onAsk: (question: s
             width={52}
             height={52}
             priority
+            className="theme-invert"
           />
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Conduit</h1>

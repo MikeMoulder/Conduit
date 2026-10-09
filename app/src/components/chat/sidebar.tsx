@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { PanelLeftClose, Plus, Search, X } from "lucide-react";
 
+import { ThemeToggle } from "@/components/theme-toggle";
 import type { Conversation } from "@/lib/copilot/store";
 
 /**
@@ -208,7 +209,8 @@ export function Sidebar({
           )}
         </nav>
 
-        <div className={`shrink-0 pb-3 pt-2 ${rail ? "px-0" : "px-2"}`}>
+        <div className={`flex shrink-0 flex-col gap-1 pb-3 pt-2 ${rail ? "px-0" : "px-2"}`}>
+          <ThemeToggle rail={rail} />
           {footer}
         </div>
       </aside>
@@ -224,7 +226,7 @@ function Logo() {
       width={512}
       height={512}
       priority
-      className="size-8 shrink-0 select-none"
+      className="theme-invert size-8 shrink-0 select-none"
     />
   );
 }
