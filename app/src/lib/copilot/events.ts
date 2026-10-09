@@ -452,6 +452,12 @@ export type CopilotEvent =
       error?: string;
     }
   | { type: "text"; delta: string }
+  /**
+   * Reply text shown during a turn was not the answer, such as a model
+   * narrating before a tool call: cut the reply back to its first `keep`
+   * characters.
+   */
+  | { type: "text_discard"; keep: number }
   | { type: "action"; action: PendingAction }
   | {
       type: "done";

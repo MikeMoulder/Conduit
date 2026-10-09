@@ -12,7 +12,7 @@ import {
 import { MAX_ASSETS } from "../chain";
 import { actionButton, type CopilotEvent } from "./events";
 import { TOOLS, TOOL_DECLARATIONS, ToolError, type ToolContext } from "./tools";
-import { houseStyle } from "./style";
+import { ProseStream } from "./prose-stream";
 
 /**
  * The conversation loop.
@@ -404,11 +404,18 @@ export async function runCopilot(
   let corrected = false;
   let model = "unknown";
   let totalTokens: number | null = null;
+  /** Reply text already showing from earlier turns, which a discard keeps. */
+  let shown = 0;
 
   emit({ type: "status", label: "Reading the question" });
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
     if (signal?.aborted) return;
+
+    // Prose is shown as the model writes it. Whether it is the answer is only
+    // known once the turn ends, so anything that turns out not to be is taken
+    // back below.
+    const prose = new ProseStream(emit, shown);
 
     let reply;
     try {
@@ -416,8 +423,13 @@ export async function runCopilot(
         systemInstruction: SYSTEM,
         contents,
         tools: TOOL_DECLARATIONS,
+        signal,
+        onText: (delta) => prose.push(delta),
+        onReset: () => prose.discard(),
       });
     } catch (error) {
+      prose.discard();
+      if (signal?.aborted) return;
       emit({
         type: "error",
         message:
@@ -433,14 +445,16 @@ export async function runCopilot(
     totalTokens = reply.totalTokens ?? totalTokens;
 
     const calls = reply.parts.filter((p) => p.functionCall);
-    const prose = reply.parts
+    const text = reply.parts
       .map((p) => p.text)
       .filter((t): t is string => Boolean(t))
       .join("");
 
     // A final answer that promises a card nobody prepared is sent back once,
-    // before anyone reads it, rather than shown and corrected afterwards.
-    if (calls.length === 0 && actions === 0 && !corrected && claimsACard(prose) && turn < MAX_TURNS - 1) {
+    // and what was shown of it is taken back, rather than left standing and
+    // corrected afterwards.
+    if (calls.length === 0 && actions === 0 && !corrected && claimsACard(text) && turn < MAX_TURNS - 1) {
+      prose.discard();
       corrected = true;
       contents.push({ role: "model", parts: reply.parts });
       contents.push({ role: "user", parts: [{ text: NO_CARD_CORRECTION }] });
@@ -448,10 +462,13 @@ export async function runCopilot(
     }
 
     // Prose that arrives alongside tool calls is the model narrating what it is
-    // about to do. The step list already says that, so it is dropped rather
+    // about to do. The step list already says that, so it is taken back rather
     // than shown twice.
-    if (prose && calls.length === 0) {
-      emit({ type: "text", delta: houseStyle(prose) });
+    if (text && calls.length === 0) {
+      prose.finish(text);
+      shown += prose.length;
+    } else {
+      prose.discard();
     }
 
     if (calls.length === 0) {

@@ -171,6 +171,15 @@ export function useCopilot() {
                 }));
                 break;
 
+              // Words shown while the model was writing turned out not to be
+              // the answer, such as narration before a tool call.
+              case "text_discard":
+                patchTurn(turnId, (turn) => ({
+                  ...turn,
+                  text: turn.text.slice(0, event.keep),
+                }));
+                break;
+
               case "action":
                 patchTurn(turnId, (turn) => ({
                   ...turn,

@@ -484,6 +484,79 @@ describe("the copilot loop", () => {
 /* The tools                                                                  */
 /* -------------------------------------------------------------------------- */
 
+/** Plays turns as a streaming model would: prose piece by piece through onText, then the whole reply. */
+async function runStreamed(turns: { pieces: string[]; parts: GeminiPart[] }[]): Promise<CopilotEvent[]> {
+  const events: CopilotEvent[] = [];
+  let index = 0;
+  const generate: TurnGenerator = async (request) => {
+    const next = turns[Math.min(index, turns.length - 1)];
+    index += 1;
+    for (const piece of next.pieces) request.onText?.(piece);
+    return turn(next.parts);
+  };
+  await runCopilot({ messages: [{ role: "user", content: "hello" }], owner: null }, (e) => events.push(e), undefined, generate);
+  return events;
+}
+
+/** The reply a browser ends up showing after applying every event. */
+function shownText(events: CopilotEvent[]): string {
+  let text = "";
+  for (const e of events) {
+    if (e.type === "text") text += e.delta;
+    if (e.type === "text_discard") text = text.slice(0, e.keep);
+  }
+  return text;
+}
+
+describe("the copilot loop, streaming", () => {
+  it("shows the answer while the model is still writing it", async () => {
+    const whole = "Basis points are hundredths of a percent, so 250 is 2.5 percent.";
+    const events = await runStreamed([
+      { pieces: ["Basis points ", "are hundredths ", "of a percent, ", "so 250 is 2.5 percent."], parts: text(whole) },
+    ]);
+
+    const pieces = events.filter((e) => e.type === "text");
+    assert.isAbove(pieces.length, 1, "the answer should arrive in more than one piece");
+    assert.equal(shownText(events), whole);
+    assert.isDefined(events.find((e) => e.type === "done"));
+  });
+
+  it("takes back narration that turns out to come before a tool call", async () => {
+    const events = await runStreamed([
+      { pieces: ["Let me check ", "that for you."], parts: [{ text: "Let me check that for you." }, call("list_universe")] },
+      { pieces: ["Eighteen assets."], parts: text("Eighteen assets.") },
+    ]);
+
+    const discard = events.findIndex((e) => e.type === "text_discard");
+    const started = events.findIndex((e) => e.type === "tool_start");
+    assert.isAtLeast(discard, 0, "the narration should have been taken back");
+    assert.isBelow(discard, started, "and taken back before the tool runs");
+    assert.deepEqual(events[discard], { type: "text_discard", keep: 0 });
+    assert.equal(shownText(events), "Eighteen assets.");
+  });
+
+  it("takes back a streamed reply that promised a card no tool prepared", async () => {
+    const events = await runStreamed([
+      { pieces: ["I have prepared ", "the order."], parts: text("I have prepared the order.") },
+      { pieces: ["Nothing is ready yet, ", "say buy and I will set it up."], parts: text("Nothing is ready yet, say buy and I will set it up.") },
+    ]);
+
+    assert.isDefined(events.find((e) => e.type === "text_discard"));
+    assert.equal(shownText(events), "Nothing is ready yet, say buy and I will set it up.");
+  });
+
+  it("keeps the house style while streaming", async () => {
+    const events = await runStreamed([
+      { pieces: ["Up 2% today ", "—", " on chip news."], parts: text("Up 2% today — on chip news.") },
+    ]);
+    assert.equal(shownText(events), "Up 2% today, on chip news.");
+    assert.notMatch(
+      events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join(""),
+      /[–—]/,
+    );
+  });
+});
+
 describe("card buttons", () => {
   const base = { owner: OWNER, summary: "" };
 
