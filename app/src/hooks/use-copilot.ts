@@ -8,6 +8,7 @@ import {
   beginTurn,
   currentConversation,
   deleteConversation,
+  dropLastExchange,
   finishTurn,
   getServerSnapshot,
   getSnapshot,
@@ -240,6 +241,12 @@ export function useCopilot() {
     sendRef.current = send;
   }, [send]);
 
+  /** Asks the last question again, in place of the reply it got. */
+  const retry = useCallback(() => {
+    const last = dropLastExchange();
+    if (last) void send(last.question, { event: last.event });
+  }, [send]);
+
   return {
     conversations: state.conversations,
     conversation:
@@ -247,6 +254,7 @@ export function useCopilot() {
     hydrated: state.hydrated,
     busy: state.busy,
     send,
+    retry,
     stop,
     newChat: newConversation,
     select: selectConversation,

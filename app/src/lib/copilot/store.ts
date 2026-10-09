@@ -293,6 +293,33 @@ export function resolveAction(
   }));
 }
 
+/**
+ * Takes the last question and its reply off the current conversation, and
+ * returns the question so it can be asked again.
+ *
+ * Refused while an answer is still arriving, and for a reply whose card was
+ * already used: asking again then would offer the same trade a second time
+ * on top of one that already happened, and the result it shows would vanish
+ * from the transcript.
+ */
+export function dropLastExchange(): { question: string; event: boolean } | null {
+  if (state.busy) return null;
+  const conversation = currentConversation();
+  if (!conversation) return null;
+
+  const turns = conversation.turns;
+  const lastUser = turns.map((t) => t.role).lastIndexOf("user");
+  if (lastUser < 0) return null;
+  const replies = turns.slice(lastUser + 1);
+  if (replies.some((t) => (t.outcomes ?? []).length > 0)) return null;
+
+  const question = turns[lastUser];
+  update((draft) =>
+    mapCurrent(draft, (c) => ({ ...c, turns: c.turns.slice(0, lastUser), updatedAt: Date.now() })),
+  );
+  return { question: question.text, event: Boolean(question.event) };
+}
+
 export function currentConversation(): Conversation | null {
   return state.conversations.find((c) => c.id === state.currentId) ?? null;
 }

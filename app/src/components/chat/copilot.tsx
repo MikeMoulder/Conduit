@@ -30,6 +30,7 @@ export function Copilot() {
     conversation,
     busy,
     send,
+    retry,
     stop,
     newChat,
     select,
@@ -96,7 +97,10 @@ export function Copilot() {
             // follow below brought it down again.
             key={conversation.id}
             turns={conversation.turns}
+            busy={busy}
             onEvent={(message) => void send(message, { event: true })}
+            onAsk={(question) => void send(question)}
+            onRetry={retry}
           />
         ) : (
           <Welcome connected={connected} onAsk={(q) => void send(q)} />

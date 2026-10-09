@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Check, Copy, RotateCcw } from "lucide-react";
 
 import type { Source } from "@/lib/copilot/events";
+import { followUps } from "@/lib/copilot/follow-ups";
 import type { Step, Turn } from "@/lib/copilot/store";
 import { resolveAction } from "@/lib/copilot/store";
 import { ActionCard } from "./actions";
@@ -22,11 +24,20 @@ import { Markdown, withoutOpenMarks } from "./markdown";
 
 export function Thread({
   turns,
+  busy,
   onEvent,
+  onAsk,
+  onRetry,
 }: {
   turns: Turn[];
+  /** An answer is on its way, so nothing new may be asked yet. */
+  busy: boolean;
   /** Sends a card's outcome to the copilot, so it can say what is next. */
   onEvent: (message: string) => void;
+  /** Asks something as if the person had typed it. */
+  onAsk: (question: string) => void;
+  /** Asks the last question again. */
+  onRetry: () => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -51,7 +62,7 @@ export function Thread({
       className="flex-1 overflow-y-auto"
     >
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6">
-        {turns.map((turn) =>
+        {turns.map((turn, i) =>
           turn.role === "user" && turn.event ? (
             <EventLine key={turn.id} text={turn.text} />
           ) : turn.role === "user" ? (
@@ -65,9 +76,12 @@ export function Thread({
               key={turn.id}
               turn={turn}
               onEvent={onEvent}
+              canRetry={i === turns.length - 1 && !busy && (turn.outcomes ?? []).length === 0}
+              onRetry={onRetry}
             />
           ),
         )}
+        {!busy ? <FollowUps suggestions={followUps(turns)} onAsk={onAsk} /> : null}
         <div ref={endRef} />
       </div>
     </div>
@@ -77,9 +91,14 @@ export function Thread({
 function AssistantTurn({
   turn,
   onEvent,
+  canRetry,
+  onRetry,
 }: {
   turn: Turn;
   onEvent: (message: string) => void;
+  /** The latest reply, finished, with no card already used on it. */
+  canRetry: boolean;
+  onRetry: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -130,19 +149,28 @@ function AssistantTurn({
               {turn.error.detail}
             </p>
           ) : null}
+          {canRetry ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-2.5 inline-flex items-center gap-1.5 rounded-md border border-red-400/30 px-2.5 py-1 text-xs text-red-200 transition-colors hover:bg-red-500/10"
+            >
+              <RotateCcw className="size-3" aria-hidden="true" />
+              Try again
+            </button>
+          ) : null}
         </div>
       ) : null}
 
-      {turn.meta && !turn.streaming ? (
-        <p className="font-mono text-[10px] text-zinc-700">
-          {turn.meta.toolCalls} tool
-          {turn.meta.toolCalls === 1 ? "" : "s"} ·{" "}
-          {(turn.meta.totalMs / 1000).toFixed(1)}s
-        </p>
+      {!turn.streaming && (turn.text || turn.meta) ? (
+        <TurnActions turn={turn} canRetry={canRetry && !turn.error} onRetry={onRetry} />
       ) : null}
 
       {turn.streaming && turn.steps.length === 0 && !turn.text ? (
-        <p className="text-sm text-zinc-600">Thinking.</p>
+        <p className="flex items-center gap-2 text-sm text-zinc-500">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+          Thinking…
+        </p>
       ) : null}
     </div>
   );
@@ -169,6 +197,9 @@ function StepList({
   const setOpen = (next: boolean) => setOverride(next);
 
   const failed = steps.filter((s) => s.state === "failed").length;
+  // While it works, the header says what it is doing right now, in the step's
+  // own words, rather than a bare "Working".
+  const current = [...steps].reverse().find((s) => s.state === "running")?.label;
 
   return (
     <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40">
@@ -181,7 +212,11 @@ function StepList({
           {streaming ? (
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
           ) : null}
-          {streaming ? "Working" : `${steps.length} ${steps.length === 1 ? "step" : "steps"}`}
+          {streaming ? (
+            <span className="normal-case tracking-normal text-zinc-400">{current ? `${current}…` : "Working…"}</span>
+          ) : (
+            `How I got this · ${steps.length} ${steps.length === 1 ? "step" : "steps"}`
+          )}
           {failed > 0 ? (
             <span className="text-amber-500/80">
               · {failed} unavailable
@@ -198,17 +233,15 @@ function StepList({
               <Mark state={step.state} />
               <span className="flex flex-1 flex-wrap items-baseline gap-x-2">
                 <span
+                  // The tool behind the step, for anyone who wants it, without
+                  // putting function names in front of everyone else.
+                  title={step.name}
                   className={
                     step.state === "failed" ? "text-amber-400" : "text-zinc-300"
                   }
                 >
                   {step.label}
                 </span>
-                {step.name ? (
-                  <span className="font-mono text-[10px] text-zinc-600">
-                    {step.name}
-                  </span>
-                ) : null}
                 {step.summary ? (
                   <span className="text-zinc-500">{step.summary}</span>
                 ) : null}
@@ -230,6 +263,96 @@ function StepList({
           ))}
         </ol>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Under a finished reply: copy it, ask again, and how long it took.
+ *
+ * Ask again only on the latest reply, and not once a card on it was used,
+ * because asking again then would offer the same action a second time.
+ */
+function TurnActions({
+  turn,
+  canRetry,
+  onRetry,
+}: {
+  turn: Turn;
+  canRetry: boolean;
+  onRetry: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    let done = false;
+    try {
+      await navigator.clipboard.writeText(turn.text);
+      done = true;
+    } catch {
+      // The clipboard API needs a permission some browsers and embedded views
+      // refuse. The older copy command does not, so it is tried instead.
+      const area = document.createElement("textarea");
+      area.value = turn.text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      try {
+        done = document.execCommand("copy");
+      } catch {
+        done = false;
+      }
+      area.remove();
+    }
+    if (done) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  }
+
+  const button =
+    "inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-zinc-600 transition-colors hover:bg-zinc-900 hover:text-zinc-300";
+
+  return (
+    <div className="-ml-1.5 flex items-center gap-1">
+      {turn.text ? (
+        <button type="button" onClick={() => void copy()} className={button} aria-label="Copy reply">
+          {copied ? <Check className="size-3" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      ) : null}
+      {canRetry ? (
+        <button type="button" onClick={onRetry} className={button} aria-label="Ask again">
+          <RotateCcw className="size-3" aria-hidden="true" />
+          Ask again
+        </button>
+      ) : null}
+      {turn.meta ? (
+        <span className="ml-1 font-mono text-[10px] text-zinc-700">
+          {(turn.meta.totalMs / 1000).toFixed(1)}s
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Things to say next, as chips under the latest reply. */
+function FollowUps({ suggestions, onAsk }: { suggestions: string[]; onAsk: (question: string) => void }) {
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="-mt-3 flex flex-wrap gap-2" aria-label="Suggestions">
+      {suggestions.map((s) => (
+        <button
+          key={s}
+          type="button"
+          onClick={() => onAsk(s)}
+          className="rounded-full border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:bg-zinc-900 hover:text-zinc-200"
+        >
+          {s}
+        </button>
+      ))}
     </div>
   );
 }
