@@ -197,7 +197,7 @@ const setTrigger: CopilotTool = {
     return {
       result: {
         prepared: true,
-        notDoneYet: "The trigger is NOT set yet. Tell them to tap Set it on the card to switch it on. Never say it is set.",
+        notDoneYet: "The trigger is NOT set yet. Tell them to tap Set it on the card to switch it on. Never say it is set, set up or active, and never write I've set: say Here's the alert, tap Set it.",
         trigger: sentence,
         currentPrice: check.basePrice,
         ...(repeat
