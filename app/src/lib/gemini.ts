@@ -141,6 +141,13 @@ export interface GeminiPart {
   text?: string;
   functionCall?: { name: string; args?: Record<string, unknown> };
   functionResponse?: { name: string; response: Record<string, unknown> };
+  /**
+   * Opaque state the newer models attach to a turn, which they expect back
+   * with it in the history. Kept as received, never read.
+   */
+  thoughtSignature?: string;
+  /** Set on a part that is the model's thinking rather than its answer. */
+  thought?: boolean;
 }
 
 export interface GeminiContent {
@@ -235,6 +242,23 @@ export interface ToolTurnRequest {
   tools: ToolDeclaration[];
   temperature?: number;
   maxOutputTokens?: number;
+  /** Each piece of prose, as the model writes it. */
+  onText?: (delta: string) => void;
+  /**
+   * Prose already passed to onText is withdrawn: the model failed part way
+   * and the next one on the ladder starts the turn again.
+   */
+  onReset?: () => void;
+  /** Stops the turn, and the model's stream with it. */
+  signal?: AbortSignal;
+}
+
+/** One model asked during a turn, and how it went. */
+export interface TurnAttempt {
+  model: string;
+  /** "ok", or what went wrong, such as "http 429" or "timeout". */
+  outcome: string;
+  ms: number;
 }
 
 export interface ToolTurnResult {
@@ -243,6 +267,8 @@ export interface ToolTurnResult {
   model: string;
   totalTokens: number | null;
   finishReason: string | null;
+  /** Every model asked, in order, the one that answered last. */
+  attempts?: TurnAttempt[];
 }
 
 /**
@@ -267,16 +293,18 @@ export async function generateWithTools(
   const env = getEnv();
   const models = availableModels(env.GEMINI_MODEL);
   const failures: string[] = [];
+  const attempts: TurnAttempt[] = [];
 
-  const body = {
+  const bodyFor = (model: string) => ({
     systemInstruction: { parts: [{ text: request.systemInstruction }] },
     contents: request.contents,
     tools: [{ functionDeclarations: request.tools }],
     generationConfig: {
       temperature: request.temperature ?? 0,
       maxOutputTokens: request.maxOutputTokens ?? 4096,
+      ...(CHAT_THINKING[model] ? { thinkingConfig: CHAT_THINKING[model] } : {}),
     },
-  };
+  });
 
   /*
    * Rounds rather than one pass. On a free key the whole ladder shares a per
@@ -295,42 +323,214 @@ export async function generateWithTools(
     const pass = round === 0 ? models : availableModels(env.GEMINI_MODEL, true);
 
     for (const model of pass) {
-      const response = await callModel(model, body);
+      const began = Date.now();
+      const response = await streamModel(model, bodyFor(model), request);
 
       if (!response.ok) {
+        // Prose from a model that then failed is not the answer. Whoever is
+        // showing it takes it back before the next model starts again.
+        if (response.textSent) request.onReset?.();
         if ([404, 408, 429, 503, 500, 0].includes(response.status)) {
           unavailableUntil.set(model, Date.now() + COOLDOWN_MS);
         }
         failures.push(`${model}: http ${response.status} ${response.detail}`);
+        attempts.push({ model, outcome: response.status === 408 ? "timeout" : `http ${response.status}`, ms: Date.now() - began });
         continue;
       }
-
-      const candidate = response.data.candidates?.[0];
-      const parts = candidate?.content?.parts ?? [];
 
       // An empty reply is not usable and is not the prompt's fault, so try the
       // next model rather than reporting silence to the caller as an answer.
-      if (parts.length === 0) {
-        failures.push(
-          `${model}: empty reply, finishReason=${candidate?.finishReason ?? "unknown"}`,
-        );
+      if (response.parts.length === 0) {
+        failures.push(`${model}: empty reply, finishReason=${response.finishReason ?? "unknown"}`);
+        attempts.push({ model, outcome: "empty", ms: Date.now() - began });
         continue;
       }
 
+      attempts.push({ model, outcome: "ok", ms: Date.now() - began });
+      reportSlowTurn(attempts);
       return {
-        parts,
+        parts: response.parts,
         model,
-        totalTokens: response.data.usageMetadata?.totalTokenCount ?? null,
-        finishReason: candidate?.finishReason ?? null,
+        totalTokens: response.totalTokens,
+        finishReason: response.finishReason,
+        attempts,
       };
     }
   }
 
+  reportSlowTurn(attempts);
   throw new GeminiError(
     "no model answered the tool turn",
     "copilot",
     failures.join(" | "),
   );
+}
+
+/**
+ * How much each model thinks before a chat turn.
+ *
+ * Measured on the copilot's own prompt and tools: gemini-3.5-flash took 3.2
+ * to 6.7 s a turn at its default, with up to 566 tokens of thinking, and 2.2
+ * to 2.4 s at minimal. A chat turn picks a tool or writes a few sentences,
+ * and the analysis that needs real reasoning has its own stages, so the chat
+ * asks for the least. A model not listed is left at its default:
+ * gemini-flash-latest refuses minimal outright.
+ */
+const CHAT_THINKING: Record<string, Record<string, unknown>> = {
+  "gemini-3.1-flash-lite": { thinkingLevel: "minimal" },
+  "gemini-3.5-flash": { thinkingLevel: "minimal" },
+};
+
+/**
+ * How long a chat turn waits for a model's first words.
+ *
+ * A healthy model starts within two or three seconds. One that has accepted
+ * the request under load and gone quiet used to be waited on for the full
+ * thirty seconds before the ladder moved on, which is most of a fifty second
+ * reply. Once words are flowing, the overall limit applies as before.
+ */
+let firstWordsTimeoutMs = 10_000;
+
+/** Shortens the wait for first words so a test need not sit through ten seconds. Intended for tests. */
+export function setFirstWordsTimeout(ms: number): void {
+  firstWordsTimeoutMs = ms;
+}
+
+/** Logs a turn that needed a fallback or was slow, so a slow reply can be explained afterwards. */
+function reportSlowTurn(attempts: TurnAttempt[]): void {
+  const total = attempts.reduce((sum, a) => sum + a.ms, 0);
+  if (attempts.length <= 1 && total < 6_000) return;
+  console.warn(
+    `[gemini] chat turn took ${total} ms: ${attempts.map((a) => `${a.model} ${a.outcome} ${a.ms}ms`).join(", ")}`,
+  );
+}
+
+type StreamOutcome =
+  | { ok: true; parts: GeminiPart[]; finishReason: string | null; totalTokens: number | null }
+  | { ok: false; status: number; detail: string; textSent: boolean };
+
+/**
+ * One model's turn, read as it is written.
+ *
+ * Prose goes to onText piece by piece; tool calls arrive whole. The parts are
+ * put back together the way the non streaming reply had them, consecutive
+ * prose joined into one part, so the history the next turn sends is the same
+ * shape either way, thought signatures included.
+ */
+async function streamModel(model: string, body: unknown, request: ToolTurnRequest): Promise<StreamOutcome> {
+  const env = getEnv();
+  const controller = new AbortController();
+  const timeout = (ms: number, what: string) =>
+    setTimeout(() => controller.abort(new DOMException(what, "TimeoutError")), ms);
+  const stopAll = () => controller.abort(request.signal?.reason);
+  if (request.signal?.aborted) stopAll();
+  request.signal?.addEventListener("abort", stopAll);
+  let firstWords: ReturnType<typeof setTimeout> | undefined = timeout(
+    firstWordsTimeoutMs,
+    `no answer started within ${firstWordsTimeoutMs / 1000}s`,
+  );
+  const overall = timeout(MODEL_TIMEOUT_MS, `no answer within ${MODEL_TIMEOUT_MS / 1000}s`);
+  const heard = () => {
+    if (firstWords) clearTimeout(firstWords);
+    firstWords = undefined;
+  };
+
+  const parts: GeminiPart[] = [];
+  let finishReason: string | null = null;
+  let totalTokens: number | null = null;
+  let textSent = false;
+
+  try {
+    const response = await fetch(`${API_ROOT}/${model}:streamGenerateContent?alt=sse`, {
+      method: "POST",
+      headers: { "x-goog-api-key": env.GEMINI_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let detail = text.slice(0, 200);
+      try {
+        detail = (JSON.parse(text) as RawResponse).error?.message?.slice(0, 200) ?? detail;
+      } catch {
+        // Keep the raw body; a non JSON error is still worth reporting.
+      }
+      return { ok: false, status: response.status, detail, textSent };
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) return { ok: false, status: 0, detail: "no response body", textSent };
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      // The provider separates events with CRLF; normalise before splitting.
+      buffer += decoder.decode(value, { stream: true }).split("\r\n").join("\n");
+
+      let cut = buffer.indexOf("\n\n");
+      while (cut >= 0) {
+        const event = buffer.slice(0, cut);
+        buffer = buffer.slice(cut + 2);
+        cut = buffer.indexOf("\n\n");
+
+        const data = event
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trim())
+          .join("");
+        if (!data) continue;
+
+        const chunk = JSON.parse(data) as RawResponse;
+        if (chunk.error) {
+          return { ok: false, status: 500, detail: chunk.error.message?.slice(0, 200) ?? "error mid stream", textSent };
+        }
+        heard();
+
+        const candidate = chunk.candidates?.[0];
+        for (const part of candidate?.content?.parts ?? []) {
+          if (part.thought) continue;
+          if (typeof part.text === "string" && part.text.length > 0) {
+            request.onText?.(part.text);
+            textSent = true;
+          }
+          mergePart(parts, part);
+        }
+        finishReason = candidate?.finishReason ?? finishReason;
+        totalTokens = chunk.usageMetadata?.totalTokenCount ?? totalTokens;
+      }
+    }
+
+    return { ok: true, parts, finishReason, totalTokens };
+  } catch (error) {
+    // Stopped by the person: not a model failure, nothing to try next.
+    if (request.signal?.aborted) throw error;
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
+    // 408 for a timeout, kept apart from 0 for a dropped connection. A model
+    // that hung is moved past, not waited on again: retrying it would multiply
+    // the wait by the length of the ladder.
+    return timedOut
+      ? { ok: false, status: 408, detail: error.message, textSent }
+      : { ok: false, status: 0, detail: String(error), textSent };
+  } finally {
+    if (firstWords) clearTimeout(firstWords);
+    clearTimeout(overall);
+    request.signal?.removeEventListener("abort", stopAll);
+  }
+}
+
+/** Adds a streamed part, joining consecutive prose into one part. */
+function mergePart(parts: GeminiPart[], part: GeminiPart): void {
+  const last = parts[parts.length - 1];
+  if (typeof part.text === "string" && last && typeof last.text === "string" && !last.functionCall) {
+    last.text += part.text;
+    if (part.thoughtSignature) last.thoughtSignature = part.thoughtSignature;
+    return;
+  }
+  parts.push({ ...part });
 }
 
 /**
