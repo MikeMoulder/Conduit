@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Plus, Square, Wallet } from "lucide-react";
-
-import { openPortfolio } from "@/lib/ui-sheets";
+import { useRef, useState } from "react";
+import { ArrowUp, Square } from "lucide-react";
 
 /**
  * The input.
@@ -17,11 +15,11 @@ import { openPortfolio } from "@/lib/ui-sheets";
  * person's own mandate and positions, so asking before there is an owner to
  * read would only produce an answer about nobody.
  *
- * Shaped like the input of the chat apps people already use: one 56 px pill,
- * a plus on the left for quick starts, the text, and a round send button on
- * the right. When the text runs past one line the pill grows into a rounded
- * box, with the buttons staying on the bottom line. The text is 16 px, which
- * also stops a phone from zooming in when the box is tapped.
+ * Shaped like the input of the chat apps people already use: one slim 48 px
+ * pill with the text and a round send button on the right. When the text
+ * runs past one line the pill grows into a rounded box, with the button
+ * staying on the bottom line. The text is 16 px, which also stops a phone
+ * from zooming in when the box is tapped.
  */
 
 /** Things a first timer would actually type, in the words they would type them. */
@@ -47,26 +45,7 @@ export function Composer({
   showSuggestions: boolean;
 }) {
   const [value, setValue] = useState("");
-  const [menu, setMenu] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // The quick start menu closes on a click outside it or on Escape.
-  useEffect(() => {
-    if (!menu) return;
-    const onDown = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenu(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenu(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menu]);
 
   function grow() {
     const el = box.current;
@@ -108,56 +87,10 @@ export function Composer({
         ) : null}
 
         <div
-          className={`relative flex items-end gap-1 rounded-[28px] border border-line bg-raised p-2.5 transition-colors focus-within:border-line-strong ${
+          className={`flex items-end gap-2 rounded-[24px] border border-line bg-raised py-[7px] pl-4 pr-[7px] transition-colors focus-within:border-line-strong ${
             locked ? "opacity-60" : ""
           }`}
         >
-          <div ref={menuRef} className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setMenu((open) => !open)}
-              aria-label="Quick starts"
-              aria-expanded={menu}
-              title="Quick starts"
-              className="grid size-9 place-items-center rounded-full text-ink-muted transition-colors hover:bg-overlay hover:text-ink"
-            >
-              <Plus className="size-5" aria-hidden="true" />
-            </button>
-            {menu ? (
-              <div
-                role="menu"
-                className="absolute bottom-full left-0 z-20 mb-3 w-64 rounded-2xl border border-line bg-surface p-1.5 shadow-menu animate-[rise-in_0.15s_ease-out_both]"
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenu(false);
-                    openPortfolio();
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-raised"
-                >
-                  <Wallet className="size-4 text-ink-muted" aria-hidden="true" />
-                  Your money
-                </button>
-                {SUGGESTIONS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    role="menuitem"
-                    disabled={locked || busy}
-                    onClick={() => {
-                      setMenu(false);
-                      submit(s);
-                    }}
-                    className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:pointer-events-none disabled:opacity-40"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
           <label htmlFor="conduit-input" className="sr-only">
             Ask Conduit
           </label>
@@ -182,7 +115,7 @@ export function Composer({
                 ? "Connect a wallet to start"
                 : "Text me what you want"
             }
-            className="max-h-[200px] min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-1.5 text-base leading-6 text-ink placeholder:text-ink-ghost focus:outline-none disabled:cursor-not-allowed"
+            className="max-h-[200px] min-h-8 min-w-0 flex-1 resize-none bg-transparent py-1 text-base leading-6 text-ink placeholder:text-ink-ghost focus:outline-none disabled:cursor-not-allowed"
           />
           {busy ? (
             <button
@@ -190,7 +123,7 @@ export function Composer({
               onClick={onStop}
               aria-label="Stop"
               title="Stop"
-              className="grid size-9 shrink-0 place-items-center rounded-full bg-overlay text-ink-muted transition-colors hover:text-ink"
+              className="grid size-8 shrink-0 place-items-center rounded-full bg-overlay text-ink-muted transition-colors hover:text-ink"
             >
               <Square className="size-3 fill-current" aria-hidden="true" />
             </button>
@@ -201,9 +134,9 @@ export function Composer({
               disabled={locked || value.trim().length === 0}
               aria-label="Send"
               title="Send"
-              className="grid size-9 shrink-0 place-items-center rounded-full bg-ink text-canvas transition-opacity hover:opacity-90 disabled:opacity-25"
+              className="grid size-8 shrink-0 place-items-center rounded-full bg-ink text-canvas transition-opacity hover:opacity-90 disabled:opacity-25"
             >
-              <ArrowUp className="size-5" aria-hidden="true" />
+              <ArrowUp className="size-4" aria-hidden="true" />
             </button>
           )}
         </div>
