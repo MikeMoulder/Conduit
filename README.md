@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/conduit-mark-white.svg" />
+  <img src="assets/brand/conduit-mark.svg" width="56" alt="Conduit's mark: a bold C opening downward, with a dot in its opening" />
+</picture>
+
 # Conduit
 
 **Invest in stocks the way you text a friend.** Type "buy $50 of Apple" or "ping me if Tesla drops 3%", and an AI agent does it on Solana, inside limits that a Solana program enforces and the agent cannot change.
