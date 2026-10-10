@@ -43,19 +43,30 @@ export const MAX_TURNS = 6;
 export const MAX_TOOL_CALLS = 10;
 
 /**
- * A reply that says a card is ready. Checked against what actually happened,
- * because a model sometimes writes "I have prepared the proposal" after only
- * checking it, and the person is then told to approve a card that is not there.
+ * A reply that says a card is ready, points at a button, or says something was
+ * cancelled. Checked against what actually happened, because a model sometimes
+ * writes "I have prepared the proposal" after only checking it, and the person
+ * is then told to approve a card that is not there. Seen while recording the
+ * demo: "I've cancelled that one for you... Tap Set it when you're ready", with
+ * no tool called, so nothing was cancelled and there was no card to tap.
  */
-const CLAIMS_A_CARD =
-  /\b(?:i have|i've|i)\s+(?:now\s+|just\s+|also\s+)?prepared\b|\bhere is the card\b|\bthe card (?:is )?(?:ready|below)\b/i;
+const CLAIMS_A_CARD = new RegExp(
+  [
+    String.raw`\b(?:i have|i've|i)\s+(?:now\s+|just\s+|also\s+)?prepared\b`,
+    String.raw`\bhere is the card\b`,
+    String.raw`\bthe card (?:is )?(?:ready|below)\b`,
+    String.raw`\b(?:i have|i've|i)\s+(?:now\s+|just\s+|also\s+)?(?:cancell?ed|stopped|removed|deleted)\b`,
+    String.raw`\btap\s+(?:set it|buy|sell|open it|get it|deposit|move|rebalance|trade now|create it|turn it on|pause it|pause|resume|withdraw|run it now)\b`,
+  ].join("|"),
+  "i",
+);
 
 export function claimsACard(prose: string): boolean {
   return CLAIMS_A_CARD.test(prose);
 }
 
 const NO_CARD_CORRECTION =
-  "[Check] Your reply says a card is ready to approve, but no tool prepared one in this answer, so nothing is showing. Call the tool that prepares it now, with the same details (for a rebalance that is propose_rebalance). If you cannot, reply again and say plainly that nothing was prepared and why.";
+  "[Check] Your reply says a card is ready to approve, points at a button, or says something was cancelled, but no tool did that in this answer, so nothing is showing and nothing changed. Call the tool now, with the same details: the tool that prepares the card (for a rebalance that is propose_rebalance), or cancel_price_trigger to stop a trigger. If you cannot, reply again and say plainly what was not done and why.";
 
 const SYSTEM = `You are Conduit, a portfolio copilot for tokenized equities on Solana.
 

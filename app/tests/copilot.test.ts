@@ -404,7 +404,7 @@ describe("the copilot loop", () => {
     assert.equal(generatorCalls, 2, "the false claim should have been sent back once");
     const said = events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta);
     assert.deepEqual(said, ["Nothing was prepared yet. Say send it and I will prepare it."]);
-    assert.include(JSON.stringify(contents[1]), "no tool prepared one");
+    assert.include(JSON.stringify(contents[1]), "no tool did that in this answer");
   });
 
   it("lets a card claim through when a card really was prepared", async () => {
@@ -445,6 +445,12 @@ describe("the copilot loop", () => {
     assert.isTrue(claimsACard("Here is the card for your deposit."));
     assert.isFalse(claimsACard("Would you like me to prepare a card?"));
     assert.isFalse(claimsACard("Once prepared, the card waits for you."));
+    // A cancellation or a button named with nothing behind it (seen live).
+    assert.isTrue(claimsACard("My mistake, I've cancelled that one for you."));
+    assert.isTrue(claimsACard("Let me prepare the correct order. Tap Set it when you're ready."));
+    assert.isTrue(claimsACard("Here's the order, tap Buy when you're ready."));
+    assert.isFalse(claimsACard("Want me to cancel it? Say the word."));
+    assert.isFalse(claimsACard("You can buy more whenever you like."));
   });
 
   it("refuses an invalid wallet address before doing any work", async () => {
