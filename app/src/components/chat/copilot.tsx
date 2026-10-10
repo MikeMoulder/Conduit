@@ -169,7 +169,7 @@ function Welcome({ connected }: { connected: boolean }) {
         <ul className="flex flex-col gap-2 text-sm text-ink-muted">
           <Bullet>
             Buy and sell stocks like NVIDIA and Tesla, plus crypto and pre IPO
-            names like SpaceX.
+            names like OpenAI.
           </Bullet>
           <Bullet>
             Get a quick brief on any stock: the price, the day, and the news

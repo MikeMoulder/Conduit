@@ -39,7 +39,7 @@ const getStockBrief: CopilotTool = {
     parameters: {
       type: "OBJECT",
       properties: {
-        symbol: { type: "STRING", description: "The registry symbol, such as NVDA, SPY, BTC or SPACEX." },
+        symbol: { type: "STRING", description: "The registry symbol, such as NVDA, SPY, BTC or OPENAI." },
       },
       required: ["symbol"],
     },

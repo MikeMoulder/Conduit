@@ -79,7 +79,7 @@ const setAutopilot: CopilotTool = {
         preIpoCapPercent: {
           type: "NUMBER",
           description:
-            "Most of the mandate the pre IPO names (SpaceX, OpenAI and the rest) may hold together, in percent. Only if the person says. Defaults to 10. 0 keeps the autopilot out of pre IPO entirely.",
+            "Most of the mandate the pre IPO names (OpenAI, Anthropic and the rest) may hold together, in percent. Only if the person says. Defaults to 10. 0 keeps the autopilot out of pre IPO entirely.",
         },
         brakePercent: {
           type: "NUMBER",
