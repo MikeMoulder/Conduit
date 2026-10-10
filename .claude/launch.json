@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev"],
       "cwd": "app",
       "port": 3000
+    },
+    {
+      "name": "conduit-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start", "--", "-p", "3100"],
+      "cwd": "app",
+      "port": 3100
     }
   ]
 }
