@@ -141,11 +141,6 @@ html {
   --color-violet-950: oklch(96.9% 0.016 293.756);
 }
 
-/* The logo marks are white on transparent; in light they are drawn dark. */
-:root[data-theme="light"] .theme-invert {
-  filter: invert(1);
-}
-
 @keyframes fade-in {
   from {
     opacity: 0;

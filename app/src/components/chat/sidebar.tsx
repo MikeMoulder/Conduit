@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import { PanelLeftClose, Plus, Search, Wallet, X } from "lucide-react";
 
+import { ConduitMark } from "@/components/conduit-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { Conversation } from "@/lib/copilot/store";
 import { openPortfolio } from "@/lib/ui-sheets";
@@ -234,16 +234,7 @@ export function Sidebar({
 }
 
 function Logo() {
-  return (
-    <Image
-      src="/logo.png"
-      alt="Conduit"
-      width={512}
-      height={512}
-      priority
-      className="theme-invert size-8 shrink-0 select-none"
-    />
-  );
+  return <ConduitMark title="Conduit" className="size-8 shrink-0 select-none text-ink" />;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
