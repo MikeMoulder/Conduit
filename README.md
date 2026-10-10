@@ -189,7 +189,7 @@ Pyth's equity feeds refused our key with `Not entitled` (a commercial tier), and
 
 **474 automated tests, all passing:** 53 Rust unit tests (policy, settlement arithmetic, the Pyth parser), 77 TypeScript integration tests against the live devnet program (balances checked on both sides of a settlement), and 344 app tests. The Rust and app suites were rerun on 10 October 2026.
 
-On top of that, **74 recorded test runs with 877 hand checks**, many live on devnet, in Chrome and against the deployed site. They found 131 failures. Each was fixed or is listed under the limitations below. A few of them:
+On top of that, **74 recorded test runs with 877 hand checks**, many live on devnet, in Chrome and against the deployed site. They found 131 failures. One is still open today, the SpaceX price, listed under the limitations below. A few of the others:
 
 | Run                          | What it proved or caught                                                                                                                           |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
