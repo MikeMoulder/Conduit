@@ -60,6 +60,8 @@ coverage/
 *.md
 !README.md
 !**/README.md
+# The economics plan is shared with the team, so it is tracked.
+!docs/ECONOMICS.md
 
 # Compiled integration tests
 .test-build/
