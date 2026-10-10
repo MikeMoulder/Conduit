@@ -292,6 +292,15 @@ Requires Node 20.6 or later. The program is already deployed on devnet, so the a
 | `SOLANA_RPC_URL`                                     | Devnet RPC                                                      | The public endpoint works; a dedicated one is faster                                                                                       |
 | `TELEGRAM_BOT_TOKEN`, `FINNHUB_API_KEY`, `UPSTASH_*` | Optional: bot, company news, shared store                       | Without Upstash, a local JSON file is used                                                                                                 |
 
+## Business model
+
+**Planned, not built yet.** Today the demo charges nothing and Conduit pays every network fee, so anyone can try it without owning SOL. The plan is two fees, both enforced by the Solana program so a user can verify exactly what they pay:
+
+- **0.10% per trade**, taken at settlement.
+- **0.50% a year** on money the autopilot manages, with the rate fixed in the user's mandate so it cannot rise without the owner signing.
+
+New users keep free first trades. The full plan, with costs per action and numbers per user, is in [`docs/ECONOMICS.md`](docs/ECONOMICS.md).
+
 ## What is real, what is not
 
 **Real, on Solana devnet:** the program and every rule it enforces, the agent's trades, rebalances, settlements and refusals (linked above), the autopilot, the brake, triggers, and Telegram delivery. The site runs on Vercel, and the background worker and price publisher run on our server.
