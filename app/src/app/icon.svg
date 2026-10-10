@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <style>
-    .c { fill: none; stroke: #111417; stroke-width: 10; stroke-linecap: round; }
+    .c { fill: none; stroke: #111417; stroke-width: 10; stroke-linecap: butt; }
     .d { fill: #111417; }
     @media (prefers-color-scheme: dark) {
       .c { stroke: #f2f4f5; }
       .d { fill: #f2f4f5; }
     }
   </style>
-  <path class="c" d="M49.2 44.05A21 21 0 1 0 14.8 44.05" />
+  <path class="c" d="M44.05 49.2A21 21 0 1 0 19.95 49.2" />
   <circle class="d" cx="32" cy="53" r="5" />
 </svg>
