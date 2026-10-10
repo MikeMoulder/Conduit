@@ -104,11 +104,15 @@ const setTrigger: CopilotTool = {
           type: "NUMBER",
           description: `With every_minutes, the most times it acts. Defaults to ${DEFAULT_RUNS}, at most ${MAX_RUNS}.`,
         },
-        action: { type: "STRING", description: "notify, buy or sell. Defaults to notify." },
+        action: {
+          type: "STRING",
+          description:
+            "What happens when it goes off: buy or sell (with dollars) whenever the person asked to trade, as in 'buy $20 of AAPL every 10 minutes'; notify only for an alert or a reminder.",
+        },
         dollars: { type: "NUMBER", description: "For buy or sell, the dollar amount to trade." },
         days: { type: "NUMBER", description: `How long to watch, in days. Defaults to ${DEFAULT_TTL_DAYS}, at most ${MAX_TTL_DAYS}.` },
       },
-      required: ["symbol", "condition"],
+      required: ["symbol", "condition", "action"],
     },
   },
   async run(args, ctx) {
@@ -154,6 +158,12 @@ const setTrigger: CopilotTool = {
       ? { everyMinutes: parsed.every_minutes, maxRuns: parsed.times ?? DEFAULT_RUNS }
       : undefined;
     const timed = condition.kind === "after";
+    // A dollar amount with no action means a trade was asked for and the kind
+    // was left out. Saving it as a message bought nothing three times over
+    // while the reply promised a buy (seen live), so it is refused, not guessed.
+    if (parsed.action === undefined && parsed.dollars) {
+      throw new ToolError("Say whether this trigger buys, sells or only messages: pass action buy or sell with dollars, or notify.");
+    }
     const kind = parsed.action ?? "notify";
     if (kind !== "notify" && !parsed.dollars) {
       throw new ToolError(`A trigger that will ${kind} needs a dollar amount. Ask how much.`);
