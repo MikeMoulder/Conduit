@@ -2,6 +2,7 @@ import { PublicKey } from "@solana/web3.js";
 
 import { getAssetBySymbol, type RegisteredAsset } from "./assets";
 import { BPS_DENOMINATOR, MAX_ASSETS, bpsToPercent } from "./chain";
+import { settleableAsset } from "./holdings";
 
 /**
  * The mandate as the owner writes it, and the checks the program will apply.
@@ -231,16 +232,27 @@ export interface AllowedAssetArg {
   feedId: number[];
 }
 
-/** Instruction arguments for the permitted universe, in the order given. */
+/**
+ * Instruction arguments for the permitted universe, in the order given.
+ *
+ * Each asset is bound to the feed its desk price account carries, because
+ * `settle` checks every price against the feed id stored here and refuses any
+ * other with PriceFeedMismatch. The desk is priced by this project's publisher
+ * (published-feeds.ts), so a mandate bound to the registry's Pyth ids could be
+ * created and rebalanced but never settled: every autopilot cycle failed at
+ * the last step. An asset the desk does not stock keeps the registry binding,
+ * which makes it policy only, as before.
+ */
 export function toAllowedAssets(symbols: string[]): AllowedAssetArg[] {
   return symbols.map((symbol) => {
     const asset = getAssetBySymbol(symbol);
     if (!asset) {
       throw new Error(`${symbol} has no registry entry.`);
     }
+    const stocked = settleableAsset(asset.mint);
     return {
       mint: new PublicKey(asset.mint),
-      feedId: Array.from(feedIdBytes(asset)),
+      feedId: stocked ? Array.from(Buffer.from(stocked.feedId, "hex")) : Array.from(feedIdBytes(asset)),
     };
   });
 }
