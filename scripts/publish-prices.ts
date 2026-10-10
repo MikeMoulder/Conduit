@@ -229,7 +229,7 @@ async function fromPreStocks(assets: RegistryAsset[]): Promise<Quote[]> {
 }
 
 /** Conduit's own site, whose price route reads PreStocks from where it is not refused. */
-const SITE = process.env.CONDUIT_SITE_URL ?? "https://ai-conduit.vercel.app";
+const SITE = process.env.CONDUIT_SITE_URL ?? "https://www.tryconduitai.xyz";
 /** The oldest relayed read worth publishing. */
 const RELAY_MAX_AGE_SECONDS = 120;
 

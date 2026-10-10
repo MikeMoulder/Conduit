@@ -7,7 +7,7 @@
 
 **Invest in stocks the way you text a friend.** Type "buy $50 of Apple" or "ping me if Tesla drops 3%", and an AI agent does it on Solana, inside limits that a Solana program enforces and the agent cannot change.
 
-[Live app](https://ai-conduit.vercel.app) · [Program on Solana Explorer](https://explorer.solana.com/address/6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu?cluster=devnet) · [A refusal on chain](https://explorer.solana.com/tx/4uo7FtZtCNurZRmQ6sn5F64n8H7wEJRDUPq8BKtadjqsNBcXfbAviwkWSPpcNvQWwus1EmeiHdu17UJaHPiRFmmF?cluster=devnet) · [Live health check](https://ai-conduit.vercel.app/api/health) · [Proof table](#proof-you-can-click)
+[Live app](https://www.tryconduitai.xyz) · [Program on Solana Explorer](https://explorer.solana.com/address/6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu?cluster=devnet) · [A refusal on chain](https://explorer.solana.com/tx/4uo7FtZtCNurZRmQ6sn5F64n8H7wEJRDUPq8BKtadjqsNBcXfbAviwkWSPpcNvQWwus1EmeiHdu17UJaHPiRFmmF?cluster=devnet) · [Live health check](https://www.tryconduitai.xyz/api/health) · [Proof table](#proof-you-can-click)
 
 ![Conduit's home screen: a chat, live tokenized stock prices, and the promise that your rules live on Solana](assets/screenshots/welcome.png)
 
@@ -106,7 +106,7 @@ flowchart LR
 3. **The program checks it.** A trade, a proposal or a settlement is a Solana transaction the program accepts, or refuses by name.
 4. **The worker keeps going when you leave.** Every minute it checks triggers and due autopilot cycles, and it reports each outcome to your Telegram.
 5. **Prices stay fresh on chain.** The publisher writes every price every 4 minutes, because the program refuses anything older than 10.
-6. **Something watches all of it.** Every 5 minutes the worker checks the store, every on chain price, the SOL in each key and the Telegram listener. A problem reaches the operator's Telegram once, again every 6 hours while it lasts, and once more when it recovers. [`/api/health`](https://ai-conduit.vercel.app/api/health) answers the same question for anyone, live.
+6. **Something watches all of it.** Every 5 minutes the worker checks the store, every on chain price, the SOL in each key and the Telegram listener. A problem reaches the operator's Telegram once, again every 6 hours while it lasts, and once more when it recovers. [`/api/health`](https://www.tryconduitai.xyz/api/health) answers the same question for anyone, live.
 
 <details>
 <summary><b>The Solana program: 15 instructions</b></summary>
@@ -179,8 +179,8 @@ Pyth's equity feeds refused our key with `Not entitled` (a commercial tier), and
 
 | What                                                           | Evidence                                                                                                                                                |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The live app                                                   | [ai-conduit.vercel.app](https://ai-conduit.vercel.app)                                                                                                  |
-| Its health, live (today it reports the SpaceX price as stale)  | [/api/health](https://ai-conduit.vercel.app/api/health)                                                                                                 |
+| The live app                                                   | [tryconduitai.xyz](https://www.tryconduitai.xyz)                                                                                                  |
+| Its health, live (today it reports the SpaceX price as stale)  | [/api/health](https://www.tryconduitai.xyz/api/health)                                                                                                 |
 | The deployed program                                           | [`6X7wfnLN...`](https://explorer.solana.com/address/6X7wfnLNHQvW94CHPVFdguraojh5uEN3Y1gjfi2pkxVu?cluster=devnet)                                        |
 | A main wallet trade, signed by the agent                       | [`48ymYD9C...`](https://explorer.solana.com/tx/48ymYD9C5gQiigMnQv8Z5WBU9vw2pgmu5m6y22wAEnyg4aLCbwdn88ybvFwbbHvpphYHNGLCMWTYkNmtrHd8faqc?cluster=devnet) |
 | A rebalance the program accepted                               | [`3PY2rYUh...`](https://explorer.solana.com/tx/3PY2rYUhtiWCPrR6gdiDpdALHMbKDKMDUbrNxCFryUgmBRuo458mYATepv7UdWZ5GaY6KW4Wx3h4CPNvsP8igxfb?cluster=devnet) |
@@ -210,7 +210,7 @@ On top of that, **74 recorded test runs with 877 hand checks**, many live on dev
 **On the live app (about 2 minutes):**
 
 1. Install Phantom and switch it to **Devnet** (Settings, Developer settings). Get a little devnet SOL at [faucet.solana.com](https://faucet.solana.com) for the few steps you sign yourself.
-2. Open [ai-conduit.vercel.app](https://ai-conduit.vercel.app) and connect.
+2. Open [tryconduitai.xyz](https://www.tryconduitai.xyz) and connect.
 3. Type `give me demo cash`, then `open my main wallet`, then `deposit $1,000`.
 4. Type `buy $50 of Apple`, then tap Buy.
 5. Tap any stock for its page, or open **Your money** in the sidebar.
