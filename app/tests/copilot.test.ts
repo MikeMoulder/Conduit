@@ -451,6 +451,8 @@ describe("the copilot loop", () => {
     assert.isTrue(claimsACard("Here's the order, tap Buy when you're ready."));
     assert.isFalse(claimsACard("Want me to cancel it? Say the word."));
     assert.isFalse(claimsACard("You can buy more whenever you like."));
+    assert.isTrue(claimsACard("Here is the proposal for 60% in NVDA, which you can tap to see the refusal. [Card: Propose rebalance]"));
+    assert.isTrue(claimsACard("[Card: Propose rebalance]"));
   });
 
   it("refuses an invalid wallet address before doing any work", async () => {

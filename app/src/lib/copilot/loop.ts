@@ -57,6 +57,10 @@ const CLAIMS_A_CARD = new RegExp(
     String.raw`\bthe card (?:is )?(?:ready|below)\b`,
     String.raw`\b(?:i have|i've|i)\s+(?:now\s+|just\s+|also\s+)?(?:cancell?ed|stopped|removed|deleted)\b`,
     String.raw`\btap\s+(?:set it|buy|sell|open it|get it|deposit|move|rebalance|trade now|create it|turn it on|pause it|pause|resume|withdraw|run it now)\b`,
+    // Seen live: "Here is the proposal ... which you can tap. [Card: Propose rebalance]"
+    String.raw`\[card\b`,
+    String.raw`\bhere is the (?:proposal|order|alert|trigger)\b`,
+    String.raw`\bwhich you can tap\b`,
   ].join("|"),
   "i",
 );
