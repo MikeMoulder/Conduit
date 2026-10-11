@@ -48,6 +48,17 @@ export function formatDecision(decision: Decision, entry: AutopilotEntry): strin
   return lines.join("\n\n");
 }
 
+/**
+ * Whether a decision is news. A skip that repeats the previous decision word
+ * for word is not: a paused mandate on a 5 minute autopilot sent "Skipped: the
+ * mandate is paused" 143 times in a day. The first skip is sent, so the owner
+ * knows; anything else (a rebalance, a hold, a failure, the brake) always is.
+ */
+export function worthSending(decision: Decision, previous: Decision | undefined): boolean {
+  if (decision.outcome !== "skipped" || !previous) return true;
+  return !(previous.outcome === "skipped" && previous.summary === decision.summary);
+}
+
 export async function notify(decision: Decision, entry: AutopilotEntry): Promise<void> {
   await sendToOwner(decision.owner, formatDecision(decision, entry)).catch(() => "failed");
 }

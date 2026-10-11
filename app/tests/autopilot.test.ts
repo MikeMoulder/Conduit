@@ -18,7 +18,7 @@ import {
   type AutopilotEntry,
   type Decision,
 } from "../src/lib/autopilot/state";
-import { formatDecision } from "../src/lib/autopilot/notify";
+import { formatDecision, worthSending } from "../src/lib/autopilot/notify";
 import { startScore, summarise } from "../src/lib/autopilot/scorecard";
 import { AUTOPILOT_TOOLS } from "../src/lib/copilot/autopilot-tools";
 
@@ -269,4 +269,26 @@ describe("autopilot tools with nobody connected", () => {
       }
     });
   }
+});
+
+describe("which decisions reach Telegram", () => {
+  // Written after a paused mandate's 5 minute autopilot sent the same skip 143 times in a day.
+  const skip = (summary: string) => ({ outcome: "skipped", summary }) as Parameters<typeof worthSending>[0];
+  const other = (outcome: string) => ({ outcome, summary: "x" }) as Parameters<typeof worthSending>[0];
+
+  it("sends the first skip, and a skip that says something new", () => {
+    expect(worthSending(skip("The mandate is paused."), undefined)).to.equal(true);
+    expect(worthSending(skip("The mandate is paused."), other("rebalanced"))).to.equal(true);
+    expect(worthSending(skip("No permitted asset has a price."), skip("The mandate is paused."))).to.equal(true);
+  });
+
+  it("holds back a skip that repeats the last decision word for word", () => {
+    expect(worthSending(skip("The mandate is paused."), skip("The mandate is paused."))).to.equal(false);
+  });
+
+  it("always sends a rebalance, a hold, a failure or the brake", () => {
+    for (const outcome of ["rebalanced", "held", "failed", "braked"]) {
+      expect(worthSending(other(outcome), other(outcome)), outcome).to.equal(true);
+    }
+  });
 });

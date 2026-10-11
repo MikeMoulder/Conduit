@@ -5,9 +5,10 @@ import { listAssetsOfClass } from "../assets";
 import { refreshDayLines } from "../sparklines";
 import { checkTriggers } from "../triggers/runner";
 import { runCycle } from "./cycle";
-import { notify } from "./notify";
+import { notify, worthSending } from "./notify";
 import {
   dueEntries,
+  listDecisions,
   markRun,
   recordDecision,
   type AutopilotEntry,
@@ -82,8 +83,9 @@ export async function runNow(entry: AutopilotEntry): Promise<Decision> {
   }
 
   await markRun(entry.mandate, decision.at);
+  const [previous] = await listDecisions({ mandate: entry.mandate }, 1).catch(() => []);
   await recordDecision(decision);
-  await notify(decision, entry);
+  if (worthSending(decision, previous)) await notify(decision, entry);
   return decision;
 }
 
