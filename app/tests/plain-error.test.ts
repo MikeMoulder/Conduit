@@ -44,6 +44,16 @@ describe("plainChainError", () => {
 
   it("reads a fee shortfall plainly", () => {
     expect(plainChainError("Attempt to debit an account but found no record of a prior credit.")).to.match(/enough SOL/);
+    expect(plainChainError("Transaction results in an account (0) with insufficient funds for rent")).to.match(/enough SOL/);
+  });
+
+  it("reads the token program's insufficient funds as a token shortfall, not a fee", () => {
+    // Seen live: a settle whose cash ran short before its sells, read as "not enough SOL".
+    const raw =
+      'Simulation failed. Message: Transaction simulation failed: Error processing Instruction 1: custom program error: 0x1. Logs: [ "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA invoke [2]", "Program log: Error: insufficient funds", "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA failed: custom program error: 0x1" ].';
+    const out = plainChainError(raw);
+    expect(out).to.match(/did not hold enough tokens/);
+    expect(out).to.not.match(/SOL/);
   });
 
   it("leaves a plain sentence alone", () => {

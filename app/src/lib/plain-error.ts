@@ -10,10 +10,15 @@ const RAW_START = /(?:Simulation failed\.|Transaction simulation failed:|\bLogs:
 
 const LONGEST = 200;
 
-/** The plain reading of a known failure, checked against the raw text in order. */
+/**
+ * The plain reading of a known failure, checked against the raw text in order.
+ * The token program's own "insufficient funds" comes first: it means a token
+ * account in the trade was short, which the fee message below would misread.
+ */
 const KNOWN: [RegExp, string][] = [
   [/exceeded CUs meter|exceeded maximum compute|computational budget exceeded/i, "Solana ran out of compute for the transaction, so nothing moved."],
-  [/insufficient (?:funds|lamports)|Attempt to debit an account but found no record of a prior credit/i, "The agent's wallet did not have enough SOL to pay the network fee, so nothing moved."],
+  [/Program log: Error: insufficient funds/i, "One of the accounts in the trade did not hold enough tokens to cover it, so nothing moved."],
+  [/insufficient lamports|insufficient funds for (?:rent|fee)|InsufficientFundsFor(?:Fee|Rent)|Attempt to debit an account but found no record of a prior credit/i, "The agent's wallet did not have enough SOL to pay the network fee, so nothing moved."],
   [/Blockhash not found|block height exceeded/i, "The transaction expired before Solana picked it up, so nothing moved. Trying again usually works."],
 ];
 
