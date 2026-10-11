@@ -2,6 +2,7 @@ import "server-only";
 
 import { Program } from "@coral-xyz/anchor";
 import {
+  ComputeBudgetProgram,
   PublicKey,
   Transaction,
   TransactionMessage,
@@ -39,6 +40,9 @@ import { getConnection } from "@/lib/rpc";
  */
 
 let lookupCache: { address: string; account: AddressLookupTableAccount } | null = null;
+
+/** Compute units a settlement may use: a full eight asset mandate, with room to spare. */
+const SETTLE_COMPUTE_UNITS = 1_000_000;
 
 /**
  * The desk's address lookup table, or null to send a legacy transaction.
@@ -443,6 +447,13 @@ export async function executeSettle(body: unknown): Promise<ExecutionResult> {
       .remainingAccounts(remaining)
       .instruction();
 
+    // Settling values every asset and moves tokens for each one that changes,
+    // and a mandate of six or more holdings ran past the default 200,000
+    // compute units ("exceeded CUs meter" in the simulation), so nothing
+    // settled. A limit only raises the ceiling: with no priority fee set, the
+    // fee is the same, and a small settlement uses what it uses.
+    const budget = ComputeBudgetProgram.setComputeUnitLimit({ units: SETTLE_COMPUTE_UNITS });
+
     // Four accounts per asset outgrow a legacy transaction at about six
     // assets. With the desk's lookup table the shared accounts cost a byte
     // each, and the program receives exactly the same accounts either way.
@@ -453,7 +464,7 @@ export async function executeSettle(body: unknown): Promise<ExecutionResult> {
         new TransactionMessage({
           payerKey: keypair.publicKey,
           recentBlockhash: latest.blockhash,
-          instructions: [instruction],
+          instructions: [budget, instruction],
         }).compileToV0Message([table]),
       );
       versioned.sign([keypair]);
@@ -463,7 +474,7 @@ export async function executeSettle(body: unknown): Promise<ExecutionResult> {
         feePayer: keypair.publicKey,
         blockhash: latest.blockhash,
         lastValidBlockHeight: latest.lastValidBlockHeight,
-      }).add(instruction);
+      }).add(budget, instruction);
       transaction.sign(keypair);
       raw = transaction.serialize();
     }
