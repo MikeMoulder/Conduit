@@ -26,6 +26,7 @@ import {
 } from "@/lib/holdings";
 import idl from "@/lib/idl/conduit.json";
 import type { Conduit } from "@/lib/idl/conduit";
+import { plainChainError } from "@/lib/plain-error";
 import { evaluateProposal } from "@/lib/proposal";
 import { getConnection } from "@/lib/rpc";
 
@@ -241,6 +242,9 @@ export async function executeRebalance(body: unknown): Promise<ExecutionResult> 
     });
   } catch (error) {
     const programError = extractProgramError(error);
+    // The raw error, simulation log and all, stays in the server log; the
+    // caller gets the sentence a person reads.
+    if (!programError) console.error("[rebalance] send failed:", error);
     return result({
       accepted: false,
       stage: "send",
@@ -248,9 +252,7 @@ export async function executeRebalance(body: unknown): Promise<ExecutionResult> 
       programError,
       detail: programError
         ? programError.message
-        : error instanceof Error
-          ? error.message
-          : String(error),
+        : plainChainError(error instanceof Error ? error.message : String(error)),
     });
   }
 
@@ -482,13 +484,14 @@ export async function executeSettle(body: unknown): Promise<ExecutionResult> {
     signature = await connection.sendRawTransaction(raw);
   } catch (error) {
     const programError = extractProgramError(error);
+    if (!programError) console.error("[settle] send failed:", error);
     return result({
       settled: false,
       stage: "send",
       programError,
       detail:
         programError?.message ??
-        (error instanceof Error ? error.message : String(error)),
+        plainChainError(error instanceof Error ? error.message : String(error)),
     });
   }
 

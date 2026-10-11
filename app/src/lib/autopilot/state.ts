@@ -1,6 +1,7 @@
 import "server-only";
 
 import { hgetJson, hsetJson, hvaluesJson, kv, withLock } from "../kv";
+import { tidySummary } from "../plain-error";
 import type { Score, ScoreState } from "./scorecard";
 
 /**
@@ -131,7 +132,8 @@ export async function listDecisions(filter: { owner?: string; mandate?: string }
   const all = (await kv().lrange("ap:decisions", 0, MAX_DECISIONS - 1)).map((raw) => JSON.parse(raw) as Decision);
   return all
     .filter((d) => (!filter.owner || d.owner === filter.owner) && (!filter.mandate || d.mandate === filter.mandate))
-    .slice(0, limit);
+    .slice(0, limit)
+    .map((d) => ({ ...d, summary: tidySummary(d.summary) }));
 }
 
 /** Entries whose next run is due. */

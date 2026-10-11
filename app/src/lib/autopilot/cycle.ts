@@ -11,6 +11,7 @@ import { bpsToPercent, portfolioPda } from "../chain";
 import { fetchHoldings, type PortfolioHoldings } from "../holdings";
 import { pricedSymbols, snapshotMarket } from "../market";
 import { evaluateProposal } from "../proposal";
+import { plainChainError } from "../plain-error";
 import { getConnection } from "../rpc";
 import { DEFAULT_BRAKE_BPS, describeBrake, isTripped, towardCash } from "./brakes";
 import { applyPreIpoRules, DEFAULT_PRE_IPO_CAP_BPS } from "./pre-ipo";
@@ -126,7 +127,7 @@ async function applyBrake(input: {
     });
     if (!rebalance.body.accepted) {
       return stopped(
-        `Safety brake: the mandate fell ${bpsToPercent(fall)} from its best point, past your ${bpsToPercent(brakeBps)} limit. The autopilot is paused, but the move to cash was not accepted (${String(rebalance.body.detail ?? rebalance.body.error ?? "no detail")}). Your holdings are unchanged; sell from the chat if you want out.`,
+        `Safety brake: the mandate fell ${bpsToPercent(fall)} from its best point, past your ${bpsToPercent(brakeBps)} limit. The autopilot is paused, but the move to cash was not accepted (${plainChainError(rebalance.body.detail ?? rebalance.body.error ?? "no detail")}). Your holdings are unchanged; sell from the chat if you want out.`,
         signatures,
         score,
       );
@@ -137,7 +138,7 @@ async function applyBrake(input: {
   const settle = await executeSettle({ mandate: entry.mandate });
   if (!settle.body.settled) {
     return stopped(
-      `Safety brake: the mandate fell ${bpsToPercent(fall)} from its best point, past your ${bpsToPercent(brakeBps)} limit. The autopilot is paused and the targets now point to cash, but the settlement did not go through (${String(settle.body.detail ?? settle.body.error ?? "no detail")}). Ask for a settlement to finish the move.`,
+      `Safety brake: the mandate fell ${bpsToPercent(fall)} from its best point, past your ${bpsToPercent(brakeBps)} limit. The autopilot is paused and the targets now point to cash, but the settlement did not go through (${plainChainError(settle.body.detail ?? settle.body.error ?? "no detail")}). Ask for a settlement to finish the move.`,
       signatures,
       score,
     );
@@ -296,7 +297,7 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
         outcome: "failed",
         reasoning,
         positions,
-        summary: `The rebalance was not accepted${error?.name ? `: ${error.name}` : ""}. ${String(rebalance.body.detail ?? rebalance.body.error ?? "")}`.trim(),
+        summary: `The rebalance was not accepted${error?.name ? `: ${error.name}` : ""}. ${plainChainError(rebalance.body.detail ?? rebalance.body.error ?? "")}`.trim(),
       };
     }
     signatures.push(String(rebalance.body.signature));
@@ -313,7 +314,7 @@ export async function runCycle(entry: AutopilotEntry): Promise<Decision> {
       reasoning,
       positions,
       signatures,
-      summary: `${changed ? "The new targets were accepted, but the" : "The"} settlement did not go through${error?.name ? `: ${error.name}` : ""}. ${String(settle.body.detail ?? settle.body.error ?? "")}`.trim(),
+      summary: `${changed ? "The new targets were accepted, but the" : "The"} settlement did not go through${error?.name ? `: ${error.name}` : ""}. ${plainChainError(settle.body.detail ?? settle.body.error ?? "")}`.trim(),
     };
   }
   signatures.push(String(settle.body.signature));
